@@ -26,6 +26,7 @@ export interface Student {
   counselorId?: string;
   facultyMentorId?: string;
   joinedDate?: string;
+  status?: 'active' | 'inactive';
 }
 
 export interface RiskFactor {

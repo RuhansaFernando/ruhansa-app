@@ -1,52 +1,106 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { mockUsers } from '../mockData';
-import { useAuth } from '../AuthContext';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Checkbox } from '../components/ui/checkbox';
-import { GraduationCap } from 'lucide-react';
-import backgroundImage from 'figma:asset/499fbef49f15d05928a99e1c8b5870312f837196.png';
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { useAuth } from "../AuthContext";
+import { auth, db } from "../../firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Checkbox } from "../components/ui/checkbox";
+import { GraduationCap } from "lucide-react";
+const backgroundImage = "";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showDesktop, setShowDesktop] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
 
-    // Find user by email and password (role-agnostic login)
-    const user = mockUsers.find(
-      (u) => u.email === email && u.password === password
-    );
+    try {
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password,
+      );
+      const firebaseEmail = credential.user.email ?? "";
 
-    if (user) {
-      login(user);
-      // Navigate based on role
-      switch (user.role) {
-        case 'advisor':
-          navigate('/advisor/dashboard');
-          break;
-        case 'student':
-          navigate('/student/dashboard');
-          break;
-        case 'faculty':
-          navigate('/faculty/dashboard');
-          break;
-        case 'counselor':
-          navigate('/counselor/dashboard');
-          break;
-        case 'admin':
-          navigate('/admin/dashboard');
-          break;
-        default:
-          navigate('/');
+      // Map Firebase user to an app User based on email
+      const firebaseUserMap: Record<
+        string,
+        {
+          id: string;
+          name: string;
+          role: "admin" | "advisor" | "student" | "faculty" | "counselor";
+        }
+      > = {
+        "admin@gmail.com": { id: "fb-admin", name: "Admin", role: "admin" },
+      };
+
+      const mapped = firebaseUserMap[firebaseEmail];
+      if (mapped) {
+        login({ ...mapped, email: firebaseEmail, password: "" });
+        navigate("/admin/dashboard");
+      } else {
+        // Check Firestore students collection
+        const q = query(
+          collection(db, "students"),
+          where("email", "==", firebaseEmail),
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const studentDoc = snapshot.docs[0];
+          const data = studentDoc.data();
+          login({
+            id: studentDoc.id,
+            name: data.name ?? firebaseEmail,
+            role: "student",
+            email: firebaseEmail,
+            password: "",
+          });
+          navigate("/student/dashboard");
+        } else {
+          setError("Your account is not authorised to access this system.");
+          await auth.signOut();
+        }
       }
+    } catch (err) {
+      if (err instanceof FirebaseError) {
+        switch (err.code) {
+          case "auth/invalid-credential":
+          case "auth/wrong-password":
+          case "auth/user-not-found":
+            setError("Invalid email or password. Please try again.");
+            break;
+          case "auth/invalid-email":
+            setError("Please enter a valid email address.");
+            break;
+          case "auth/too-many-requests":
+            setError("Too many failed attempts. Please try again later.");
+            break;
+          case "auth/user-disabled":
+            setError(
+              "This account has been disabled. Contact your administrator.",
+            );
+            break;
+          default:
+            setError("An error occurred during sign in. Please try again.");
+        }
+      } else {
+        setError("An unexpected error occurred. Please try again.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,74 +122,88 @@ export default function LoginPage() {
                 <GraduationCap className="h-8 w-8 text-white" />
               </div>
             </div>
-            <h1 className="text-2xl font-bold">Student Risk Management System</h1>
-            <p className="text-muted-foreground mt-2">Demo Accounts - Quick Login</p>
+            <h1 className="text-2xl font-bold">
+              Student Risk Management System
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Demo Accounts - Quick Login
+            </p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Button
               variant="outline"
               size="lg"
               className="h-auto flex-col items-start p-4"
               onClick={() => {
-                handleQuickLogin('sarah.johnson@university.edu');
+                handleQuickLogin("sarah.johnson@university.edu");
                 setShowDesktop(false);
               }}
             >
               <span className="font-semibold">Academic Advisor</span>
-              <span className="text-xs text-muted-foreground mt-1">sarah.johnson@university.edu</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                sarah.johnson@university.edu
+              </span>
             </Button>
-            
+
             <Button
               variant="outline"
               size="lg"
               className="h-auto flex-col items-start p-4"
               onClick={() => {
-                handleQuickLogin('john.smith@student.edu');
+                handleQuickLogin("john.smith@student.edu");
                 setShowDesktop(false);
               }}
             >
               <span className="font-semibold">Student (High Risk)</span>
-              <span className="text-xs text-muted-foreground mt-1">john.smith@student.edu</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                john.smith@student.edu
+              </span>
             </Button>
-            
+
             <Button
               variant="outline"
               size="lg"
               className="h-auto flex-col items-start p-4"
               onClick={() => {
-                handleQuickLogin('emily.roberts@university.edu');
+                handleQuickLogin("emily.roberts@university.edu");
                 setShowDesktop(false);
               }}
             >
               <span className="font-semibold">Faculty Member</span>
-              <span className="text-xs text-muted-foreground mt-1">emily.roberts@university.edu</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                emily.roberts@university.edu
+              </span>
             </Button>
-            
+
             <Button
               variant="outline"
               size="lg"
               className="h-auto flex-col items-start p-4"
               onClick={() => {
-                handleQuickLogin('lisa.anderson@university.edu');
+                handleQuickLogin("lisa.anderson@university.edu");
                 setShowDesktop(false);
               }}
             >
               <span className="font-semibold">Counselor</span>
-              <span className="text-xs text-muted-foreground mt-1">lisa.anderson@university.edu</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                lisa.anderson@university.edu
+              </span>
             </Button>
-            
+
             <Button
               variant="outline"
               size="lg"
               className="h-auto flex-col items-start p-4 md:col-span-2"
               onClick={() => {
-                handleQuickLogin('admin@university.edu');
+                handleQuickLogin("admin@university.edu");
                 setShowDesktop(false);
               }}
             >
               <span className="font-semibold">Administrator</span>
-              <span className="text-xs text-muted-foreground mt-1">admin@university.edu</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                admin@university.edu
+              </span>
             </Button>
           </div>
 
@@ -154,12 +222,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div 
+    <div
       className="min-h-screen flex items-center justify-center p-4 relative"
       style={{
         backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        backgroundSize: "cover",
+        backgroundPosition: "center",
       }}
     >
       {/* Overlay */}
@@ -167,11 +235,11 @@ export default function LoginPage() {
 
       {/* Login Card */}
       <div className="relative z-10 w-full max-w-md">
-        <div 
+        <div
           className="rounded-2xl p-8 shadow-2xl backdrop-blur-xl"
           style={{
-            background: 'rgba(255, 255, 255, 0.15)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
+            background: "rgba(255, 255, 255, 0.15)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
           }}
         >
           {/* Header */}
@@ -211,7 +279,10 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-white text-sm font-medium">
+              <Label
+                htmlFor="password"
+                className="text-white text-sm font-medium"
+              >
                 Password
               </Label>
               <Input
@@ -231,7 +302,9 @@ export default function LoginPage() {
                 <Checkbox
                   id="remember"
                   checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    setRememberMe(checked as boolean)
+                  }
                   className="border-white/40 data-[state=checked]:bg-white data-[state=checked]:text-blue-600"
                 />
                 <label
@@ -249,12 +322,20 @@ export default function LoginPage() {
               </button>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div className="rounded-lg bg-red-500/20 border border-red-400/40 px-4 py-3 text-sm text-red-200">
+                {error}
+              </div>
+            )}
+
             {/* Sign In Button */}
             <Button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-6 text-base"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-6 text-base disabled:opacity-60"
             >
-              Sign In
+              {loading ? "Signing in…" : "Sign In"}
             </Button>
           </form>
         </div>
