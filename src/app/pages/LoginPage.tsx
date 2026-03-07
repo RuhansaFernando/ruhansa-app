@@ -70,8 +70,27 @@ export default function LoginPage() {
           });
           navigate("/student/dashboard");
         } else {
-          setError("Your account is not authorised to access this system.");
-          await auth.signOut();
+          // Check Firestore faculty collection
+          const fq = query(
+            collection(db, "faculty"),
+            where("email", "==", firebaseEmail),
+          );
+          const fSnapshot = await getDocs(fq);
+          if (!fSnapshot.empty) {
+            const facultyDoc = fSnapshot.docs[0];
+            const fData = facultyDoc.data();
+            login({
+              id: facultyDoc.id,
+              name: fData.name ?? firebaseEmail,
+              role: "faculty",
+              email: firebaseEmail,
+              password: "",
+            });
+            navigate("/faculty/dashboard");
+          } else {
+            setError("Your account is not authorised to access this system.");
+            await auth.signOut();
+          }
         }
       }
     } catch (err) {
