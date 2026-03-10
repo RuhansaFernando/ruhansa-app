@@ -72,8 +72,7 @@ export default function DashboardLayout() {
         { label: 'Counselors', icon: Heart, path: '/admin/counselors' },
         { label: 'Analytics', icon: Activity, path: '/admin/analytics' },
         { label: 'Alerts', icon: Bell, path: '/admin/alerts' },
-        { label: 'System Health', icon: Activity, path: '/admin/health' },
-        { label: 'Profile', icon: User, path: '/admin/settings' },
+{ label: 'Profile', icon: User, path: '/admin/settings' },
       ];
     }
 

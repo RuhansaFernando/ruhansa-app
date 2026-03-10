@@ -32,7 +32,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
@@ -125,18 +124,12 @@ export default function AdminFacultyPage() {
   const [addDepartment, setAddDepartment] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [addStatus, setAddStatus] = useState<"active" | "inactive">("active");
-  const [addCourses, setAddCourses] = useState("");
-  const [addJoinedDate, setAddJoinedDate] = useState("");
-
   // Additional add form fields
   const [addEmployeeId, setAddEmployeeId] = useState("");
   const [addPassword, setAddPassword] = useState("");
   const [addDesignation, setAddDesignation] = useState("");
   const [addOfficeRoom, setAddOfficeRoom] = useState("");
   const [addModulesTeaching, setAddModulesTeaching] = useState<string[]>([]);
-
-  // Get unique departments
-  const departments = Array.from(new Set(facultyList.map((f) => f.department)));
 
   // All available departments for dropdown
   const allDepartments = [
@@ -228,35 +221,6 @@ export default function AdminFacultyPage() {
   const handleViewClick = (faculty: FacultyMember) => {
     setViewingFaculty(faculty);
     setIsViewDialogOpen(true);
-  };
-
-  const handleAddFaculty = () => {
-    if (!addName || !addEmail || !addDepartment || !addPhone) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
-    const coursesArray = addCourses
-      .split(",")
-      .map((c) => c.trim())
-      .filter((c) => c.length > 0);
-
-    const newFaculty: FacultyMember = {
-      id: (facultyList.length + 1).toString(),
-      name: addName,
-      email: addEmail,
-      department: addDepartment,
-      phone: addPhone,
-      status: addStatus,
-      studentsAssigned: 0,
-      courses: coursesArray,
-      joinedDate: addJoinedDate,
-    };
-
-    setFacultyList((prev) => [...prev, newFaculty]);
-
-    toast.success("Faculty member added successfully");
-    setIsAddDialogOpen(false);
   };
 
   const handleDeleteClick = (faculty: FacultyMember) => {
@@ -401,8 +365,6 @@ export default function AdminFacultyPage() {
               setAddDepartment("");
               setAddPhone("");
               setAddStatus("active");
-              setAddCourses("");
-              setAddJoinedDate("");
               setIsAddDialogOpen(true);
             }}
           >
@@ -716,15 +678,7 @@ export default function AdminFacultyPage() {
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={viewingFaculty.status} readOnly>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input value={viewingFaculty.status} readOnly />
               </div>
               <div className="space-y-2">
                 <Label>Courses</Label>
@@ -1000,6 +954,7 @@ export default function AdminFacultyPage() {
                     status: addStatus,
                     studentsAssigned: 0,
                     joinedDate: new Date().toISOString().split("T")[0],
+                    role: "faculty",
                     createdAt: new Date().toISOString(),
                   });
 
@@ -1087,15 +1042,7 @@ export default function AdminFacultyPage() {
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={deletingFaculty.status} readOnly>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input value={deletingFaculty.status} readOnly />
               </div>
               <div className="space-y-2">
                 <Label>Courses</Label>

@@ -18,7 +18,6 @@ import {
 } from "../components/ui/tabs";
 import { Switch } from "../components/ui/switch";
 import {
-  Lock,
   Mail,
   Phone,
   MapPin,
@@ -28,33 +27,41 @@ import {
   Hash,
   GraduationCap,
   Calendar,
-  User,
   BookOpen,
   Clock,
   Users2,
   Award,
   Bell,
-  Shield,
-  Key,
-  CheckCircle,
+  Loader2,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 const profileImage = "";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useData } from "../DataContext";
+import { db } from "../../firebase";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { students } = useData();
   const [isEditing, setIsEditing] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const studentData = students.find((s) => s.id === user?.id);
 
   const [formData, setFormData] = useState({
-    phone: "+94 77 123 4567",
-    address: "123 Galle Road, Colombo 03",
-    city: "Colombo, Sri Lanka",
+    phone: "",
+    address: "",
+    city: "",
+  });
+
+  // Track original values so Cancel can revert
+  const [savedFormData, setSavedFormData] = useState({
+    phone: "",
+    address: "",
+    city: "",
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -62,6 +69,51 @@ export default function SettingsPage() {
     newPassword: "",
     confirmPassword: "",
   });
+
+  // ── Fetch admin profile from Firestore on mount ──────────────────────────────
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+
+    const fetchOrCreateAdminDoc = async () => {
+      setProfileLoading(true);
+      try {
+        const adminRef = doc(db, "admin", user.id);
+        const adminSnap = await getDoc(adminRef);
+
+        if (adminSnap.exists()) {
+          const d = adminSnap.data();
+          const loaded = {
+            phone: d.phone ?? "",
+            address: d.address ?? "",
+            city: d.city ?? "",
+          };
+          setFormData(loaded);
+          setSavedFormData(loaded);
+        } else {
+          // First time – create the document with basic info
+          const initial = {
+            name: user.name,
+            email: user.email,
+            password: "",
+            role: "admin",
+            phone: "",
+            address: "",
+            city: "",
+            createdAt: serverTimestamp(),
+          };
+          await setDoc(adminRef, initial);
+          setFormData({ phone: "", address: "", city: "" });
+          setSavedFormData({ phone: "", address: "", city: "" });
+        }
+      } catch (err) {
+        console.error("Failed to load admin profile:", err);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    fetchOrCreateAdminDoc();
+  }, [user]);
 
   const [notificationSettings, setNotificationSettings] = useState({
     emailAppointments: true,
@@ -89,17 +141,33 @@ export default function SettingsPage() {
     toast.success("Notification preferences updated");
   };
 
-  const handleSave = () => {
-    toast.success("Profile updated successfully!");
-    setIsEditing(false);
+  const handleSave = async () => {
+    if (user?.role === "admin") {
+      setSaving(true);
+      try {
+        await updateDoc(doc(db, "admin", user.id), {
+          phone: formData.phone,
+          address: formData.address,
+          city: formData.city,
+          updatedAt: serverTimestamp(),
+        });
+        setSavedFormData({ ...formData });
+        toast.success("Profile updated successfully!");
+        setIsEditing(false);
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to save profile. Please try again.");
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      toast.success("Profile updated successfully!");
+      setIsEditing(false);
+    }
   };
 
   const handleCancel = () => {
-    setFormData({
-      phone: "+94 77 123 4567",
-      address: "123 Galle Road, Colombo 03",
-      city: "Colombo, Sri Lanka",
-    });
+    setFormData({ ...savedFormData });
     setIsEditing(false);
   };
 
@@ -145,14 +213,19 @@ export default function SettingsPage() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+<TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
         <TabsContent value="profile" className="space-y-6">
           <Card>
             <CardContent className="pt-6">
+              {profileLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+              <>
               <div className="flex justify-between items-start mb-6">
                 <div className="flex items-center gap-4">
                   <Avatar className="h-20 w-20 border-2 border-blue-600">
@@ -166,14 +239,19 @@ export default function SettingsPage() {
                   </Avatar>
                   <div>
                     <h2 className="text-2xl font-bold">
-                      {user?.name || "Student Name"}
+                      {user?.name || "Admin"}
                     </h2>
                     <p className="text-muted-foreground">
-                      {user?.email || "student@novara.ac.lk"}
+                      {user?.email || "admin@novara.ac.lk"}
                     </p>
                     {studentData && (
                       <p className="text-sm text-muted-foreground mt-1">
                         {studentData.program} • Year {studentData.year}
+                      </p>
+                    )}
+                    {user?.role === "admin" && (
+                      <p className="text-sm text-blue-600 font-medium mt-1">
+                        System Administrator
                       </p>
                     )}
                   </div>
@@ -186,6 +264,7 @@ export default function SettingsPage() {
                         variant="outline"
                         className="border-red-600 text-red-600 hover:bg-red-50"
                         onClick={handleCancel}
+                        disabled={saving}
                       >
                         <X className="h-4 w-4 mr-2" />
                         Cancel
@@ -193,9 +272,14 @@ export default function SettingsPage() {
                       <Button
                         className="bg-blue-600 hover:bg-blue-700"
                         onClick={handleSave}
+                        disabled={saving}
                       >
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Changes
+                        {saving ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-2" />
+                        )}
+                        {saving ? "Saving..." : "Save Changes"}
                       </Button>
                     </>
                   ) : (
@@ -411,108 +495,8 @@ export default function SettingsPage() {
                   </>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-blue-600" />
-                <CardTitle>Password & Security</CardTitle>
-              </div>
-              <CardDescription>
-                Update your password and manage security settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="current-password">Current Password</Label>
-                  <Input
-                    id="current-password"
-                    type="password"
-                    value={passwordData.currentPassword}
-                    onChange={(e) =>
-                      handlePasswordChange("currentPassword", e.target.value)
-                    }
-                    placeholder="Enter your current password"
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="grid gap-2">
-                  <Label htmlFor="new-password">New Password</Label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    value={passwordData.newPassword}
-                    onChange={(e) =>
-                      handlePasswordChange("newPassword", e.target.value)
-                    }
-                    placeholder="Enter new password (min. 8 characters)"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Password must be at least 8 characters long and include
-                    letters and numbers
-                  </p>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="confirm-password">Confirm New Password</Label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    value={passwordData.confirmPassword}
-                    onChange={(e) =>
-                      handlePasswordChange("confirmPassword", e.target.value)
-                    }
-                    placeholder="Re-enter new password"
-                  />
-                </div>
-
-                <Button
-                  onClick={handlePasswordUpdate}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  <Key className="h-4 w-4 mr-2" />
-                  Update Password
-                </Button>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <h3 className="font-semibold">Security Recommendations</h3>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-green-900">
-                        Strong password enabled
-                      </p>
-                      <p className="text-xs text-green-700">
-                        Your password meets security requirements
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <Shield className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-blue-900">
-                        Account verified
-                      </p>
-                      <p className="text-xs text-blue-700">
-                        Your email address has been verified
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

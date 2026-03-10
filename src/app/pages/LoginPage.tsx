@@ -88,8 +88,48 @@ export default function LoginPage() {
             });
             navigate("/faculty/dashboard");
           } else {
-            setError("Your account is not authorised to access this system.");
-            await auth.signOut();
+            // Check Firestore advisors collection
+            const aq = query(
+              collection(db, "advisors"),
+              where("email", "==", firebaseEmail),
+            );
+            const aSnapshot = await getDocs(aq);
+            if (!aSnapshot.empty) {
+              const advisorDoc = aSnapshot.docs[0];
+              const aData = advisorDoc.data();
+              login({
+                id: advisorDoc.id,
+                name: aData.name ?? firebaseEmail,
+                role: "advisor",
+                email: firebaseEmail,
+                password: "",
+              });
+              navigate("/advisor/dashboard");
+            } else {
+              // Check Firestore counselors collection
+              const cq = query(
+                collection(db, "counselors"),
+                where("email", "==", firebaseEmail),
+              );
+              const cSnapshot = await getDocs(cq);
+              if (!cSnapshot.empty) {
+                const counselorDoc = cSnapshot.docs[0];
+                const cData = counselorDoc.data();
+                login({
+                  id: counselorDoc.id,
+                  name: cData.name ?? firebaseEmail,
+                  role: "counselor",
+                  email: firebaseEmail,
+                  password: "",
+                });
+                navigate("/counselor/dashboard");
+              } else {
+                setError(
+                  "Your account is not authorised to access this system.",
+                );
+                await auth.signOut();
+              }
+            }
           }
         }
       }
