@@ -81,13 +81,13 @@ export default function AcademicPerformancePage() {
   const filteredStudents = studentsWithPerformance.filter(student => {
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          student.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesProgram = filterProgram === 'all' || student.program === filterProgram;
+    const matchesProgram = filterProgram === 'all' || student.programme === filterProgram;
     const matchesRisk = filterRiskLevel === 'all' || student.riskLevel === filterRiskLevel;
     return matchesSearch && matchesProgram && matchesRisk;
   });
 
   // Get unique programs
-  const allPrograms = Array.from(new Set(mockStudents.map(s => s.program)));
+  const allPrograms = Array.from(new Set(mockStudents.map(s => s.programme)));
 
   // Calculate statistics
   const totalStudents = filteredStudents.length;
@@ -462,7 +462,7 @@ export default function AcademicPerformancePage() {
                           <tr key={student.id} className="border-b hover:bg-muted/50 transition-colors">
                             <td className="p-3">
                               <div className="font-medium">{student.name}</div>
-                              <div className="text-xs text-muted-foreground">{student.program}</div>
+                              <div className="text-xs text-muted-foreground">{student.programme}</div>
                             </td>
                             <td className="p-3 text-center">
                               <span className={`text-lg font-bold ${getGPAColor(student.gpa)}`}>
@@ -593,7 +593,7 @@ export default function AcademicPerformancePage() {
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <h3 className="font-semibold text-lg">{student.name}</h3>
-                          <p className="text-sm text-muted-foreground">{student.id} • {student.program}</p>
+                          <p className="text-sm text-muted-foreground">{student.id} • {student.programme}</p>
                         </div>
                         <div className="text-right">
                           <div className="text-sm text-muted-foreground">Overall Risk Score</div>

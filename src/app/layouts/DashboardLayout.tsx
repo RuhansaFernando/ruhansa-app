@@ -1,6 +1,6 @@
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { GraduationCap, LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -67,12 +67,12 @@ export default function DashboardLayout() {
       return [
         ...baseItems,
         { label: 'Students', icon: Users, path: '/admin/students' },
-        { label: 'Faculty', icon: Briefcase, path: '/admin/faculty' },
-        { label: 'Advisors', icon: UserCog, path: '/admin/advisors' },
-        { label: 'Counselors', icon: Heart, path: '/admin/counselors' },
-        { label: 'Analytics', icon: Activity, path: '/admin/analytics' },
-        { label: 'Alerts', icon: Bell, path: '/admin/alerts' },
-{ label: 'Profile', icon: User, path: '/admin/settings' },
+        { label: 'Manage Tutors', icon: BookUser, path: '/admin/tutors' },
+        { label: 'SRU Management', icon: ClipboardCheck, path: '/sru/dashboard' },
+        { label: 'Registry Management', icon: Building2, path: '/registry/dashboard' },
+        { label: 'Users', icon: UserCog, path: '/admin/users' },
+        { label: 'Reports', icon: FileText, path: '/admin/reports' },
+        { label: 'Profile', icon: User, path: '/admin/settings' },
       ];
     }
 
@@ -103,15 +103,9 @@ export default function DashboardLayout() {
       {/* Sidebar for Desktop */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white border-r">
         {/* Logo Section */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <Link to={`/${user.role}/dashboard`} className="flex items-center gap-2">
-            <div className="p-2 bg-blue-600 rounded-lg">
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-sm leading-tight">NOVARA</h1>
-              <p className="font-bold text-sm leading-tight">UNIVERSITY</p>
-            </div>
+        <div className="flex items-center justify-between p-2 border-b bg-white">
+          <Link to={`/${user.role}/dashboard`}>
+            <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
           </Link>
         </div>
 
@@ -221,15 +215,9 @@ export default function DashboardLayout() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Logo Section */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <Link to={`/${user.role}/dashboard`} className="flex items-center gap-2">
-                <div className="p-2 bg-blue-600 rounded-lg">
-                  <GraduationCap className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="font-bold text-sm leading-tight">NOVARA</h1>
-                  <p className="font-bold text-sm leading-tight">UNIVERSITY</p>
-                </div>
+            <div className="flex items-center justify-between p-2 border-b bg-white">
+              <Link to={`/${user.role}/dashboard`}>
+                <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
               </Link>
               <Button
                 variant="ghost"
@@ -351,13 +339,8 @@ export default function DashboardLayout() {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-600 rounded-lg">
-              <GraduationCap className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-xs leading-tight">NOVARA UNIVERSITY</h1>
-            </div>
+          <div className="flex items-center">
+            <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '100px', height: 'auto' }} />
           </div>
           <div className="w-10" /> {/* Spacer for alignment */}
         </header>

@@ -196,7 +196,7 @@ export default function CounselorCasesPage() {
                           <span className="font-medium">ID:</span> {student.id}
                         </p>
                         <p>
-                          <span className="font-medium">Program:</span> {student.program}
+                          <span className="font-medium">Program:</span> {student.programme}
                         </p>
                         <p>
                           <span className="font-medium">GPA:</span> {student.gpa.toFixed(2)}

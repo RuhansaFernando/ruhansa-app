@@ -246,7 +246,7 @@ export default function SettingsPage() {
                     </p>
                     {studentData && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        {studentData.program} • Year {studentData.year}
+                        {studentData.programme} • Year {studentData.year}
                       </p>
                     )}
                     {user?.role === "admin" && (
@@ -413,7 +413,7 @@ export default function SettingsPage() {
                                 Program
                               </Label>
                               <p className="font-medium">
-                                {studentData.program}
+                                {studentData.programme}
                               </p>
                             </div>
                           </div>

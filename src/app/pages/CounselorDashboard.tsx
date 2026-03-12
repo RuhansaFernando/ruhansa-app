@@ -143,7 +143,7 @@ export default function CounselorDashboard() {
                         <div>
                           <h4 className="font-medium">{student.name}</h4>
                           <p className="text-sm text-muted-foreground">
-                            {student.program} • Year {student.year}
+                            {student.programme} • Year {student.year}
                           </p>
                         </div>
                       </div>

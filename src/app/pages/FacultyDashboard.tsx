@@ -184,7 +184,7 @@ export default function FacultyDashboard() {
                     <div>
                       <h4 className="font-medium">{student.name}</h4>
                       <p className="text-sm text-muted-foreground">
-                        {student.program} • Year {student.year} • GPA: {student.gpa.toFixed(2)}
+                        {student.programme} • Year {student.year} • GPA: {student.gpa.toFixed(2)}
                       </p>
                     </div>
                   </div>

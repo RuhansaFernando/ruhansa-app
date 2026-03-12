@@ -25,6 +25,7 @@ import AdminAdvisorsPage from './pages/AdminAdvisorsPage';
 import AdminCounselorsPage from './pages/AdminCounselorsPage';
 import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
 import AdminAlertsPage from './pages/AdminAlertsPage';
+import AdminTutorsPage from './pages/AdminTutorsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import {
   RedirectToLogin,
@@ -195,6 +196,10 @@ export const router = createBrowserRouter([
       {
         path: 'counselors',
         Component: AdminCounselorsPage,
+      },
+      {
+        path: 'tutors',
+        Component: AdminTutorsPage,
       },
       {
         path: 'analytics',

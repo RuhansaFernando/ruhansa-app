@@ -22,7 +22,7 @@ import {
   Mail,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -42,7 +42,7 @@ import {
 import { Label } from "../components/ui/label";
 import { Student, User as UserType } from "../types";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { db, secondaryAuth } from "../../firebase";
 
@@ -59,22 +59,13 @@ const departments = [
   "Health Sciences",
 ];
 
-const availablePrograms = [
-  "Computer Science",
-  "Business Administration",
-  "Engineering",
-  "Psychology",
-  "Biology",
-  "Mathematics",
-  "Physics",
-  "Chemistry",
-  "English Literature",
-  "Economics",
-  "History",
-  "Law",
-  "Medicine",
-  "Nursing",
-  "Art & Design",
+const IIT_PROGRAMMES = [
+  "BSc (Hons) Business Computing",
+  "BSc (Hons) Business Data Analytics",
+  "BA (Hons) Business Management",
+  "BEng (Hons) Software Engineering",
+  "BSc (Hons) Computer Science",
+  "BSc (Hons) Artificial Intelligence And Data Science",
 ];
 
 export default function AdminStudentsPage() {
@@ -106,15 +97,30 @@ export default function AdminStudentsPage() {
 
   // Additional fields for comprehensive student form
   const [editStudentId, setEditStudentId] = useState("");
-  const [editPassword, setEditPassword] = useState("");
   const [editDateOfBirth, setEditDateOfBirth] = useState("");
   const [editGender, setEditGender] = useState("");
   const [editContactNumber, setEditContactNumber] = useState("");
   const [editIntake, setEditIntake] = useState("");
   const [editEnrollmentDate, setEditEnrollmentDate] = useState("");
-  const [editAdvisor, setEditAdvisor] = useState("");
-  const [editCounselor, setEditCounselor] = useState("");
+  const [editFaculty, setEditFaculty] = useState("");
+  const [editAttendancePercentage, setEditAttendancePercentage] = useState("");
+  const [editConsecutiveAbsences, setEditConsecutiveAbsences] = useState("");
+  const [editPersonalTutor, setEditPersonalTutor] = useState("");
+  const [advisorsList, setAdvisorsList] = useState<{id: string; name: string}[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch active tutors from Firestore
+  useEffect(() => {
+    const q = query(
+      collection(db, 'tutors'),
+      where('status', '==', 'active'),
+      orderBy('name'),
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      setAdvisorsList(snapshot.docs.map((d) => ({ id: d.id, name: d.data().name ?? d.id })));
+    });
+    return () => unsub();
+  }, []);
 
   // Add user form state
   const [addUserFormData, setAddUserFormData] = useState({
@@ -133,7 +139,7 @@ export default function AdminStudentsPage() {
   });
 
   const programs = Array.from(
-    new Set([...availablePrograms, ...students.map((s) => s.program)]),
+    new Set([...IIT_PROGRAMMES, ...students.map((s) => s.programme)]),
   );
 
   // Get student users from the users list
@@ -166,7 +172,7 @@ export default function AdminStudentsPage() {
     const matchesRisk =
       riskFilter === "all" || student.riskLevel === riskFilter;
     const matchesProgram =
-      programFilter === "all" || student.program === programFilter;
+      programFilter === "all" || student.programme === programFilter;
 
     // Use the display status for filtering
     const displayStatus = getDisplayStatus(student);
@@ -194,7 +200,7 @@ export default function AdminStudentsPage() {
       student.id,
       student.name,
       student.email,
-      student.program,
+      student.programme,
       student.year,
       student.gpa.toFixed(2),
       student.riskLevel,
@@ -336,14 +342,15 @@ export default function AdminStudentsPage() {
               setEditRiskLevel("low");
               setEditStatus("active");
               setEditStudentId("");
-              setEditPassword("");
               setEditDateOfBirth("");
               setEditGender("");
               setEditContactNumber("");
               setEditIntake("");
               setEditEnrollmentDate("");
-              setEditAdvisor("");
-              setEditCounselor("");
+              setEditFaculty("");
+              setEditAttendancePercentage("");
+              setEditConsecutiveAbsences("");
+              setEditPersonalTutor("");
               setIsEditDialogOpen(true);
             }}
           >
@@ -448,18 +455,12 @@ export default function AdminStudentsPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground mb-1">
-                        <span>{student.program}</span>
+                        <span>{student.programme}</span>
                         <span>•</span>
                         <span>Year {student.year}</span>
                         <span>•</span>
                         <span>GPA: {student.gpa.toFixed(2)}</span>
                       </div>
-                      {student.joinedDate && (
-                        <div className="text-sm text-muted-foreground">
-                          Joined{" "}
-                          {new Date(student.joinedDate).toLocaleDateString()}
-                        </div>
-                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -476,7 +477,7 @@ export default function AdminStudentsPage() {
                         setEditingStudent(student);
                         setEditName(student.name);
                         setEditEmail(student.email);
-                        setEditProgram(student.program);
+                        setEditProgram(student.programme);
                         setEditYear(student.year.toString());
                         setEditGpa(student.gpa.toString());
                         setEditRiskLevel(
@@ -491,6 +492,10 @@ export default function AdminStudentsPage() {
                             ? (userAccount.status as "active" | "inactive")
                             : (displayStatus as "active" | "inactive"),
                         );
+                        setEditFaculty("");
+                        setEditAttendancePercentage("");
+                        setEditConsecutiveAbsences("");
+                        setEditPersonalTutor("");
                         setIsEditDialogOpen(true);
                       }}
                     >
@@ -519,7 +524,7 @@ export default function AdminStudentsPage() {
                             name: student.name,
                             email: student.email,
                             status: displayStatus as "active" | "inactive",
-                            department: student.program,
+                            department: student.programme,
                           });
                           setIsAddUserDialogOpen(true);
                         }}
@@ -898,20 +903,6 @@ export default function AdminStudentsPage() {
               />
             </div>
 
-            {/* Password */}
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                Password <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Set password"
-                value={editPassword}
-                onChange={(e) => setEditPassword(e.target.value)}
-              />
-            </div>
-
             {/* Date of Birth */}
             <div className="space-y-2">
               <Label htmlFor="dateOfBirth">
@@ -959,21 +950,33 @@ export default function AdminStudentsPage() {
               />
             </div>
 
-            {/* Program / Degree */}
+            {/* Programme */}
             <div className="space-y-2">
               <Label htmlFor="program">
-                Program / Degree <span className="text-red-500">*</span>
+                Programme <span className="text-red-500">*</span>
               </Label>
               <Select value={editProgram} onValueChange={setEditProgram}>
                 <SelectTrigger>
                   <SelectValue placeholder="— Select —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {programs.map((program) => (
-                    <SelectItem key={program} value={program}>
-                      {program}
+                  {IIT_PROGRAMMES.map((programme) => (
+                    <SelectItem key={programme} value={programme}>
+                      {programme}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Faculty / School */}
+            <div className="space-y-2">
+              <Label htmlFor="faculty">Faculty / School <span className="text-red-500">*</span></Label>
+              <Select value={editFaculty} onValueChange={setEditFaculty}>
+                <SelectTrigger><SelectValue placeholder="— Select —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Business School">Business School</SelectItem>
+                  <SelectItem value="School of Computing">School of Computing</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1031,6 +1034,18 @@ export default function AdminStudentsPage() {
               />
             </div>
 
+            {/* Attendance Percentage */}
+            <div className="space-y-2">
+              <Label htmlFor="attendancePercentage">Attendance %</Label>
+              <Input id="attendancePercentage" type="number" min="0" max="100" placeholder="e.g. 72" value={editAttendancePercentage} onChange={(e) => setEditAttendancePercentage(e.target.value)} />
+            </div>
+
+            {/* Consecutive Absences */}
+            <div className="space-y-2">
+              <Label htmlFor="consecutiveAbsences">Consecutive Absences</Label>
+              <Input id="consecutiveAbsences" type="number" min="0" placeholder="e.g. 3" value={editConsecutiveAbsences} onChange={(e) => setEditConsecutiveAbsences(e.target.value)} />
+            </div>
+
             {/* Status */}
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
@@ -1048,39 +1063,16 @@ export default function AdminStudentsPage() {
               </Select>
             </div>
 
-            {/* Assign Academic Advisor */}
+            {/* Personal Tutor */}
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="advisor">
-                Assign Academic Advisor <span className="text-red-500">*</span>
-              </Label>
-              <Select value={editAdvisor} onValueChange={setEditAdvisor}>
-                <SelectTrigger>
-                  <SelectValue placeholder="— Select Advisor —" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="advisor1">Dr. Sarah Johnson</SelectItem>
-                  <SelectItem value="advisor2">Michael Anderson</SelectItem>
-                  <SelectItem value="advisor3">Dr. Lisa Chen</SelectItem>
-                  <SelectItem value="advisor4">Robert Martinez</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Assign Counsellor (optional) */}
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="counselor">Assign Counsellor (optional)</Label>
-              <Select value={editCounselor} onValueChange={setEditCounselor}>
-                <SelectTrigger>
-                  <SelectValue placeholder="— None —" />
-                </SelectTrigger>
+              <Label htmlFor="personalTutor">Assign Personal Tutor</Label>
+              <Select value={editPersonalTutor} onValueChange={setEditPersonalTutor}>
+                <SelectTrigger><SelectValue placeholder="— Select Tutor —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— None —</SelectItem>
-                  <SelectItem value="counselor1">Dr. Emily Watson</SelectItem>
-                  <SelectItem value="counselor2">Dr. James Thompson</SelectItem>
-                  <SelectItem value="counselor3">
-                    Dr. Maria Rodriguez
-                  </SelectItem>
-                  <SelectItem value="counselor4">Dr. Kevin Lee</SelectItem>
+                  {advisorsList.map((adv) => (
+                    <SelectItem key={adv.id} value={adv.id}>{adv.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1102,7 +1094,6 @@ export default function AdminStudentsPage() {
                   !editName ||
                   !editEmail ||
                   !editStudentId ||
-                  !editPassword ||
                   !editDateOfBirth ||
                   !editGender ||
                   !editContactNumber ||
@@ -1110,7 +1101,7 @@ export default function AdminStudentsPage() {
                   !editYear ||
                   !editIntake ||
                   !editEnrollmentDate ||
-                  !editAdvisor
+                  !editFaculty
                 ) {
                   toast.error("Please fill in all required fields");
                   return;
@@ -1123,7 +1114,7 @@ export default function AdminStudentsPage() {
                     updateStudent(editingStudent.id, {
                       name: editName,
                       email: editEmail,
-                      program: editProgram,
+                      programme: editProgram,
                       year: parseInt(editYear),
                       gpa: editingStudent.gpa,
                       riskLevel: editingStudent.riskLevel,
@@ -1146,36 +1137,28 @@ export default function AdminStudentsPage() {
                     }
                     toast.success("Student updated successfully");
                   } else {
-                    // Create Firebase Auth account via secondary app (keeps admin signed in)
-                    await createUserWithEmailAndPassword(
-                      secondaryAuth,
-                      editEmail,
-                      editPassword,
-                    );
-                    await secondaryAuth.signOut();
-
                     // Write full student record to Firestore
                     await setDoc(doc(db, "students", editStudentId), {
                       name: editName,
                       email: editEmail,
-                      password: editPassword,
-                      program: editProgram,
-                      year: parseInt(editYear),
-                      gpa: 0.0,
-                      riskLevel: "low",
-                      riskScore: 0,
-                      advisorId: editAdvisor,
-                      counselorId:
-                        editCounselor && editCounselor !== "none"
-                          ? editCounselor
-                          : null,
-                      joinedDate: editEnrollmentDate,
+                      studentId: editStudentId,
+                      programme: editProgram,
+                      faculty: editFaculty,
                       dateOfBirth: editDateOfBirth,
                       gender: editGender,
                       contactNumber: editContactNumber,
                       intake: editIntake,
                       enrollmentDate: editEnrollmentDate,
+                      gpa: 0.0,
+                      riskLevel: "low",
+                      riskScore: 0,
+                      attendancePercentage: editAttendancePercentage ? parseFloat(editAttendancePercentage) : 0,
+                      consecutiveAbsences: editConsecutiveAbsences ? parseInt(editConsecutiveAbsences) : 0,
+                      personalTutor: editPersonalTutor && editPersonalTutor !== "none"
+                        ? (advisorsList.find((t) => t.id === editPersonalTutor)?.name ?? editPersonalTutor)
+                        : null,
                       status: editStatus !== "none" ? editStatus : "active",
+                      role: "student",
                       createdAt: new Date().toISOString(),
                     });
 

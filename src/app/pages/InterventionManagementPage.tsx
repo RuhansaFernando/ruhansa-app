@@ -90,12 +90,12 @@ export default function InterventionManagementPage() {
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          student.id.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRisk = filterRiskLevel === 'all' || student.riskLevel === filterRiskLevel;
-    const matchesProgram = filterProgram === 'all' || student.program === filterProgram;
+    const matchesProgram = filterProgram === 'all' || student.programme === filterProgram;
     return matchesSearch && matchesRisk && matchesProgram;
   });
 
   // Get unique programs
-  const allPrograms = Array.from(new Set(students.map(s => s.program)));
+  const allPrograms = Array.from(new Set(students.map(s => s.programme)));
 
   // Get recommended strategies for selected student
   const getRecommendedStrategies = (studentId: string) => {
@@ -378,7 +378,7 @@ export default function InterventionManagementPage() {
                       <div className="font-semibold text-sm">{student.name}</div>
                       {getRiskBadge(student.riskLevel)}
                     </div>
-                    <div className="text-xs text-muted-foreground">{student.program}</div>
+                    <div className="text-xs text-muted-foreground">{student.programme}</div>
                     <div className="text-xs text-muted-foreground">GPA: {student.gpa.toFixed(2)}</div>
                     {student.riskLevel === 'critical' && (
                       <div className="flex items-center gap-1 mt-2 text-xs text-red-600">

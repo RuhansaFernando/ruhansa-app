@@ -1,137 +1,99 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Button } from '../components/ui/button';
-import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Checkbox } from '../components/ui/checkbox';
-import { Users, AlertTriangle, UserPlus, Database, Loader2, Heart, UserCog } from 'lucide-react';
+import { Users, AlertTriangle, TrendingUp, Loader2, GraduationCap, BookOpen } from 'lucide-react';
 import {
-  BarChart as RechartsBarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { toast } from 'sonner';
+
+const IIT_PROGRAMMES = [
+  'BSc (Hons) Business Computing',
+  'BSc (Hons) Business Data Analytics',
+  'BA (Hons) Business Management',
+  'BEng (Hons) Software Engineering',
+  'BSc (Hons) Computer Science',
+  'BSc (Hons) Artificial Intelligence And Data Science',
+];
+
+// Dummy trend data for last 6 months
+const RISK_TREND = [
+  { month: 'Oct',  high: 12, medium: 18, low: 35 },
+  { month: 'Nov',  high: 15, medium: 20, low: 38 },
+  { month: 'Dec',  high: 10, medium: 22, low: 40 },
+  { month: 'Jan',  high: 18, medium: 25, low: 42 },
+  { month: 'Feb',  high: 20, medium: 23, low: 45 },
+  { month: 'Mar',  high: 16, medium: 21, low: 48 },
+];
 
 interface StudentDoc {
   id: string;
+  name: string;
+  programme: string;
   riskLevel: string;
-  status: string;
-  program: string;
-}
-
-interface StaffDoc {
-  id: string;
-  status: string;
+  attendancePercentage: number;
+  enrollmentDate: string;
+  createdAt: string;
 }
 
 export default function AdminDashboard() {
-  // ── Firestore state ──────────────────────────────────────────────────────────
   const [students, setStudents] = useState<StudentDoc[]>([]);
-  const [advisors, setAdvisors] = useState<StaffDoc[]>([]);
-  const [counselors, setCounselors] = useState<StaffDoc[]>([]);
-  const [faculty, setFaculty] = useState<StaffDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let s = false, a = false, c = false, f = false;
-    const done = () => { if (s && a && c && f) setLoading(false); };
-
-    const unsubStudents = onSnapshot(collection(db, 'students'), (snap) => {
-      setStudents(snap.docs.map((d) => ({
-        id: d.id,
-        riskLevel: d.data().riskLevel ?? 'low',
-        status: d.data().status ?? 'active',
-        program: d.data().program ?? 'Unknown',
-      })));
-      s = true; done();
+    const unsub = onSnapshot(collection(db, 'students'), (snap) => {
+      setStudents(
+        snap.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name ?? '',
+          programme: d.data().programme ?? d.data().program ?? 'Unknown',
+          riskLevel: d.data().riskLevel ?? 'low',
+          attendancePercentage: d.data().attendancePercentage ?? 100,
+          enrollmentDate: d.data().enrollmentDate ?? '',
+          createdAt: d.data().createdAt ?? '',
+        })),
+      );
+      setLoading(false);
     });
-
-    const unsubAdvisors = onSnapshot(collection(db, 'advisors'), (snap) => {
-      setAdvisors(snap.docs.map((d) => ({ id: d.id, status: d.data().status ?? 'active' })));
-      a = true; done();
-    });
-
-    const unsubCounselors = onSnapshot(collection(db, 'counselors'), (snap) => {
-      setCounselors(snap.docs.map((d) => ({ id: d.id, status: d.data().status ?? 'active' })));
-      c = true; done();
-    });
-
-    const unsubFaculty = onSnapshot(collection(db, 'faculty'), (snap) => {
-      setFaculty(snap.docs.map((d) => ({ id: d.id, status: d.data().status ?? 'active' })));
-      f = true; done();
-    });
-
-    return () => { unsubStudents(); unsubAdvisors(); unsubCounselors(); unsubFaculty(); };
+    return () => unsub();
   }, []);
 
-  // ── Derived statistics ───────────────────────────────────────────────────────
-  const totalStudents   = students.length;
-  const totalAdvisors   = advisors.length;
-  const totalCounselors = counselors.length;
-  const totalFaculty    = faculty.length;
-  const totalUsers      = totalStudents + totalAdvisors + totalCounselors + totalFaculty + 1; // +1 admin
+  // ── Summary counts ────────────────────────────────────────────────────────────
+  const totalStudents  = students.length;
+  const highRisk       = students.filter((s) => s.riskLevel === 'high').length;
+  const mediumRisk     = students.filter((s) => s.riskLevel === 'medium').length;
+  const lowRisk        = students.filter((s) => s.riskLevel === 'low').length;
 
-  const criticalStudents = students.filter((s) => s.riskLevel === 'critical').length;
-  const highStudents     = students.filter((s) => s.riskLevel === 'high').length;
-  const activeAdvisors   = advisors.filter((a) => a.status === 'active').length;
-  const activeCounselors = counselors.filter((c) => c.status === 'active').length;
+  // ── Recent high-risk alerts (5 most recent by createdAt) ──────────────────────
+  const recentHighRisk = [...students]
+    .filter((s) => s.riskLevel === 'high')
+    .sort((a, b) => {
+      if (!a.createdAt && !b.createdAt) return 0;
+      if (!a.createdAt) return 1;
+      if (!b.createdAt) return -1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    })
+    .slice(0, 5);
 
-  // Role distribution pie chart
-  const roleDistribution = [
-    { role: 'Students',   count: totalStudents,   color: '#3b82f6' },
-    { role: 'Advisors',   count: totalAdvisors,   color: '#10b981' },
-    { role: 'Faculty',    count: totalFaculty,    color: '#f59e0b' },
-    { role: 'Counselors', count: totalCounselors, color: '#8b5cf6' },
-  ].filter((r) => r.count > 0);
-
-  // Risk distribution bar chart
-  const riskDistribution = [
-    { level: 'Critical', count: students.filter((s) => s.riskLevel === 'critical').length, fill: '#dc2626' },
-    { level: 'High',     count: students.filter((s) => s.riskLevel === 'high').length,     fill: '#ea580c' },
-    { level: 'Medium',   count: students.filter((s) => s.riskLevel === 'medium').length,   fill: '#eab308' },
-    { level: 'Low',      count: students.filter((s) => s.riskLevel === 'low').length,      fill: '#16a34a' },
-  ];
-
-  // Live system summary stats
-  const systemSummary = [
-    { metric: 'Total Students',       value: totalStudents,   color: 'text-blue-600' },
-    { metric: 'Critical Risk',        value: criticalStudents, color: 'text-red-600' },
-    { metric: 'Active Advisors',      value: activeAdvisors,  color: 'text-green-600' },
-    { metric: 'Active Counselors',    value: activeCounselors, color: 'text-purple-600' },
-  ];
-
-  // ── Permissions (local UI only) ──────────────────────────────────────────────
-  const [isPermissionDialogOpen, setIsPermissionDialogOpen] = useState(false);
-  const [selectedRole, setSelectedRole] = useState('');
-  const [permissions, setPermissions] = useState({
-    advisor:   { viewDashboard: true, viewReports: true, createInterventions: true,  scheduleAppointments: true,  manageUsers: false, systemConfiguration: false, viewStudents: true,  editStudents: true  },
-    faculty:   { viewDashboard: true, viewReports: true, createInterventions: false, scheduleAppointments: false, manageUsers: false, systemConfiguration: false, viewStudents: true,  editStudents: false },
-    counselor: { viewDashboard: true, viewReports: true, createInterventions: false, scheduleAppointments: true,  manageUsers: false, systemConfiguration: false, viewStudents: true,  editStudents: false },
-    student:   { viewDashboard: true, viewReports: false, createInterventions: false, scheduleAppointments: false, manageUsers: false, systemConfiguration: false, viewStudents: false, editStudents: false },
-    admin:     { viewDashboard: true, viewReports: true, createInterventions: true,  scheduleAppointments: true,  manageUsers: true,  systemConfiguration: true,  viewStudents: true,  editStudents: true  },
+  // ── By-programme table ────────────────────────────────────────────────────────
+  const programmeRows = IIT_PROGRAMMES.map((prog) => {
+    const group = students.filter((s) => s.programme === prog);
+    return {
+      programme: prog,
+      total: group.length,
+      highRisk: group.filter((s) => s.riskLevel === 'high').length,
+      mediumRisk: group.filter((s) => s.riskLevel === 'medium').length,
+      lowAttendance: group.filter((s) => s.attendancePercentage < 75).length,
+    };
   });
-
-  const handlePermissionChange = (role: string, permission: string, value: boolean) => {
-    setPermissions((prev) => ({ ...prev, [role]: { ...prev[role as keyof typeof prev], [permission]: value } }));
-  };
-
-  const handleSavePermissions = () => {
-    setIsPermissionDialogOpen(false);
-    toast.success('Permissions updated', {
-      description: `Permissions for ${selectedRole} role have been saved successfully.`,
-    });
-  };
 
   if (loading) {
     return (
@@ -145,297 +107,220 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">System Administration</h1>
-        <p className="text-muted-foreground">Manage users, monitor system performance, and configure settings</p>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground">Welcome back. Here's your student risk overview.</p>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+      {/* ── Summary Cards ── */}
+      <div className="grid gap-4 md:grid-cols-4">
+        {/* Total Students */}
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalUsers}</div>
-            <p className="text-xs text-muted-foreground">All system users</p>
+            <div className="text-4xl font-bold text-blue-600">{totalStudents}</div>
+            <p className="text-xs text-muted-foreground mt-1">Enrolled students</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Database className="h-4 w-4 text-blue-600" />
+        {/* High Risk */}
+        <Card className="border-l-4 border-l-red-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">High Risk Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStudents}</div>
-            <p className="text-xs text-muted-foreground">Enrolled students</p>
+            <div className="text-4xl font-bold text-red-600">{highRisk}</div>
+            <p className="text-xs text-muted-foreground mt-1">Require immediate attention</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Faculty</CardTitle>
-            <UserPlus className="h-4 w-4 text-orange-600" />
+        {/* Medium Risk */}
+        <Card className="border-l-4 border-l-amber-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Medium Risk Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center">
+              <TrendingUp className="h-5 w-5 text-amber-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalFaculty}</div>
-            <p className="text-xs text-muted-foreground">Faculty members</p>
+            <div className="text-4xl font-bold text-amber-600">{mediumRisk}</div>
+            <p className="text-xs text-muted-foreground mt-1">Under active monitoring</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Advisors</CardTitle>
-            <UserCog className="h-4 w-4 text-green-600" />
+        {/* Low Risk */}
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Low Risk Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <GraduationCap className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalAdvisors}</div>
-            <p className="text-xs text-muted-foreground">
-              {activeAdvisors} active
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Counselors</CardTitle>
-            <Heart className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCounselors}</div>
-            <p className="text-xs text-muted-foreground">
-              {activeCounselors} active
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Critical Risk</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{criticalStudents}</div>
-            <p className="text-xs text-muted-foreground">Students at critical risk</p>
+            <div className="text-4xl font-bold text-green-600">{lowRisk}</div>
+            <p className="text-xs text-muted-foreground mt-1">Performing well</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts */}
+      {/* ── Middle: Chart + Alerts ── */}
       <div className="grid gap-4 md:grid-cols-2">
+        {/* Dropout Risk Trend */}
         <Card>
           <CardHeader>
-            <CardTitle>User Role Distribution</CardTitle>
-            <CardDescription>System users by role</CardDescription>
+            <CardTitle>Dropout Risk Trend</CardTitle>
+            <p className="text-sm text-muted-foreground">Risk level counts over the past 6 months</p>
           </CardHeader>
           <CardContent>
-            {roleDistribution.length === 0 ? (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">
-                No user data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={roleDistribution}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ role, count }) => `${role}: ${count}`}
-                    outerRadius={80}
-                    dataKey="count"
-                  >
-                    {roleDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={RISK_TREND}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="high"   stroke="#dc2626" strokeWidth={2} dot={{ r: 4 }} name="High" />
+                <Line type="monotone" dataKey="medium" stroke="#d97706" strokeWidth={2} dot={{ r: 4 }} name="Medium" />
+                <Line type="monotone" dataKey="low"    stroke="#16a34a" strokeWidth={2} dot={{ r: 4 }} name="Low" />
+              </LineChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
+        {/* Recent High Risk Alerts */}
         <Card>
           <CardHeader>
-            <CardTitle>Student Risk Levels</CardTitle>
-            <CardDescription>Current risk assessment distribution</CardDescription>
+            <CardTitle>Recent High Risk Alerts</CardTitle>
+            <p className="text-sm text-muted-foreground">5 most recently added high-risk students</p>
           </CardHeader>
           <CardContent>
-            {totalStudents === 0 ? (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">
-                No student data available
+            {recentHighRisk.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[280px] text-muted-foreground">
+                <AlertTriangle className="h-10 w-10 mb-3 opacity-30" />
+                <p className="text-sm">No high-risk students found</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <RechartsBarChart data={riskDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="level" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {riskDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </RechartsBarChart>
-              </ResponsiveContainer>
+              <div className="space-y-3">
+                {recentHighRisk.map((student) => (
+                  <div
+                    key={student.id}
+                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                        <GraduationCap className="h-4 w-4 text-red-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{student.name}</p>
+                        <p className="text-xs text-muted-foreground truncate max-w-[180px]">
+                          {student.programme}
+                        </p>
+                        {student.enrollmentDate && (
+                          <p className="text-xs text-muted-foreground">
+                            Enrolled {new Date(student.enrollmentDate).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Badge className="bg-red-100 text-red-800 border-red-200 text-xs flex-shrink-0">
+                      High Risk
+                    </Badge>
+                  </div>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Live System Summary */}
+      {/* ── At-Risk Students by Programme ── */}
       <Card>
         <CardHeader>
-          <CardTitle>Live System Summary</CardTitle>
-          <CardDescription>Real-time counts pulled directly from the database</CardDescription>
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>At-Risk Students by Programme</CardTitle>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Breakdown of risk levels and low attendance (&lt;75%) per programme
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {systemSummary.map((item) => (
-              <div key={item.metric} className="border rounded-lg p-4 text-center">
-                <div className={`text-3xl font-bold ${item.color}`}>{item.value}</div>
-                <div className="text-sm text-muted-foreground mt-1">{item.metric}</div>
-              </div>
-            ))}
-          </div>
+          {totalStudents === 0 ? (
+            <div className="text-center py-10 text-muted-foreground text-sm">
+              No student data available yet
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Total Students</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">
+                      <span className="text-red-600">High Risk</span>
+                    </th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">
+                      <span className="text-amber-600">Medium Risk</span>
+                    </th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">
+                      <span className="text-orange-600">Low Attendance</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {programmeRows.map((row) => (
+                    <tr
+                      key={row.programme}
+                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium max-w-[260px]">
+                        <span className="truncate block">{row.programme}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="font-semibold text-blue-600">{row.total}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {row.highRisk > 0 ? (
+                          <Badge className="bg-red-100 text-red-800 border-red-200">
+                            {row.highRisk}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {row.mediumRisk > 0 ? (
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                            {row.mediumRisk}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {row.lowAttendance > 0 ? (
+                          <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+                            {row.lowAttendance}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* Staff Overview */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Advisor Status</CardTitle>
-            <CardDescription>Active vs inactive advisors</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {totalAdvisors === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No advisors in the system yet</p>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Active</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 bg-green-500 rounded-full" style={{ width: `${(activeAdvisors / totalAdvisors) * 120}px` }} />
-                    <Badge className="bg-green-100 text-green-800">{activeAdvisors}</Badge>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Inactive</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 bg-gray-300 rounded-full" style={{ width: `${((totalAdvisors - activeAdvisors) / totalAdvisors) * 120}px` }} />
-                    <Badge variant="secondary">{totalAdvisors - activeAdvisors}</Badge>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Counselor Status</CardTitle>
-            <CardDescription>Active vs inactive counselors</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {totalCounselors === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No counselors in the system yet</p>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Active</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 bg-purple-500 rounded-full" style={{ width: `${(activeCounselors / totalCounselors) * 120}px` }} />
-                    <Badge className="bg-purple-100 text-purple-800">{activeCounselors}</Badge>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Inactive</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 bg-gray-300 rounded-full" style={{ width: `${((totalCounselors - activeCounselors) / totalCounselors) * 120}px` }} />
-                    <Badge variant="secondary">{totalCounselors - activeCounselors}</Badge>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Access Control */}
-      <Tabs defaultValue="permissions" className="w-full">
-        <TabsList className="grid w-full grid-cols-1">
-          <TabsTrigger value="permissions">Access Control</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="permissions" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Role Permissions</CardTitle>
-              <CardDescription>Configure access control for different user roles</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {(['advisor', 'faculty', 'counselor', 'student', 'admin'] as const).map((role) => (
-                  <div key={role} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium capitalize">{role}</h4>
-                      <Button size="sm" variant="outline" onClick={() => { setSelectedRole(role); setIsPermissionDialogOpen(true); }}>
-                        Configure
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                      <div>✓ View Dashboard</div>
-                      <div>✓ View Reports</div>
-                      {(role === 'advisor' || role === 'admin') && <div>✓ Create Interventions</div>}
-                      {(role === 'advisor' || role === 'counselor' || role === 'admin') && <div>✓ Schedule Appointments</div>}
-                      {role === 'admin' && <div>✓ Manage Users</div>}
-                      {role === 'admin' && <div>✓ System Configuration</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Permission Dialog */}
-          <Dialog open={isPermissionDialogOpen} onOpenChange={setIsPermissionDialogOpen}>
-            <DialogContent className="max-h-[600px] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Configure Permissions for {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}</DialogTitle>
-                <DialogDescription>Set permissions for the selected role</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                {([
-                  ['viewDashboard',       'View Dashboard'],
-                  ['viewReports',         'View Reports'],
-                  ['createInterventions', 'Create Interventions'],
-                  ['scheduleAppointments','Schedule Appointments'],
-                  ['manageUsers',         'Manage Users'],
-                  ['systemConfiguration', 'System Configuration'],
-                  ['viewStudents',        'View Students'],
-                  ['editStudents',        'Edit Students'],
-                ] as [string, string][]).map(([key, label]) => (
-                  <div key={key} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={key}
-                      checked={permissions[selectedRole as keyof typeof permissions]?.[key as keyof (typeof permissions)['admin']] ?? false}
-                      onCheckedChange={(checked) => handlePermissionChange(selectedRole, key, !!checked)}
-                    />
-                    <Label htmlFor={key} className="cursor-pointer">{label}</Label>
-                  </div>
-                ))}
-                <Button onClick={handleSavePermissions} className="w-full">
-                  Save Permissions
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }

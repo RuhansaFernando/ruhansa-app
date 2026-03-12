@@ -17,16 +17,23 @@ export interface Student {
   id: string;
   name: string;
   email: string;
-  program: string;
-  year: number;
+  studentId?: string;
+  year?: number;
+  programme: string;
+  faculty?: string;
   gpa: number;
   riskLevel: RiskLevel;
   riskScore: number;
-  advisorId: string;
-  counselorId?: string;
-  facultyMentorId?: string;
-  joinedDate?: string;
+  attendancePercentage?: number;
+  consecutiveAbsences?: number;
+  gender?: string;
+  dateOfBirth?: string;
+  contactNumber?: string;
+  intake?: string;
+  enrollmentDate?: string;
+  personalTutor?: string;
   status?: 'active' | 'inactive';
+  createdAt?: string;
 }
 
 export interface RiskFactor {

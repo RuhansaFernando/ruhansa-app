@@ -18,7 +18,7 @@ export default function FacultyStudentsPage() {
     (student) =>
       student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       student.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.program.toLowerCase().includes(searchQuery.toLowerCase())
+      student.programme.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getRiskColor = (level: string) => {
@@ -131,7 +131,7 @@ export default function FacultyStudentsPage() {
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <span>{student.id}</span>
                       <span>•</span>
-                      <span>{student.program}</span>
+                      <span>{student.programme}</span>
                     </div>
                   </div>
                 </div>

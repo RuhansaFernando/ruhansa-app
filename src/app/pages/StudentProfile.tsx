@@ -146,7 +146,7 @@ export default function StudentProfile() {
               </div>
               <div className="flex items-center text-sm text-muted-foreground">
                 <BookOpen className="mr-1 h-3 w-3" />
-                {student.program}
+                {student.programme}
               </div>
               <div className="flex items-center text-sm text-muted-foreground">
                 <User className="mr-1 h-3 w-3" />
@@ -240,7 +240,7 @@ export default function StudentProfile() {
                       </div>
                       <div className="flex-1">
                         <p className="text-sm text-muted-foreground mb-1">Programme</p>
-                        <p className="font-medium">{student.program}</p>
+                        <p className="font-medium">{student.programme}</p>
                       </div>
                     </div>
 

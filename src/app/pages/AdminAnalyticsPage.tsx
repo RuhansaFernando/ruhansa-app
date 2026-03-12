@@ -71,12 +71,11 @@ export default function AdminAnalyticsPage() {
         snap.docs.map((d) => ({
           id: d.id,
           name: d.data().name ?? '',
-          program: d.data().program ?? 'Unknown',
-          year: d.data().year ?? 1,
+          programme: d.data().programme ?? d.data().program ?? 'Unknown',
           gpa: d.data().gpa ?? 0,
           riskLevel: d.data().riskLevel ?? 'low',
           riskScore: d.data().riskScore ?? 0,
-          joinedDate: d.data().joinedDate ?? '',
+          enrollmentDate: d.data().enrollmentDate ?? d.data().joinedDate ?? '',
           status: d.data().status ?? 'active',
         }))
       );
@@ -124,7 +123,7 @@ export default function AdminAnalyticsPage() {
   // ── Department Performance (bar) ─────────────────────────────────────────────
   const departmentMap: Record<string, { total: number; gpaSum: number; atRisk: number }> = {};
   students.forEach((s) => {
-    const prog = s.program || 'Unknown';
+    const prog = s.programme || 'Unknown';
     if (!departmentMap[prog]) departmentMap[prog] = { total: 0, gpaSum: 0, atRisk: 0 };
     departmentMap[prog].total += 1;
     departmentMap[prog].gpaSum += s.gpa;
@@ -154,8 +153,8 @@ export default function AdminAnalyticsPage() {
   // Group students by month of joinedDate
   const enrollmentMap: Record<string, number> = {};
   students.forEach((s) => {
-    if (!s.joinedDate) return;
-    const date = new Date(s.joinedDate);
+    if (!s.enrollmentDate) return;
+    const date = new Date(s.enrollmentDate);
     if (isNaN(date.getTime())) return;
     const key = date.toLocaleString('default', { month: 'short', year: '2-digit' });
     enrollmentMap[key] = (enrollmentMap[key] ?? 0) + 1;
@@ -167,18 +166,18 @@ export default function AdminAnalyticsPage() {
       return parse(a.month) - parse(b.month);
     });
 
-  // ── Risk by Year (line) ───────────────────────────────────────────────────────
-  const yearMap: Record<number, { total: number; atRisk: number; gpaSum: number }> = {};
+  // ── Risk by Programme (line) ──────────────────────────────────────────────────
+  const yearMap: Record<string, { total: number; atRisk: number; gpaSum: number }> = {};
   students.forEach((s) => {
-    const yr = s.year;
-    if (!yearMap[yr]) yearMap[yr] = { total: 0, atRisk: 0, gpaSum: 0 };
-    yearMap[yr].total += 1;
-    yearMap[yr].gpaSum += s.gpa;
-    if (s.riskLevel === 'critical' || s.riskLevel === 'high') yearMap[yr].atRisk += 1;
+    const prog = s.programme || 'Unknown';
+    if (!yearMap[prog]) yearMap[prog] = { total: 0, atRisk: 0, gpaSum: 0 };
+    yearMap[prog].total += 1;
+    yearMap[prog].gpaSum += s.gpa;
+    if (s.riskLevel === 'critical' || s.riskLevel === 'high') yearMap[prog].atRisk += 1;
   });
   const yearData = Object.entries(yearMap)
     .map(([year, data]) => ({
-      year: `Year ${year}`,
+      year,
       students: data.total,
       atRisk: data.atRisk,
       avgGPA: data.total > 0 ? parseFloat((data.gpaSum / data.total).toFixed(2)) : 0,

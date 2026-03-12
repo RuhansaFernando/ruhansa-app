@@ -31,7 +31,7 @@ export default function AdvisorDashboard() {
     const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRisk = filterRisk === 'all' || student.riskLevel === filterRisk;
-    const matchesProgram = filterProgram === 'all' || student.program === filterProgram;
+    const matchesProgram = filterProgram === 'all' || student.programme === filterProgram;
     return matchesSearch && matchesRisk && matchesProgram;
   });
 
@@ -75,7 +75,7 @@ export default function AdvisorDashboard() {
     }
   };
 
-  const programs = [...new Set(advisorStudents.map((s) => s.program))];
+  const programs = [...new Set(advisorStudents.map((s) => s.programme))];
 
   return (
     <div className="space-y-6">
@@ -293,7 +293,7 @@ export default function AdvisorDashboard() {
                         <div className="text-sm text-muted-foreground">{student.email}</div>
                       </div>
                     </td>
-                    <td className="py-3 px-4">{student.program}</td>
+                    <td className="py-3 px-4">{student.programme}</td>
                     <td className="py-3 px-4">Year {student.year}</td>
                     <td className="py-3 px-4">
                       <span className={student.gpa < 2.5 ? 'text-red-600 font-medium' : ''}>

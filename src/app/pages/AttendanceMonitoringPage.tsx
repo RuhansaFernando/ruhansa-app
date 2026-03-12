@@ -576,7 +576,7 @@ export default function AttendanceMonitoringPage() {
                       <tr key={student.id} className="border-b hover:bg-muted/50 transition-colors">
                         <td className="p-3">
                           <div className="font-medium">{student.name}</div>
-                          <div className="text-xs text-muted-foreground">{student.program}</div>
+                          <div className="text-xs text-muted-foreground">{student.programme}</div>
                         </td>
                         <td className="p-3 text-center">
                           <span className="font-bold text-lg">{student.avgAttendance}%</span>

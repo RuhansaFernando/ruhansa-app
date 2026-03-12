@@ -21,12 +21,12 @@ export default function ReportsPage() {
   ].filter((item) => item.value > 0);
 
   const programDistribution = mockStudents.reduce((acc: any[], student) => {
-    const existing = acc.find((item) => item.program === student.program);
+    const existing = acc.find((item) => item.programme === student.programme);
     if (existing) {
       existing.count++;
       existing.avgGPA = (existing.avgGPA * (existing.count - 1) + student.gpa) / existing.count;
     } else {
-      acc.push({ program: student.program, count: 1, avgGPA: student.gpa });
+      acc.push({ program: student.programme, count: 1, avgGPA: student.gpa });
     }
     return acc;
   }, []);
@@ -69,7 +69,7 @@ export default function ReportsPage() {
       csvContent += '\n\nStudents by Program\n';
       csvContent += 'Program,Student Count,Average GPA\n';
       programDistribution.forEach((item) => {
-        csvContent += `${item.program},${item.count},${item.avgGPA.toFixed(2)}\n`;
+        csvContent += `${item.programme},${item.count},${item.avgGPA.toFixed(2)}\n`;
       });
     } else if (reportType === 'intervention') {
       filename = `intervention-effectiveness-${timeframe}-${timestamp}.csv`;
