@@ -1,4 +1,7 @@
 import AdminSystemHealthPage from './pages/AdminSystemHealthPage';
+import SRUDashboard from './pages/SRUDashboard';
+import SRUStudentListPage from './pages/SRUStudentListPage';
+import SRUStudentsPage from './pages/SRUStudentsPage';
 import AttendanceMonitoringPage from './pages/AttendanceMonitoringPage';
 import AcademicPerformancePage from './pages/AcademicPerformancePage';
 import InterventionManagementPage from './pages/InterventionManagementPage';
@@ -27,6 +30,11 @@ import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
 import AdminAlertsPage from './pages/AdminAlertsPage';
 import AdminTutorsPage from './pages/AdminTutorsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminSRUManagementPage from './pages/AdminSRUManagementPage';
+import AdminRegistryManagementPage from './pages/AdminRegistryManagementPage';
+import RegistryModulesPage from './pages/RegistryModulesPage';
+import RegistryGradesPage from './pages/RegistryGradesPage';
+import RegistryReportsPage from './pages/RegistryReportsPage';
 import {
   RedirectToLogin,
   NotFound,
@@ -218,12 +226,72 @@ export const router = createBrowserRouter([
         Component: AdminSystemHealthPage,
       },
       {
+        path: 'reports',
+        Component: ReportsPage,
+      },
+      {
+        path: 'sru',
+        Component: AdminSRUManagementPage,
+      },
+      {
+        path: 'registry',
+        Component: AdminRegistryManagementPage,
+      },
+      {
         path: 'settings',
         Component: SettingsPage,
       },
       {
         path: 'interventions',
         Component: InterventionManagementPage,
+      },
+    ],
+  },
+  {
+    path: '/registry',
+    Component: DashboardLayout,
+    children: [
+      {
+        index: true,
+        loader: () => redirect('/registry/dashboard'),
+      },
+      {
+        path: 'dashboard',
+        Component: AdminRegistryManagementPage,
+      },
+      {
+        path: 'modules',
+        Component: RegistryModulesPage,
+      },
+      {
+        path: 'grades',
+        Component: RegistryGradesPage,
+      },
+      {
+        path: 'reports',
+        Component: RegistryReportsPage,
+      },
+    ],
+  },
+  {
+    path: '/sru',
+    Component: DashboardLayout,
+    children: [
+      {
+        index: true,
+        loader: () => redirect('/sru/dashboard'),
+      },
+      {
+        path: 'dashboard',
+        Component: SRUDashboard,
+      },
+      {
+        path: 'students',
+        Component: SRUStudentsPage,
+      },
+      {
+        path: 'student/:studentId',
+        Component: StudentProfile,
       },
     ],
   },

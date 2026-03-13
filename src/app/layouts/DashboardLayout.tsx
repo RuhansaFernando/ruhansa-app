@@ -1,6 +1,6 @@
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -68,11 +68,26 @@ export default function DashboardLayout() {
         ...baseItems,
         { label: 'Students', icon: Users, path: '/admin/students' },
         { label: 'Manage Tutors', icon: BookUser, path: '/admin/tutors' },
-        { label: 'SRU Management', icon: ClipboardCheck, path: '/sru/dashboard' },
-        { label: 'Registry Management', icon: Building2, path: '/registry/dashboard' },
+        { label: 'SRU Management', icon: ClipboardCheck, path: '/admin/sru' },
+        { label: 'Registry Management', icon: Building2, path: '/admin/registry' },
         { label: 'Users', icon: UserCog, path: '/admin/users' },
-        { label: 'Reports', icon: FileText, path: '/admin/reports' },
         { label: 'Profile', icon: User, path: '/admin/settings' },
+      ];
+    } else if (user.role === 'registry') {
+      return [
+        ...baseItems,
+        { label: 'Modules', icon: GraduationCap, path: '/registry/modules' },
+        { label: 'Academic Records', icon: FileText, path: '/registry/grades' },
+        { label: 'Reports', icon: ClipboardList, path: '/registry/reports' },
+      ];
+    } else if (user.role === 'sru') {
+      return [
+        ...baseItems,
+        { label: 'Students', icon: Users, path: '/sru/students' },
+        { label: 'Attendance', icon: ClipboardList, path: '/sru/attendance' },
+        { label: 'Interventions', icon: Target, path: '/sru/interventions' },
+        { label: 'Alerts', icon: Bell, path: '/sru/alerts' },
+        { label: 'Reports', icon: FileText, path: '/sru/reports' },
       ];
     }
 
@@ -93,6 +108,10 @@ export default function DashboardLayout() {
         return 'Admin';
       case 'student':
         return 'Student';
+      case 'sru':
+        return 'SRU Staff';
+      case 'registry':
+        return 'Registry Staff';
       default:
         return user.role;
     }

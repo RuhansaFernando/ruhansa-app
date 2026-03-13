@@ -1,4 +1,4 @@
-export type UserRole = 'advisor' | 'student' | 'faculty' | 'counselor' | 'admin';
+export type UserRole = 'advisor' | 'student' | 'faculty' | 'counselor' | 'admin' | 'sru' | 'registry';
 
 export interface User {
   id: string;
@@ -18,7 +18,7 @@ export interface Student {
   name: string;
   email: string;
   studentId?: string;
-  year?: number;
+  studyLevel?: string;
   programme: string;
   faculty?: string;
   gpa: number;

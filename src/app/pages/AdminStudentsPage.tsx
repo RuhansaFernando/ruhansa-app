@@ -86,11 +86,7 @@ export default function AdminStudentsPage() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editProgram, setEditProgram] = useState("");
-  const [editYear, setEditYear] = useState("");
-  const [editGpa, setEditGpa] = useState("");
-  const [editRiskLevel, setEditRiskLevel] = useState<
-    "low" | "medium" | "high" | "critical"
-  >("low");
+  const [editStudyLevel, setEditStudyLevel] = useState("");
   const [editStatus, setEditStatus] = useState<"active" | "inactive" | "none">(
     "none",
   );
@@ -103,8 +99,6 @@ export default function AdminStudentsPage() {
   const [editIntake, setEditIntake] = useState("");
   const [editEnrollmentDate, setEditEnrollmentDate] = useState("");
   const [editFaculty, setEditFaculty] = useState("");
-  const [editAttendancePercentage, setEditAttendancePercentage] = useState("");
-  const [editConsecutiveAbsences, setEditConsecutiveAbsences] = useState("");
   const [editPersonalTutor, setEditPersonalTutor] = useState("");
   const [advisorsList, setAdvisorsList] = useState<{id: string; name: string}[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -138,9 +132,6 @@ export default function AdminStudentsPage() {
     department: "",
   });
 
-  const programs = Array.from(
-    new Set([...IIT_PROGRAMMES, ...students.map((s) => s.programme)]),
-  );
 
   // Get student users from the users list
   const studentUsers = users.filter((u) => u.role === "student");
@@ -189,7 +180,7 @@ export default function AdminStudentsPage() {
       "Name",
       "Email",
       "Program",
-      "Year",
+      "Study Level",
       "GPA",
       "Risk Level",
       "Risk Score",
@@ -201,7 +192,7 @@ export default function AdminStudentsPage() {
       student.name,
       student.email,
       student.programme,
-      student.year,
+      student.studyLevel ?? "",
       student.gpa.toFixed(2),
       student.riskLevel,
       student.riskScore,
@@ -251,7 +242,7 @@ export default function AdminStudentsPage() {
 
   const stats = {
     total: students.length,
-    critical: students.filter((s) => s.riskLevel === "critical").length,
+    low: students.filter((s) => s.riskLevel === "low").length,
     high: students.filter((s) => s.riskLevel === "high").length,
     avgGPA: students.length
       ? (students.reduce((sum, s) => sum + s.gpa, 0) / students.length).toFixed(
@@ -277,46 +268,52 @@ export default function AdminStudentsPage() {
 
       {/* Statistics */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total Students</CardDescription>
-            <CardTitle className="text-3xl">{stats.total}</CardTitle>
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Enrolled students</p>
+            <div className="text-4xl font-bold text-blue-600">{stats.total}</div>
+            <p className="text-xs text-muted-foreground mt-1">Enrolled students</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Critical Risk</CardDescription>
-            <CardTitle className="text-3xl text-red-600">
-              {stats.critical}
-            </CardTitle>
+        <Card className="border-l-4 border-l-red-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">High Risk Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
-              Needs immediate attention
-            </p>
+            <div className="text-4xl font-bold text-red-600">{stats.high}</div>
+            <p className="text-xs text-muted-foreground mt-1">Require immediate attention</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>High Risk</CardDescription>
-            <CardTitle className="text-3xl text-orange-600">
-              {stats.high}
-            </CardTitle>
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Low Risk Students</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <GraduationCap className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Requires monitoring</p>
+            <div className="text-4xl font-bold text-green-600">{stats.low}</div>
+            <p className="text-xs text-muted-foreground mt-1">Performing well</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Average GPA</CardDescription>
-            <CardTitle className="text-3xl">{stats.avgGPA}</CardTitle>
+        <Card className="border-l-4 border-l-purple-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Average GPA</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-purple-100 flex items-center justify-center">
+              <Filter className="h-5 w-5 text-purple-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Institution-wide</p>
+            <div className="text-4xl font-bold text-purple-600">{stats.avgGPA}</div>
+            <p className="text-xs text-muted-foreground mt-1">Institution-wide</p>
           </CardContent>
         </Card>
       </div>
@@ -337,9 +334,7 @@ export default function AdminStudentsPage() {
               setEditName("");
               setEditEmail("");
               setEditProgram("");
-              setEditYear("");
-              setEditGpa("");
-              setEditRiskLevel("low");
+              setEditStudyLevel("");
               setEditStatus("active");
               setEditStudentId("");
               setEditDateOfBirth("");
@@ -348,8 +343,6 @@ export default function AdminStudentsPage() {
               setEditIntake("");
               setEditEnrollmentDate("");
               setEditFaculty("");
-              setEditAttendancePercentage("");
-              setEditConsecutiveAbsences("");
               setEditPersonalTutor("");
               setIsEditDialogOpen(true);
             }}
@@ -397,9 +390,9 @@ export default function AdminStudentsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Programs</SelectItem>
-                {programs.map((program) => (
-                  <SelectItem key={program} value={program}>
-                    {program}
+                {IIT_PROGRAMMES.map((programme) => (
+                  <SelectItem key={programme} value={programme}>
+                    {programme}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -457,7 +450,7 @@ export default function AdminStudentsPage() {
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground mb-1">
                         <span>{student.programme}</span>
                         <span>•</span>
-                        <span>Year {student.year}</span>
+                        <span>{student.studyLevel ?? '—'}</span>
                         <span>•</span>
                         <span>GPA: {student.gpa.toFixed(2)}</span>
                       </div>
@@ -478,23 +471,13 @@ export default function AdminStudentsPage() {
                         setEditName(student.name);
                         setEditEmail(student.email);
                         setEditProgram(student.programme);
-                        setEditYear(student.year.toString());
-                        setEditGpa(student.gpa.toString());
-                        setEditRiskLevel(
-                          student.riskLevel as
-                            | "low"
-                            | "medium"
-                            | "high"
-                            | "critical",
-                        );
+                        setEditStudyLevel(student.studyLevel ?? "");
                         setEditStatus(
                           userAccount
                             ? (userAccount.status as "active" | "inactive")
                             : (displayStatus as "active" | "inactive"),
                         );
                         setEditFaculty("");
-                        setEditAttendancePercentage("");
-                        setEditConsecutiveAbsences("");
                         setEditPersonalTutor("");
                         setIsEditDialogOpen(true);
                       }}
@@ -502,7 +485,7 @@ export default function AdminStudentsPage() {
                       <Edit className="h-4 w-4" />
                       Edit
                     </Button>
-                    {userAccount ? (
+                    {userAccount && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -513,24 +496,6 @@ export default function AdminStudentsPage() {
                         }}
                       >
                         <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => {
-                          setAddUserFormData({
-                            name: student.name,
-                            email: student.email,
-                            status: displayStatus as "active" | "inactive",
-                            department: student.programme,
-                          });
-                          setIsAddUserDialogOpen(true);
-                        }}
-                      >
-                        <UserPlus className="h-4 w-4" />
-                        Create Account
                       </Button>
                     )}
                   </div>
@@ -981,22 +946,20 @@ export default function AdminStudentsPage() {
               </Select>
             </div>
 
-            {/* Year of Study */}
+            {/* Study Level */}
             <div className="space-y-2">
-              <Label htmlFor="yearOfStudy">
-                Year of Study <span className="text-red-500">*</span>
+              <Label htmlFor="studyLevel">
+                Level <span className="text-red-500">*</span>
               </Label>
-              <Select value={editYear} onValueChange={setEditYear}>
+              <Select value={editStudyLevel} onValueChange={setEditStudyLevel}>
                 <SelectTrigger>
                   <SelectValue placeholder="— Select —" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Year 1</SelectItem>
-                  <SelectItem value="2">Year 2</SelectItem>
-                  <SelectItem value="3">Year 3</SelectItem>
-                  <SelectItem value="4">Year 4</SelectItem>
-                  <SelectItem value="5">Year 5</SelectItem>
-                  <SelectItem value="6">Year 6</SelectItem>
+                  <SelectItem value="Level 4">Level 4</SelectItem>
+                  <SelectItem value="Level 5">Level 5</SelectItem>
+                  <SelectItem value="Industrial Placement">Industrial Placement</SelectItem>
+                  <SelectItem value="Level 6">Level 6</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1032,18 +995,6 @@ export default function AdminStudentsPage() {
                 value={editEnrollmentDate}
                 onChange={(e) => setEditEnrollmentDate(e.target.value)}
               />
-            </div>
-
-            {/* Attendance Percentage */}
-            <div className="space-y-2">
-              <Label htmlFor="attendancePercentage">Attendance %</Label>
-              <Input id="attendancePercentage" type="number" min="0" max="100" placeholder="e.g. 72" value={editAttendancePercentage} onChange={(e) => setEditAttendancePercentage(e.target.value)} />
-            </div>
-
-            {/* Consecutive Absences */}
-            <div className="space-y-2">
-              <Label htmlFor="consecutiveAbsences">Consecutive Absences</Label>
-              <Input id="consecutiveAbsences" type="number" min="0" placeholder="e.g. 3" value={editConsecutiveAbsences} onChange={(e) => setEditConsecutiveAbsences(e.target.value)} />
             </div>
 
             {/* Status */}
@@ -1098,7 +1049,7 @@ export default function AdminStudentsPage() {
                   !editGender ||
                   !editContactNumber ||
                   !editProgram ||
-                  !editYear ||
+                  !editStudyLevel ||
                   !editIntake ||
                   !editEnrollmentDate ||
                   !editFaculty
@@ -1115,7 +1066,7 @@ export default function AdminStudentsPage() {
                       name: editName,
                       email: editEmail,
                       programme: editProgram,
-                      year: parseInt(editYear),
+                      studyLevel: editStudyLevel,
                       gpa: editingStudent.gpa,
                       riskLevel: editingStudent.riskLevel,
                       status:
@@ -1143,17 +1094,18 @@ export default function AdminStudentsPage() {
                       email: editEmail,
                       studentId: editStudentId,
                       programme: editProgram,
+                      studyLevel: editStudyLevel,
                       faculty: editFaculty,
                       dateOfBirth: editDateOfBirth,
                       gender: editGender,
                       contactNumber: editContactNumber,
                       intake: editIntake,
                       enrollmentDate: editEnrollmentDate,
-                      gpa: 0.0,
+                      gpa: 0,
+                      attendancePercentage: 0,
+                      consecutiveAbsences: 0,
                       riskLevel: "low",
                       riskScore: 0,
-                      attendancePercentage: editAttendancePercentage ? parseFloat(editAttendancePercentage) : 0,
-                      consecutiveAbsences: editConsecutiveAbsences ? parseInt(editConsecutiveAbsences) : 0,
                       personalTutor: editPersonalTutor && editPersonalTutor !== "none"
                         ? (advisorsList.find((t) => t.id === editPersonalTutor)?.name ?? editPersonalTutor)
                         : null,

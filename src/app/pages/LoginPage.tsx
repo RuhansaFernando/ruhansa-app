@@ -4,12 +4,11 @@ import { useAuth } from "../AuthContext";
 import { auth, db } from "../../firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, getDoc, doc, query, where } from "firebase/firestore";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Checkbox } from "../components/ui/checkbox";
-import { GraduationCap } from "lucide-react";
 const backgroundImage = "";
 
 export default function LoginPage() {
@@ -34,25 +33,60 @@ export default function LoginPage() {
         password,
       );
       const firebaseEmail = credential.user.email ?? "";
+      const firebaseUid = credential.user.uid;
 
-      // Map Firebase user to an app User based on email
-      const firebaseUserMap: Record<
-        string,
-        {
-          id: string;
-          name: string;
-          role: "admin" | "advisor" | "student" | "faculty" | "counselor";
+      // 1. Check "admin" collection — by UID as document ID, then by "fb-admin" + email fallback
+      let adminData: { id: string; name: string } | null = null;
+
+      const adminByUid = await getDoc(doc(db, "admin", firebaseUid));
+      if (adminByUid.exists() && adminByUid.data()?.role === "admin") {
+        adminData = { id: adminByUid.id, name: adminByUid.data()?.name ?? firebaseEmail };
+      } else {
+        const adminFallback = await getDoc(doc(db, "admin", "fb-admin"));
+        if (adminFallback.exists() && adminFallback.data()?.email === firebaseEmail) {
+          adminData = { id: adminFallback.id, name: adminFallback.data()?.name ?? firebaseEmail };
         }
-      > = {
-        "admin@gmail.com": { id: "fb-admin", name: "Admin", role: "admin" },
-      };
+      }
 
-      const mapped = firebaseUserMap[firebaseEmail];
-      if (mapped) {
-        login({ ...mapped, email: firebaseEmail, password: "" });
+      if (adminData) {
+        login({
+          id: adminData.id,
+          name: adminData.name,
+          role: "admin",
+          email: firebaseEmail,
+          password: "",
+        });
         navigate("/admin/dashboard");
       } else {
-        // Check Firestore students collection
+        // 2. Check "users" collection by UID (sru, registry)
+        const usersQ = query(
+          collection(db, "users"),
+          where("uid", "==", firebaseUid),
+        );
+        const usersSnap = await getDocs(usersQ);
+        if (!usersSnap.empty) {
+          const userDoc = usersSnap.docs[0];
+          const userData = userDoc.data();
+          const role = userData.role as string;
+          const dashboardMap: Record<string, string> = {
+            sru: "/sru/dashboard",
+            registry: "/registry/dashboard",
+          };
+          if (dashboardMap[role]) {
+            login({
+              id: userDoc.id,
+              name: userData.name ?? firebaseEmail,
+              role: role as "sru" | "registry",
+              email: firebaseEmail,
+              password: "",
+            });
+            navigate(dashboardMap[role]);
+          } else {
+            setError("Your account is not authorised to access this system.");
+            await auth.signOut();
+          }
+        } else {
+        // 3. Check Firestore students collection
         const q = query(
           collection(db, "students"),
           where("email", "==", firebaseEmail),
@@ -70,7 +104,7 @@ export default function LoginPage() {
           });
           navigate("/student/dashboard");
         } else {
-          // Check Firestore faculty collection
+          // 3. Check Firestore faculty collection
           const fq = query(
             collection(db, "faculty"),
             where("email", "==", firebaseEmail),
@@ -88,7 +122,7 @@ export default function LoginPage() {
             });
             navigate("/faculty/dashboard");
           } else {
-            // Check Firestore advisors collection
+            // 4. Check Firestore advisors collection
             const aq = query(
               collection(db, "advisors"),
               where("email", "==", firebaseEmail),
@@ -106,7 +140,7 @@ export default function LoginPage() {
               });
               navigate("/advisor/dashboard");
             } else {
-              // Check Firestore counselors collection
+              // 5. Check Firestore counselors collection
               const cq = query(
                 collection(db, "counselors"),
                 where("email", "==", firebaseEmail),
@@ -133,6 +167,7 @@ export default function LoginPage() {
           }
         }
       }
+    }
     } catch (err) {
       if (err instanceof FirebaseError) {
         switch (err.code) {
@@ -302,14 +337,8 @@ export default function LoginPage() {
           }}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-2 bg-blue-600 rounded-lg">
-              <GraduationCap className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">NOVARA</h1>
-              <h2 className="text-xl font-bold text-white">UNIVERSITY</h2>
-            </div>
+          <div className="mb-8">
+            <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '160px', height: 'auto' }} />
           </div>
 
           {/* Sign in heading */}

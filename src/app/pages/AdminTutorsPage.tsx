@@ -193,7 +193,7 @@ export default function AdminTutorsPage() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
             <CardDescription>Total Tutors</CardDescription>
             <CardTitle className="text-3xl">{tutors.length}</CardTitle>
@@ -202,7 +202,7 @@ export default function AdminTutorsPage() {
             <p className="text-xs text-muted-foreground">Registered tutors</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
             <CardDescription>Active</CardDescription>
             <CardTitle className="text-3xl text-green-600">
@@ -213,7 +213,7 @@ export default function AdminTutorsPage() {
             <p className="text-xs text-muted-foreground">Currently active</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-red-500">
           <CardHeader className="pb-3">
             <CardDescription>Inactive</CardDescription>
             <CardTitle className="text-3xl text-gray-500">
