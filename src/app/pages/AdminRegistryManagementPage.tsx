@@ -201,13 +201,13 @@ export default function AdminRegistryManagementPage() {
         {/* Registry Staff Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Registry Staff</CardTitle>
+            <CardTitle>Registry</CardTitle>
             <p className="text-sm text-muted-foreground">Staff assigned to the Registry department</p>
           </CardHeader>
           <CardContent>
             {registryStaff.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground text-sm">
-                No Registry staff accounts found
+                No Registry accounts found
               </div>
             ) : (
               <div className="overflow-x-auto">

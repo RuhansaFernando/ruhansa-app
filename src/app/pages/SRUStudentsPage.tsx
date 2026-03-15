@@ -42,7 +42,7 @@ interface StudentDoc {
   studentId: string;
   email: string;
   programme: string;
-  studyLevel: string;
+  level: string;
   gpa: number;
   riskLevel: string;
   attendancePercentage: number;
@@ -86,7 +86,7 @@ export default function SRUStudentsPage() {
           studentId: d.data().studentId ?? d.id,
           email: d.data().email ?? '',
           programme: d.data().programme ?? d.data().program ?? 'Unknown',
-          studyLevel: d.data().studyLevel ?? '',
+          level: d.data().level ?? '',
           gpa: d.data().gpa ?? 0,
           riskLevel: d.data().riskLevel ?? 'low',
           attendancePercentage: d.data().attendancePercentage ?? 100,
@@ -103,7 +103,7 @@ export default function SRUStudentsPage() {
   const totalStudents = students.length;
   const highRisk = students.filter((s) => s.riskLevel === 'high').length;
   const mediumRisk = students.filter((s) => s.riskLevel === 'medium').length;
-  const lowAttendance = students.filter((s) => s.attendancePercentage < 75).length;
+  const lowAttendance = students.filter((s) => s.attendancePercentage < 80).length;
 
   // Filtered list
   const filtered = useMemo(() => {
@@ -117,7 +117,7 @@ export default function SRUStudentsPage() {
       const matchesRisk = riskFilter === 'all' || s.riskLevel === riskFilter;
       const matchesProgramme =
         programmeFilter === 'all' || s.programme === programmeFilter;
-      const matchesLevel = levelFilter === 'all' || s.studyLevel === levelFilter;
+      const matchesLevel = levelFilter === 'all' || s.level === levelFilter;
       const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
       return matchesSearch && matchesRisk && matchesProgramme && matchesLevel && matchesStatus;
     });
@@ -155,7 +155,7 @@ export default function SRUStudentsPage() {
         type: interventionType,
         date: interventionDate,
         notes: interventionNotes.trim(),
-        recordedBy: user?.name ?? 'SRU Staff',
+        recordedBy: user?.name ?? 'Student Support Advisor',
         createdAt: serverTimestamp(),
       });
       toast.success('Intervention logged successfully');
@@ -191,7 +191,7 @@ export default function SRUStudentsPage() {
   };
 
   const getAttendanceColor = (pct: number) => {
-    if (pct < 75) return 'text-red-600 font-semibold';
+    if (pct < 80) return 'text-red-600 font-semibold';
     if (pct <= 85) return 'text-amber-600 font-semibold';
     return 'text-green-600 font-semibold';
   };
@@ -284,7 +284,7 @@ export default function SRUStudentsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold text-orange-600">{lowAttendance}</div>
-            <p className="text-xs text-muted-foreground mt-1">Below 75% attendance</p>
+            <p className="text-xs text-muted-foreground mt-1">Below 80% attendance</p>
           </CardContent>
         </Card>
       </div>
@@ -387,7 +387,7 @@ export default function SRUStudentsPage() {
                       {student.programme}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {student.studyLevel || '—'}
+                      {student.level || '—'}
                     </p>
                   </div>
 

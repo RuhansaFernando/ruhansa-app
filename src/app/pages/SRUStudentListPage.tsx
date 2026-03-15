@@ -41,7 +41,7 @@ interface StudentDoc {
   studentId: string;
   email: string;
   programme: string;
-  studyLevel: string;
+  level: string;
   gpa: number;
   riskLevel: string;
   attendancePercentage: number;
@@ -83,7 +83,7 @@ export default function SRUStudentListPage() {
           studentId: d.data().studentId ?? d.id,
           email: d.data().email ?? '',
           programme: d.data().programme ?? d.data().program ?? 'Unknown',
-          studyLevel: d.data().studyLevel ?? '',
+          level: d.data().level ?? '',
           gpa: d.data().gpa ?? 0,
           riskLevel: d.data().riskLevel ?? 'low',
           attendancePercentage: d.data().attendancePercentage ?? 100,
@@ -113,7 +113,7 @@ export default function SRUStudentListPage() {
         s.email.toLowerCase().includes(q);
       const matchesRisk = riskFilter === 'all' || s.riskLevel === riskFilter;
       const matchesProgramme = programmeFilter === 'all' || s.programme === programmeFilter;
-      const matchesLevel = levelFilter === 'all' || s.studyLevel === levelFilter;
+      const matchesLevel = levelFilter === 'all' || s.level === levelFilter;
       const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
       return matchesSearch && matchesRisk && matchesProgramme && matchesLevel && matchesStatus;
     });
@@ -151,7 +151,7 @@ export default function SRUStudentListPage() {
         type: interventionType,
         date: interventionDate,
         notes: interventionNotes.trim(),
-        recordedBy: user?.name ?? 'SRU Staff',
+        recordedBy: user?.name ?? 'Student Support Advisor',
         createdAt: serverTimestamp(),
       });
       toast.success('Intervention logged successfully');
@@ -348,7 +348,7 @@ export default function SRUStudentListPage() {
                   {/* Programme + Level + GPA */}
                   <div className="flex-1 min-w-[160px]">
                     <p className="text-xs font-medium truncate max-w-[200px]">{student.programme}</p>
-                    <p className="text-xs text-muted-foreground">{student.studyLevel || '—'}</p>
+                    <p className="text-xs text-muted-foreground">{student.level || '—'}</p>
                     <p className="text-xs text-muted-foreground">GPA: <span className="font-medium text-foreground">{student.gpa.toFixed(2)}</span></p>
                   </div>
 

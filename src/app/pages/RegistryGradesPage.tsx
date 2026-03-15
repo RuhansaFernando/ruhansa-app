@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { toast } from "sonner";
-import { Bell, CalendarClock, Check, X as XIcon, BookOpen, Plus } from "lucide-react";
+import { Bell, CalendarClock, Check, X as XIcon, BookOpen, Plus, UserCog } from "lucide-react";
 import {
   collection,
   onSnapshot,
@@ -49,9 +49,22 @@ interface StudentRecord {
   studentId: string;
   name: string;
   programme: string;
+  level: string;
   gpa: number;
   attendancePercentage: number;
   consecutiveAbsences: number;
+  academicMentor: string;
+  faculty: string;
+  intake: string;
+  enrollmentDate: string;
+  gender: string;
+  dateOfBirth: string;
+  contactNumber: string;
+}
+
+interface TutorRecord {
+  id: string;
+  name: string;
 }
 
 interface ModuleRecord {
@@ -93,6 +106,24 @@ const PROGRAMMES = [
   "BSc (Hons) Business Information Systems",
   "BEng (Hons) Electronic Engineering",
 ];
+
+const IIT_PROGRAMMES = [
+  "BSc (Hons) Computer Science",
+  "BSc (Hons) Software Engineering",
+  "BSc (Hons) Cyber Security",
+  "BSc (Hons) Business Information Systems",
+  "BEng (Hons) Electronic Engineering",
+  "BSc (Hons) Business Computing",
+];
+
+const BUSINESS_PROGRAMMES = new Set([
+  "BSc (Hons) Business Information Systems",
+  "BSc (Hons) Business Computing",
+]);
+
+function getFacultyForProgramme(programme: string): string {
+  return BUSINESS_PROGRAMMES.has(programme) ? "Business School" : "School of Computing";
+}
 
 const LEVEL_SEMESTERS: Record<string, string[]> = {
   "Level 4": ["Semester 1", "Semester 2"],
@@ -159,6 +190,27 @@ export default function RegistryGradesPage() {
   const [marksNotes, setMarksNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Tutor assignment modal
+  const [isTutorOpen, setIsTutorOpen] = useState(false);
+  const [tutorStudent, setTutorStudent] = useState<StudentRecord | null>(null);
+  const [tutors, setTutors] = useState<TutorRecord[]>([]);
+  const [selectedTutorName, setSelectedTutorName] = useState("");
+  const [isSavingTutor, setIsSavingTutor] = useState(false);
+
+  // Edit Details modal
+  const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
+  const [editDetailsStudent, setEditDetailsStudent] = useState<StudentRecord | null>(null);
+  const [edProgramme, setEdProgramme] = useState("");
+  const [edFaculty, setEdFaculty] = useState("");
+  const [edLevel, setEdLevel] = useState("");
+  const [edIntake, setEdIntake] = useState("");
+  const [edEnrollmentDate, setEdEnrollmentDate] = useState("");
+  const [edGender, setEdGender] = useState("");
+  const [edDateOfBirth, setEdDateOfBirth] = useState("");
+  const [edContactNumber, setEdContactNumber] = useState("");
+  const [edPersonalTutor, setEdPersonalTutor] = useState("");
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
   // Meeting modal
   const [isMeetingOpen, setIsMeetingOpen] = useState(false);
   const [meetingResult, setMeetingResult] = useState<ResultRecord | null>(null);
@@ -175,11 +227,20 @@ export default function RegistryGradesPage() {
           studentId: d.data().studentId ?? d.id,
           name: d.data().name ?? "",
           programme: d.data().programme ?? "",
+          level: d.data().level ?? "",
           gpa: d.data().gpa ?? 0,
           attendancePercentage: d.data().attendancePercentage ?? 0,
           consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
+          academicMentor: d.data().academicMentor ?? "",
+          faculty: d.data().faculty ?? "",
+          intake: d.data().intake ?? "",
+          enrollmentDate: d.data().enrollmentDate ?? "",
+          gender: d.data().gender ?? "",
+          dateOfBirth: d.data().dateOfBirth ?? "",
+          contactNumber: d.data().contactNumber ?? "",
         }))
       );
+      setLoading(false);
     });
 
     const unsubModules = onSnapshot(
@@ -225,7 +286,6 @@ export default function RegistryGradesPage() {
             recordedBy: d.data().recordedBy ?? "",
           }))
         );
-        setLoading(false);
       }
     );
 
@@ -233,11 +293,19 @@ export default function RegistryGradesPage() {
       setMeetingsCount(snap.size);
     });
 
+    const unsubTutors = onSnapshot(
+      query(collection(db, "academic_mentors"), where("status", "==", "active"), orderBy("name")),
+      (snap) => {
+        setTutors(snap.docs.map((d) => ({ id: d.id, name: d.data().name ?? "" })));
+      }
+    );
+
     return () => {
       unsubStudents();
       unsubModules();
       unsubResults();
       unsubMeetings();
+      unsubTutors();
     };
   }, []);
 
@@ -283,6 +351,15 @@ export default function RegistryGradesPage() {
     });
   }, [results, programmeFilter, levelFilter, moduleFilter, statusFilter]);
 
+  // Filtered students for main table
+  const filteredStudents = useMemo(() => {
+    return students.filter((s) => {
+      const matchesProg = programmeFilter === "all" || s.programme === programmeFilter;
+      const matchesLevel = levelFilter === "all" || s.level === levelFilter;
+      return matchesProg && matchesLevel;
+    });
+  }, [students, programmeFilter, levelFilter]);
+
   // Module for the marks modal (editing or new selection)
   const marksModule = useMemo(() => {
     const id = editingResult ? editingResult.moduleId : selModuleId;
@@ -300,6 +377,18 @@ export default function RegistryGradesPage() {
   const openAddMarks = () => {
     setEditingResult(null);
     setSelStudentId("");
+    setSelModuleId("");
+    setComp1Submitted(false);
+    setComp1Mark("");
+    setComp2Submitted(false);
+    setComp2Mark("");
+    setMarksNotes("");
+    setIsMarksOpen(true);
+  };
+
+  const openAddMarksForStudent = (student: StudentRecord) => {
+    setEditingResult(null);
+    setSelStudentId(student.id);
     setSelModuleId("");
     setComp1Submitted(false);
     setComp1Mark("");
@@ -424,6 +513,72 @@ export default function RegistryGradesPage() {
     const gpa = Math.min(4.0, Math.round((avgMark / 25) * 100) / 100);
     const { riskScore, riskLevel } = calculateRisk(gpa, attendance, absences);
     await updateDoc(doc(db, "students", studentId), { gpa, riskScore, riskLevel });
+  };
+
+  const openAssignTutor = (student: StudentRecord) => {
+    setTutorStudent(student);
+    setSelectedTutorName("");
+    setIsTutorOpen(true);
+  };
+
+  const handleSaveTutor = async () => {
+    if (!tutorStudent || !selectedTutorName) {
+      toast.error("Please select a tutor");
+      return;
+    }
+    setIsSavingTutor(true);
+    try {
+      await updateDoc(doc(db, "students", tutorStudent.id), {
+        academicMentor: selectedTutorName,
+      });
+      toast.success("Academic Mentor assigned successfully");
+      setIsTutorOpen(false);
+    } catch {
+      toast.error("Failed to assign tutor. Please try again.");
+    } finally {
+      setIsSavingTutor(false);
+    }
+  };
+
+  const openEditDetails = (student: StudentRecord) => {
+    setEditDetailsStudent(student);
+    setEdProgramme(student.programme);
+    setEdFaculty(student.faculty || (student.programme ? getFacultyForProgramme(student.programme) : ""));
+    setEdLevel(student.level);
+    setEdIntake(student.intake);
+    setEdEnrollmentDate(student.enrollmentDate);
+    setEdGender(student.gender);
+    setEdDateOfBirth(student.dateOfBirth);
+    setEdContactNumber(student.contactNumber);
+    setEdPersonalTutor(student.academicMentor || "none");
+    setIsEditDetailsOpen(true);
+  };
+
+  const handleSaveDetails = async () => {
+    if (!editDetailsStudent || !edProgramme || !edLevel || !edIntake) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    setIsSavingDetails(true);
+    try {
+      await updateDoc(doc(db, "students", editDetailsStudent.id), {
+        programme: edProgramme,
+        faculty: edFaculty,
+        level: edLevel,
+        intake: edIntake,
+        enrollmentDate: edEnrollmentDate,
+        gender: edGender,
+        dateOfBirth: edDateOfBirth,
+        contactNumber: edContactNumber,
+        academicMentor: edPersonalTutor === "none" ? "" : edPersonalTutor,
+      });
+      toast.success("Student details updated successfully");
+      setIsEditDetailsOpen(false);
+    } catch {
+      toast.error("Failed to update student details. Please try again.");
+    } finally {
+      setIsSavingDetails(false);
+    }
   };
 
   const handleNotifySRU = async (result: ResultRecord) => {
@@ -555,11 +710,11 @@ export default function RegistryGradesPage() {
         </Card>
       </div>
 
-      {/* Results Table */}
+      {/* Students Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Student Results</CardTitle>
-          <CardDescription>Module marks and assessment results</CardDescription>
+          <CardTitle>Student Records</CardTitle>
+          <CardDescription>All registered students</CardDescription>
         </CardHeader>
         <CardContent>
           {/* Filters */}
@@ -601,43 +756,17 @@ export default function RegistryGradesPage() {
                 <SelectItem value="Level 6">Level 6</SelectItem>
               </SelectContent>
             </Select>
-
-            <Select value={moduleFilter} onValueChange={setModuleFilter}>
-              <SelectTrigger className="w-full sm:w-[240px]">
-                <SelectValue placeholder="All Modules" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Modules</SelectItem>
-                {availableModulesForFilter.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.moduleCode} – {m.moduleName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[190px]">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pass">Pass</SelectItem>
-                <SelectItem value="fail">Fail</SelectItem>
-                <SelectItem value="missing">Missing Submission</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Table */}
           {loading ? (
             <div className="text-center py-12 text-muted-foreground">
-              Loading results…
+              Loading students…
             </div>
-          ) : filteredResults.length === 0 ? (
+          ) : filteredStudents.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No results found matching your criteria</p>
+              <p>No students found matching your criteria</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -654,22 +783,13 @@ export default function RegistryGradesPage() {
                       Programme
                     </th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Module
+                      Level
                     </th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Component 1
+                      Academic Mentor
                     </th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Component 2
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Overall
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Status
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Submitted
+                      GPA
                     </th>
                     <th className="text-right font-medium text-muted-foreground px-4 py-3">
                       Actions
@@ -677,156 +797,42 @@ export default function RegistryGradesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredResults.map((r) => {
-                    const hasMissing =
-                      !r.component1Submitted || !r.component2Submitted;
-                    const hasFailed = r.moduleStatus === "fail";
-                    const student = students.find((s) => s.id === r.studentId);
-                    return (
-                      <tr
-                        key={r.id}
-                        className="border-b last:border-0 hover:bg-gray-50 transition-colors"
-                      >
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                          {student?.studentId ?? r.studentId.slice(0, 8)}
-                        </td>
-                        <td className="px-4 py-3 font-medium">{r.studentName}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[140px] truncate">
-                          {r.programme}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[140px] truncate">
-                          {r.moduleName}
-                        </td>
-
-                        {/* Component 1 */}
-                        <td className="px-4 py-3">
-                          {r.component1Submitted ? (
-                            <span
-                              className={`flex items-center gap-1 text-sm font-medium ${
-                                r.component1Status === "pass"
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {r.component1Status === "pass" ? (
-                                <Check className="h-3.5 w-3.5" />
-                              ) : (
-                                <XIcon className="h-3.5 w-3.5" />
-                              )}
-                              {r.component1Mark}%
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-
-                        {/* Component 2 */}
-                        <td className="px-4 py-3">
-                          {r.component2Submitted ? (
-                            <span
-                              className={`flex items-center gap-1 text-sm font-medium ${
-                                r.component2Status === "pass"
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {r.component2Status === "pass" ? (
-                                <Check className="h-3.5 w-3.5" />
-                              ) : (
-                                <XIcon className="h-3.5 w-3.5" />
-                              )}
-                              {r.component2Mark}%
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-3 font-medium">{r.overallMark}%</td>
-
-                        <td className="px-4 py-3">
-                          <Badge
-                            className={
-                              r.moduleStatus === "pass"
-                                ? "bg-green-100 text-green-800 border-green-200"
-                                : "bg-red-100 text-red-800 border-red-200"
-                            }
+                  {filteredStudents.map((student) => (
+                    <tr
+                      key={student.id}
+                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                        {student.studentId}
+                      </td>
+                      <td className="px-4 py-3 font-medium">{student.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate">
+                        {student.programme}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {student.level || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {student.academicMentor || <span className="text-muted-foreground/50 italic">Not assigned</span>}
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {student.gpa.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => openAddMarksForStudent(student)}
                           >
-                            {r.moduleStatus === "pass" ? "Pass" : "Fail"}
-                          </Badge>
-                        </td>
-
-                        {/* Submitted column */}
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-0.5 text-xs">
-                            <span
-                              className={`flex items-center gap-1 ${
-                                r.component1Submitted
-                                  ? "text-green-600"
-                                  : "text-red-500"
-                              }`}
-                            >
-                              {r.component1Submitted ? (
-                                <Check className="h-3 w-3" />
-                              ) : (
-                                <XIcon className="h-3 w-3" />
-                              )}
-                              C1
-                            </span>
-                            <span
-                              className={`flex items-center gap-1 ${
-                                r.component2Submitted
-                                  ? "text-green-600"
-                                  : "text-red-500"
-                              }`}
-                            >
-                              {r.component2Submitted ? (
-                                <Check className="h-3 w-3" />
-                              ) : (
-                                <XIcon className="h-3 w-3" />
-                              )}
-                              C2
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-2 flex-wrap">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEditMarks(r)}
-                            >
-                              Enter Marks
-                            </Button>
-                            {hasMissing && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1 text-red-600 hover:text-red-600 hover:bg-red-50"
-                                onClick={() => handleNotifySRU(r)}
-                              >
-                                <Bell className="h-3.5 w-3.5" />
-                                Notify SRU
-                              </Button>
-                            )}
-                            {hasFailed && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1 text-orange-600 hover:text-orange-600 hover:bg-orange-50"
-                                onClick={() => openScheduleMeeting(r)}
-                              >
-                                <CalendarClock className="h-3.5 w-3.5" />
-                                Schedule Meeting
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                            <Plus className="h-3.5 w-3.5" />
+                            Enter Marks
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1005,6 +1011,232 @@ export default function RegistryGradesPage() {
             </Button>
             <Button size="sm" disabled={isSaving} onClick={handleSaveMarks}>
               {isSaving ? "Saving…" : "Save Marks"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Tutor Modal */}
+      <Dialog open={isTutorOpen} onOpenChange={setIsTutorOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Academic Mentor</DialogTitle>
+            <DialogDescription>
+              Assign an academic mentor to this student
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 rounded-lg border p-3 bg-gray-50">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Student</Label>
+                <p className="text-sm font-medium">{tutorStudent?.name}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Current Tutor</Label>
+                <p className="text-sm font-medium">
+                  {tutorStudent?.academicMentor || <span className="text-muted-foreground">None assigned</span>}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="selTutor">
+                Select Tutor <span className="text-red-500">*</span>
+              </Label>
+              <Select value={selectedTutorName} onValueChange={setSelectedTutorName}>
+                <SelectTrigger id="selTutor">
+                  <SelectValue placeholder="— Select Tutor —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tutors.map((t) => (
+                    <SelectItem key={t.id} value={t.name}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsTutorOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={isSavingTutor} onClick={handleSaveTutor}>
+              {isSavingTutor ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Student Details Modal */}
+      <Dialog open={isEditDetailsOpen} onOpenChange={setIsEditDetailsOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Student Details</DialogTitle>
+            <DialogDescription>
+              Update details for {editDetailsStudent?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Read-only info */}
+            <div className="grid grid-cols-2 gap-4 rounded-lg border p-3 bg-gray-50">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Student Name</Label>
+                <p className="text-sm font-medium">{editDetailsStudent?.name}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Student ID</Label>
+                <p className="text-sm font-medium font-mono">{editDetailsStudent?.studentId}</p>
+              </div>
+            </div>
+
+            {/* Programme */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-programme">
+                Programme <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={edProgramme}
+                onValueChange={(v) => {
+                  setEdProgramme(v);
+                  setEdFaculty(getFacultyForProgramme(v));
+                }}
+              >
+                <SelectTrigger id="ed-programme">
+                  <SelectValue placeholder="— Select Programme —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {IIT_PROGRAMMES.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Faculty (auto-filled) */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-faculty">Faculty</Label>
+              <Input
+                id="ed-faculty"
+                value={edFaculty}
+                readOnly
+                className="bg-gray-50 text-muted-foreground"
+              />
+            </div>
+
+            {/* Level */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-level">
+                Level <span className="text-red-500">*</span>
+              </Label>
+              <Select value={edLevel} onValueChange={setEdLevel}>
+                <SelectTrigger id="ed-level">
+                  <SelectValue placeholder="— Select Level —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Level 4">Level 4</SelectItem>
+                  <SelectItem value="Level 5">Level 5</SelectItem>
+                  <SelectItem value="Level 6">Level 6</SelectItem>
+                  <SelectItem value="Industrial Placement">Industrial Placement</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Intake */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-intake">
+                Intake <span className="text-red-500">*</span>
+              </Label>
+              <Select value={edIntake} onValueChange={setEdIntake}>
+                <SelectTrigger id="ed-intake">
+                  <SelectValue placeholder="— Select Intake —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2022 Spring">2022 Spring</SelectItem>
+                  <SelectItem value="2022 Fall">2022 Fall</SelectItem>
+                  <SelectItem value="2023 Spring">2023 Spring</SelectItem>
+                  <SelectItem value="2023 Fall">2023 Fall</SelectItem>
+                  <SelectItem value="2024 Spring">2024 Spring</SelectItem>
+                  <SelectItem value="2024 Fall">2024 Fall</SelectItem>
+                  <SelectItem value="2025 Fall">2025 Fall</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Enrollment Date */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-enrollment">Enrollment Date</Label>
+              <Input
+                id="ed-enrollment"
+                type="date"
+                value={edEnrollmentDate}
+                onChange={(e) => setEdEnrollmentDate(e.target.value)}
+              />
+            </div>
+
+            {/* Gender */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-gender">Gender</Label>
+              <Select value={edGender} onValueChange={setEdGender}>
+                <SelectTrigger id="ed-gender">
+                  <SelectValue placeholder="— Select —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date of Birth */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-dob">Date of Birth</Label>
+              <Input
+                id="ed-dob"
+                type="date"
+                value={edDateOfBirth}
+                onChange={(e) => setEdDateOfBirth(e.target.value)}
+              />
+            </div>
+
+            {/* Contact Number */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-contact">Contact Number</Label>
+              <Input
+                id="ed-contact"
+                type="tel"
+                placeholder="+94 77 000 0000"
+                value={edContactNumber}
+                onChange={(e) => setEdContactNumber(e.target.value)}
+              />
+            </div>
+
+            {/* Personal Tutor */}
+            <div className="space-y-2">
+              <Label htmlFor="ed-tutor">Academic Mentor</Label>
+              <Select value={edPersonalTutor} onValueChange={setEdPersonalTutor}>
+                <SelectTrigger id="ed-tutor">
+                  <SelectValue placeholder="— Select Tutor —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {tutors.map((t) => (
+                    <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsEditDetailsOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={isSavingDetails} onClick={handleSaveDetails}>
+              {isSavingDetails ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

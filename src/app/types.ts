@@ -1,4 +1,4 @@
-export type UserRole = 'advisor' | 'student' | 'faculty' | 'counselor' | 'admin' | 'sru' | 'registry';
+export type UserRole = 'advisor' | 'student' | 'faculty' | 'counselor' | 'admin' | 'sru' | 'registry' | 'academic_admin' | 'academic_mentor' | 'student_counsellor';
 
 export interface User {
   id: string;
@@ -18,7 +18,7 @@ export interface Student {
   name: string;
   email: string;
   studentId?: string;
-  studyLevel?: string;
+  level?: string;
   programme: string;
   faculty?: string;
   gpa: number;
@@ -31,7 +31,7 @@ export interface Student {
   contactNumber?: string;
   intake?: string;
   enrollmentDate?: string;
-  personalTutor?: string;
+  academicMentor?: string;
   status?: 'active' | 'inactive';
   createdAt?: string;
 }

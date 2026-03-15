@@ -41,47 +41,46 @@ import { db, secondaryAuth } from "../../firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 
-interface Tutor {
+interface Counsellor {
   id: string;
-  tutorId: string;
+  counsellorId: string;
   name: string;
   email: string;
-  department: string;
+  specialisation: string;
   status: "active" | "inactive";
   createdAt?: string;
 }
 
-export default function AdminTutorsPage() {
-  const [tutors, setTutors] = useState<Tutor[]>([]);
+export default function AdminCounsellorsPage() {
+  const [counsellors, setCounsellors] = useState<Counsellor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
   // Add / Edit dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingTutor, setEditingTutor] = useState<Tutor | null>(null);
+  const [editingCounsellor, setEditingCounsellor] = useState<Counsellor | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Form state
-  const [formTutorId, setFormTutorId] = useState("");
+  const [formCounsellorId, setFormCounsellorId] = useState("");
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
-  const [formDepartment, setFormDepartment] = useState("");
+  const [formSpecialisation, setFormSpecialisation] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
   const [formPassword, setFormPassword] = useState("");
   const [formConfirmPassword, setFormConfirmPassword] = useState("");
 
   useEffect(() => {
-    const q = query(collection(db, "academic_mentors"), orderBy("name"));
+    const q = query(collection(db, "student_counsellors"), orderBy("name"));
     const unsub = onSnapshot(q, (snapshot) => {
-      setTutors(
+      setCounsellors(
         snapshot.docs.map((d) => ({
           id: d.id,
-          tutorId: d.data().tutorId ?? "",
+          counsellorId: d.data().counsellorId ?? "",
           name: d.data().name ?? "",
           email: d.data().email ?? "",
-          department: d.data().department ?? "",
+          specialisation: d.data().specialisation ?? "",
           status: d.data().status ?? "active",
           createdAt: d.data().createdAt?.toDate?.().toISOString() ?? undefined,
         })),
@@ -92,33 +91,54 @@ export default function AdminTutorsPage() {
   }, []);
 
   const openAddDialog = () => {
-    setEditingTutor(null);
-    setFormTutorId("");
+    setEditingCounsellor(null);
+    setFormCounsellorId("");
     setFormName("");
     setFormEmail("");
-    setFormDepartment("");
+    setFormSpecialisation("");
     setFormStatus("active");
     setFormPassword("");
     setFormConfirmPassword("");
     setIsDialogOpen(true);
   };
 
-  const openEditDialog = (tutor: Tutor) => {
-    setEditingTutor(tutor);
-    setFormTutorId(tutor.tutorId);
-    setFormName(tutor.name);
-    setFormEmail(tutor.email);
-    setFormDepartment(tutor.department);
-    setFormStatus(tutor.status);
+  const openEditDialog = (counsellor: Counsellor) => {
+    setEditingCounsellor(counsellor);
+    setFormCounsellorId(counsellor.counsellorId);
+    setFormName(counsellor.name);
+    setFormEmail(counsellor.email);
+    setFormSpecialisation(counsellor.specialisation);
+    setFormStatus(counsellor.status);
     setIsDialogOpen(true);
   };
 
+  const SPECIALISATIONS = [
+    "Academic Support",
+    "Mental Health & Wellbeing",
+    "Career Guidance",
+    "Financial Advice",
+    "Personal Development",
+    "Social Integration",
+  ];
+
+  const getSpecialisationBadgeClass = (spec: string) => {
+    switch (spec) {
+      case "Academic Support": return "bg-blue-100 text-blue-800 border-blue-200";
+      case "Mental Health & Wellbeing": return "bg-purple-100 text-purple-800 border-purple-200";
+      case "Career Guidance": return "bg-green-100 text-green-800 border-green-200";
+      case "Financial Advice": return "bg-amber-100 text-amber-800 border-amber-200";
+      case "Personal Development": return "bg-teal-100 text-teal-800 border-teal-200";
+      case "Social Integration": return "bg-orange-100 text-orange-800 border-orange-200";
+      default: return "bg-gray-100 text-gray-600 border-gray-200";
+    }
+  };
+
   const handleSave = async () => {
-    if (!formTutorId.trim() || !formName.trim() || !formEmail.trim() || !formDepartment) {
+    if (!formCounsellorId.trim() || !formName.trim() || !formEmail.trim() || !formSpecialisation) {
       toast.error("Please fill in all required fields");
       return;
     }
-    if (!editingTutor) {
+    if (!editingCounsellor) {
       if (!formPassword.trim()) {
         toast.error("Please enter a password");
         return;
@@ -131,29 +151,29 @@ export default function AdminTutorsPage() {
 
     setIsSaving(true);
     try {
-      if (editingTutor) {
-        await updateDoc(doc(db, "academic_mentors", editingTutor.id), {
-          tutorId: formTutorId.trim(),
+      if (editingCounsellor) {
+        await updateDoc(doc(db, "student_counsellors", editingCounsellor.id), {
+          counsellorId: formCounsellorId.trim(),
           name: formName.trim(),
           email: formEmail.trim(),
-          department: formDepartment,
+          specialisation: formSpecialisation.trim(),
           status: formStatus,
         });
-        toast.success("Academic Mentor updated successfully");
+        toast.success("Student Counsellor updated successfully");
       } else {
         const cred = await createUserWithEmailAndPassword(secondaryAuth, formEmail.trim(), formPassword.trim());
         await secondaryAuth.signOut();
-        await addDoc(collection(db, "academic_mentors"), {
+        await addDoc(collection(db, "student_counsellors"), {
           uid: cred.user.uid,
-          tutorId: formTutorId.trim(),
+          counsellorId: formCounsellorId.trim(),
           name: formName.trim(),
           email: formEmail.trim(),
-          department: formDepartment,
+          specialisation: formSpecialisation.trim(),
           status: formStatus,
-          role: "academic_mentor",
+          role: "student_counsellor",
           createdAt: serverTimestamp(),
         });
-        toast.success("Academic Mentor account created successfully");
+        toast.success("Student Counsellor account created successfully");
       }
       setIsDialogOpen(false);
     } catch (err) {
@@ -164,59 +184,57 @@ export default function AdminTutorsPage() {
           toast.error(`Failed to create account: ${err.message}`);
         }
       } else {
-        toast.error("Failed to save academic mentor. Please try again.");
+        toast.error("Failed to save student counsellor. Please try again.");
       }
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSetInactive = async (tutor: Tutor) => {
+  const handleSetInactive = async (counsellor: Counsellor) => {
     try {
-      await updateDoc(doc(db, "academic_mentors", tutor.id), { status: "inactive" });
-      toast.success(`${tutor.name} set to inactive`);
+      await updateDoc(doc(db, "student_counsellors", counsellor.id), { status: "inactive" });
+      toast.success(`${counsellor.name} set to inactive`);
     } catch {
-      toast.error("Failed to update tutor status.");
+      toast.error("Failed to update counsellor status.");
     }
   };
 
-  const handleSetActive = async (tutor: Tutor) => {
+  const handleSetActive = async (counsellor: Counsellor) => {
     try {
-      await updateDoc(doc(db, "academic_mentors", tutor.id), { status: "active" });
-      toast.success(`${tutor.name} set to active`);
+      await updateDoc(doc(db, "student_counsellors", counsellor.id), { status: "active" });
+      toast.success(`${counsellor.name} set to active`);
     } catch {
-      toast.error("Failed to update tutor status.");
+      toast.error("Failed to update counsellor status.");
     }
   };
 
-  const filtered = tutors.filter((t) => {
+  const filtered = counsellors.filter((c) => {
     const matchesSearch =
-      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.tutorId.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDept =
-      departmentFilter === "all" || t.department === departmentFilter;
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.counsellorId.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus =
-      statusFilter === "all" || t.status === statusFilter;
-    return matchesSearch && matchesDept && matchesStatus;
+      statusFilter === "all" || c.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
 
-  const activeTutors = tutors.filter((t) => t.status === "active").length;
-  const inactiveTutors = tutors.filter((t) => t.status === "inactive").length;
+  const activeCounsellors = counsellors.filter((c) => c.status === "active").length;
+  const inactiveCounsellors = counsellors.filter((c) => c.status === "inactive").length;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Academic Mentors</h1>
+          <h1 className="text-3xl font-bold">Student Counsellors</h1>
           <p className="text-muted-foreground">
-            Manage academic mentors assigned to students
+            Manage student counsellors available for student appointments
           </p>
         </div>
         <Button className="gap-2" onClick={openAddDialog}>
           <UserPlus className="h-4 w-4" />
-          Add Academic Mentor
+          Add Student Counsellor
         </Button>
       </div>
 
@@ -224,8 +242,8 @@ export default function AdminTutorsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
-            <CardDescription>Total Academic Mentors</CardDescription>
-            <CardTitle className="text-3xl">{tutors.length}</CardTitle>
+            <CardDescription>Total Student Counsellors</CardDescription>
+            <CardTitle className="text-3xl">{counsellors.length}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Registered accounts</p>
@@ -235,7 +253,7 @@ export default function AdminTutorsPage() {
           <CardHeader className="pb-3">
             <CardDescription>Active</CardDescription>
             <CardTitle className="text-3xl text-green-600">
-              {activeTutors}
+              {activeCounsellors}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -246,7 +264,7 @@ export default function AdminTutorsPage() {
           <CardHeader className="pb-3">
             <CardDescription>Inactive</CardDescription>
             <CardTitle className="text-3xl text-gray-500">
-              {inactiveTutors}
+              {inactiveCounsellors}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -258,8 +276,8 @@ export default function AdminTutorsPage() {
       {/* Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Academic Mentor Directory</CardTitle>
-          <CardDescription>All registered academic mentors</CardDescription>
+          <CardTitle>Student Counsellor Directory</CardTitle>
+          <CardDescription>All registered student counsellors</CardDescription>
         </CardHeader>
         <CardContent>
           {/* Filters */}
@@ -274,18 +292,6 @@ export default function AdminTutorsPage() {
                 autoComplete="off"
               />
             </div>
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-full sm:w-[220px]">
-                <SelectValue placeholder="All Departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
-                <SelectItem value="Business School">Business School</SelectItem>
-                <SelectItem value="School of Computing">
-                  School of Computing
-                </SelectItem>
-              </SelectContent>
-            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[140px]">
                 <SelectValue placeholder="All Status" />
@@ -301,61 +307,51 @@ export default function AdminTutorsPage() {
           {/* Table */}
           {loading ? (
             <div className="text-center py-12 text-muted-foreground">
-              Loading tutors…
+              Loading counsellors…
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No tutors found matching your criteria</p>
+              <p>No student counsellors found matching your criteria</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Staff ID
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Name
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Email
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Department
-                    </th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">
-                      Status
-                    </th>
-                    <th className="text-right font-medium text-muted-foreground px-4 py-3">
-                      Actions
-                    </th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Staff ID</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Specialisation</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                    <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((tutor) => (
+                  {filtered.map((counsellor) => (
                     <tr
-                      key={tutor.id}
+                      key={counsellor.id}
                       className="border-b last:border-0 hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{tutor.tutorId || '—'}</td>
-                      <td className="px-4 py-3 font-medium">{tutor.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {tutor.email}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {tutor.department}
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{counsellor.counsellorId || '—'}</td>
+                      <td className="px-4 py-3 font-medium">{counsellor.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{counsellor.email}</td>
+                      <td className="px-4 py-3">
+                        {counsellor.specialisation ? (
+                          <Badge className={getSpecialisationBadgeClass(counsellor.specialisation)}>
+                            {counsellor.specialisation}
+                          </Badge>
+                        ) : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <Badge
                           className={
-                            tutor.status === "active"
+                            counsellor.status === "active"
                               ? "bg-green-100 text-green-800 border-green-200"
                               : "bg-gray-100 text-gray-600 border-gray-200"
                           }
                         >
-                          {tutor.status}
+                          {counsellor.status}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -364,17 +360,17 @@ export default function AdminTutorsPage() {
                             size="sm"
                             variant="outline"
                             className="gap-1"
-                            onClick={() => openEditDialog(tutor)}
+                            onClick={() => openEditDialog(counsellor)}
                           >
                             <Edit className="h-3.5 w-3.5" />
                             Edit
                           </Button>
-                          {tutor.status === "active" ? (
+                          {counsellor.status === "active" ? (
                             <Button
                               size="sm"
                               variant="outline"
                               className="gap-1 text-orange-600 hover:text-orange-600 hover:bg-orange-50"
-                              onClick={() => handleSetInactive(tutor)}
+                              onClick={() => handleSetInactive(counsellor)}
                             >
                               <UserX className="h-3.5 w-3.5" />
                               Deactivate
@@ -384,7 +380,7 @@ export default function AdminTutorsPage() {
                               size="sm"
                               variant="outline"
                               className="gap-1 text-green-600 hover:text-green-600 hover:bg-green-50"
-                              onClick={() => handleSetActive(tutor)}
+                              onClick={() => handleSetActive(counsellor)}
                             >
                               Activate
                             </Button>
@@ -401,16 +397,16 @@ export default function AdminTutorsPage() {
       </Card>
 
       {/* Add / Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setEditingTutor(null); setFormTutorId(''); setFormName(''); setFormEmail(''); setFormDepartment(''); setFormStatus('active'); setFormPassword(''); setFormConfirmPassword(''); } setIsDialogOpen(open); }}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setEditingCounsellor(null); setFormCounsellorId(''); setFormName(''); setFormEmail(''); setFormSpecialisation(''); setFormStatus('active'); setFormPassword(''); setFormConfirmPassword(''); } setIsDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {editingTutor ? "Edit Academic Mentor" : "Add Academic Mentor"}
+              {editingCounsellor ? "Edit Student Counsellor" : "Add Student Counsellor"}
             </DialogTitle>
             <DialogDescription>
-              {editingTutor
-                ? "Update the academic mentor's information"
-                : "Add a new academic mentor to the system"}
+              {editingCounsellor
+                ? "Update the student counsellor's information"
+                : "Add a new student counsellor to the system"}
             </DialogDescription>
           </DialogHeader>
 
@@ -418,24 +414,24 @@ export default function AdminTutorsPage() {
             <input type="text" style={{display:'none'}} autoComplete="username" readOnly />
             <input type="password" style={{display:'none'}} autoComplete="current-password" readOnly />
             <div className="space-y-2">
-              <Label htmlFor="tutorStaffId">
+              <Label htmlFor="counsellorStaffId">
                 Staff ID <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="tutorStaffId"
+                id="counsellorStaffId"
                 autoComplete="off"
                 placeholder="Enter ID"
-                value={formTutorId}
-                onChange={(e) => setFormTutorId(e.target.value)}
+                value={formCounsellorId}
+                onChange={(e) => setFormCounsellorId(e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="tutorName">
+              <Label htmlFor="counsellorName">
                 Full Name <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="tutorName"
+                id="counsellorName"
                 autoComplete="off"
                 placeholder="Enter full name"
                 value={formName}
@@ -444,11 +440,11 @@ export default function AdminTutorsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="tutorEmail">
+              <Label htmlFor="counsellorEmail">
                 Email <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="tutorEmail"
+                id="counsellorEmail"
                 type="email"
                 autoComplete="off"
                 placeholder="Enter email address"
@@ -457,14 +453,14 @@ export default function AdminTutorsPage() {
               />
             </div>
 
-            {!editingTutor && (
+            {!editingCounsellor && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="tutorPassword">
+                  <Label htmlFor="counsellorPassword">
                     Temporary Password <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="tutorPassword"
+                    id="counsellorPassword"
                     type="password"
                     autoComplete="new-password"
                     placeholder="Enter temporary password"
@@ -476,31 +472,31 @@ export default function AdminTutorsPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="tutorDepartment">
-                Department <span className="text-red-500">*</span>
+              <Label htmlFor="counsellorSpecialisation">
+                Specialisation <span className="text-red-500">*</span>
               </Label>
-              <Select value={formDepartment} onValueChange={setFormDepartment}>
-                <SelectTrigger id="tutorDepartment">
-                  <SelectValue placeholder="Select department" />
+              <Select
+                value={formSpecialisation}
+                onValueChange={setFormSpecialisation}
+              >
+                <SelectTrigger id="counsellorSpecialisation">
+                  <SelectValue placeholder="Select specialisation" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Business School">Business School</SelectItem>
-                  <SelectItem value="School of Computing">
-                    School of Computing
-                  </SelectItem>
+                  {SPECIALISATIONS.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="tutorStatus">Status</Label>
+              <Label htmlFor="counsellorStatus">Status</Label>
               <Select
                 value={formStatus}
-                onValueChange={(v) =>
-                  setFormStatus(v as "active" | "inactive")
-                }
+                onValueChange={(v) => setFormStatus(v as "active" | "inactive")}
               >
-                <SelectTrigger id="tutorStatus">
+                <SelectTrigger id="counsellorStatus">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -520,7 +516,7 @@ export default function AdminTutorsPage() {
               Cancel
             </Button>
             <Button size="sm" disabled={isSaving} onClick={handleSave}>
-              {isSaving ? "Creating…" : editingTutor ? "Save Changes" : "Create Account"}
+              {isSaving ? "Creating…" : editingCounsellor ? "Save Changes" : "Create Account"}
             </Button>
           </DialogFooter>
         </DialogContent>

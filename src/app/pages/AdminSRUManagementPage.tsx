@@ -118,7 +118,7 @@ export default function AdminSRUManagementPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">SRU Management</h1>
-        <p className="text-muted-foreground">Monitor SRU staff activity and interventions</p>
+        <p className="text-muted-foreground">Monitor Student Support Advisor activity and interventions</p>
       </div>
 
       {/* Summary Cards */}
@@ -208,13 +208,13 @@ export default function AdminSRUManagementPage() {
         {/* SRU Staff Table */}
         <Card>
           <CardHeader>
-            <CardTitle>SRU Staff</CardTitle>
+            <CardTitle>Student Support Advisors</CardTitle>
             <p className="text-sm text-muted-foreground">Staff assigned to the Student Records Unit</p>
           </CardHeader>
           <CardContent>
             {sruStaff.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground text-sm">
-                No SRU staff accounts found
+                No Student Support Advisor accounts found
               </div>
             ) : (
               <div className="overflow-x-auto">

@@ -103,11 +103,11 @@ export default function SRUDashboard() {
   const totalStudents = students.length;
   const highRisk = students.filter((s) => s.riskLevel === 'high').length;
   const mediumRisk = students.filter((s) => s.riskLevel === 'medium').length;
-  const lowAttendance = students.filter((s) => s.attendancePercentage < 75).length;
+  const lowAttendance = students.filter((s) => s.attendancePercentage < 80).length;
 
   // Top 5 students needing immediate attention: high risk OR low attendance, sorted by riskScore desc
   const needsAttention = [...students]
-    .filter((s) => s.riskLevel === 'high' || s.attendancePercentage < 75)
+    .filter((s) => s.riskLevel === 'high' || s.attendancePercentage < 80)
     .sort((a, b) => b.riskScore - a.riskScore)
     .slice(0, 5);
 
@@ -121,7 +121,7 @@ export default function SRUDashboard() {
     return {
       programme: prog,
       avgAttendance,
-      below75: group.filter((s) => s.attendancePercentage < 75).length,
+      below75: group.filter((s) => s.attendancePercentage < 80).length,
       consecutiveAbsenceRisk: group.filter((s) => s.consecutiveAbsences >= 3).length,
     };
   });
@@ -213,7 +213,7 @@ export default function SRUDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold text-orange-600">{lowAttendance}</div>
-            <p className="text-xs text-muted-foreground mt-1">Below 75% attendance</p>
+            <p className="text-xs text-muted-foreground mt-1">Below 80% attendance</p>
           </CardContent>
         </Card>
       </div>
@@ -267,7 +267,7 @@ export default function SRUDashboard() {
                       <div className="flex items-center gap-2 mt-1">
                         <span
                           className={`text-xs font-medium ${
-                            student.attendancePercentage < 75 ? 'text-red-600' : 'text-green-600'
+                            student.attendancePercentage < 80 ? 'text-red-600' : 'text-green-600'
                           }`}
                         >
                           {student.attendancePercentage}% attendance
@@ -312,7 +312,7 @@ export default function SRUDashboard() {
                     <th className="text-left font-medium text-muted-foreground px-3 py-2">Programme</th>
                     <th className="text-center font-medium text-muted-foreground px-3 py-2">Avg Att %</th>
                     <th className="text-center font-medium text-muted-foreground px-3 py-2">
-                      <span className="text-orange-600">Below 75%</span>
+                      <span className="text-orange-600">Below 80%</span>
                     </th>
                     <th className="text-center font-medium text-muted-foreground px-3 py-2">
                       <span className="text-red-600">Consec. Risk</span>
@@ -332,7 +332,7 @@ export default function SRUDashboard() {
                         {row.avgAttendance !== null ? (
                           <span
                             className={`font-semibold text-sm ${
-                              row.avgAttendance < 75 ? 'text-red-600' : 'text-green-600'
+                              row.avgAttendance < 80 ? 'text-red-600' : 'text-green-600'
                             }`}
                           >
                             {row.avgAttendance}%

@@ -125,7 +125,7 @@ export default function ReportsPage() {
       <div className="flex items-start gap-3 p-4 border rounded-lg bg-blue-50 border-blue-200">
         <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-blue-800">
-          Detailed reports are available to SRU Staff and Registry Staff from their respective dashboards.
+          Detailed reports are available to Student Support Advisors and Registry from their respective dashboards.
         </p>
       </div>
     </div>

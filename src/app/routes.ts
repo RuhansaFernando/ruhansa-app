@@ -29,12 +29,22 @@ import AdminCounselorsPage from './pages/AdminCounselorsPage';
 import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
 import AdminAlertsPage from './pages/AdminAlertsPage';
 import AdminTutorsPage from './pages/AdminTutorsPage';
+import AdminCounsellorsPage from './pages/AdminCounsellorsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminSRUPage from './pages/AdminSRUPage';
+import AdminRegistryPage from './pages/AdminRegistryPage';
+import AdminAcademicPage from './pages/AdminAcademicPage';
 import AdminSRUManagementPage from './pages/AdminSRUManagementPage';
 import AdminRegistryManagementPage from './pages/AdminRegistryManagementPage';
 import RegistryModulesPage from './pages/RegistryModulesPage';
 import RegistryGradesPage from './pages/RegistryGradesPage';
 import RegistryReportsPage from './pages/RegistryReportsPage';
+import RegistryStudentDetailsPage from './pages/RegistryStudentDetailsPage';
+import AcademicUploadPage from './pages/AcademicUploadPage';
+import MentorDashboard from './pages/MentorDashboard';
+import CounsellorDashboard from './pages/CounsellorDashboard';
+import ChangePasswordPage from './pages/ChangePasswordPage';
+import AvailabilitySettingsPage from './pages/AvailabilitySettingsPage';
 import {
   RedirectToLogin,
   NotFound,
@@ -89,6 +99,10 @@ export const router = createBrowserRouter([
         path: 'settings',
         Component: SettingsPage,
       },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
     ],
   },
   {
@@ -110,6 +124,10 @@ export const router = createBrowserRouter([
       {
         path: 'settings',
         Component: SettingsPage,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
       },
     ],
   },
@@ -141,6 +159,10 @@ export const router = createBrowserRouter([
         path: 'settings',
         Component: SettingsPage,
       },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
     ],
   },
   {
@@ -170,6 +192,10 @@ export const router = createBrowserRouter([
       {
         path: 'settings',
         Component: SettingsPage,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
       },
     ],
   },
@@ -238,12 +264,32 @@ export const router = createBrowserRouter([
         Component: AdminRegistryManagementPage,
       },
       {
+        path: 'sru-staff',
+        Component: AdminSRUPage,
+      },
+      {
+        path: 'registry-staff',
+        Component: AdminRegistryPage,
+      },
+      {
+        path: 'academic-staff',
+        Component: AdminAcademicPage,
+      },
+      {
+        path: 'counsellors',
+        Component: AdminCounsellorsPage,
+      },
+      {
         path: 'settings',
         Component: SettingsPage,
       },
       {
         path: 'interventions',
         Component: InterventionManagementPage,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
       },
     ],
   },
@@ -260,6 +306,10 @@ export const router = createBrowserRouter([
         Component: AdminRegistryManagementPage,
       },
       {
+        path: 'students',
+        Component: RegistryStudentDetailsPage,
+      },
+      {
         path: 'modules',
         Component: RegistryModulesPage,
       },
@@ -270,6 +320,72 @@ export const router = createBrowserRouter([
       {
         path: 'reports',
         Component: RegistryReportsPage,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
+    ],
+  },
+  {
+    path: '/academic',
+    Component: DashboardLayout,
+    children: [
+      {
+        index: true,
+        loader: () => redirect('/academic/upload'),
+      },
+      {
+        path: 'upload',
+        Component: AcademicUploadPage,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
+    ],
+  },
+  {
+    path: '/mentor',
+    Component: DashboardLayout,
+    children: [
+      {
+        index: true,
+        loader: () => redirect('/mentor/dashboard'),
+      },
+      {
+        path: 'dashboard',
+        Component: MentorDashboard,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
+      {
+        path: 'availability',
+        Component: AvailabilitySettingsPage,
+      },
+    ],
+  },
+  {
+    path: '/counsellor',
+    Component: DashboardLayout,
+    children: [
+      {
+        index: true,
+        loader: () => redirect('/counsellor/dashboard'),
+      },
+      {
+        path: 'dashboard',
+        Component: CounsellorDashboard,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
+      {
+        path: 'availability',
+        Component: AvailabilitySettingsPage,
       },
     ],
   },
@@ -292,6 +408,14 @@ export const router = createBrowserRouter([
       {
         path: 'student/:studentId',
         Component: StudentProfile,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
+      },
+      {
+        path: 'availability',
+        Component: AvailabilitySettingsPage,
       },
     ],
   },

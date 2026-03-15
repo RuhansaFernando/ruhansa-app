@@ -78,7 +78,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           contactNumber: d.contactNumber ?? undefined,
           intake: d.intake ?? undefined,
           enrollmentDate: d.enrollmentDate ?? undefined,
-          personalTutor: d.personalTutor ?? undefined,
+          academicMentor: d.academicMentor ?? undefined,
           status: d.status ?? "active",
           createdAt: d.createdAt ?? undefined,
         };
