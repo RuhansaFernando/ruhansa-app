@@ -179,7 +179,7 @@ export default function MentorStudentsPage() {
 
     if (!calendarLink) {
       try {
-        const usersSnap = await getDocs(query(collection(db, 'users'), where('email', '==', user?.email)));
+        const usersSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email)));
         if (!usersSnap.empty) {
           calendarLink = usersSnap.docs[0].data().calendarLink;
         }

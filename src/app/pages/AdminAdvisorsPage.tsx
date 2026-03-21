@@ -163,14 +163,6 @@ export default function AdminAdvisorsPage() {
         joinedDate: new Date().toISOString().split('T')[0],
         createdAt: serverTimestamp(),
       });
-      await addDoc(collection(db, 'users'), {
-        uid: cred.user.uid,
-        name: addName.trim(),
-        email: addEmail.trim(),
-        role: ['advisor'],
-        status: addStatus,
-        createdAt: serverTimestamp(),
-      });
       try {
         await emailjs.send('service_y8aewpn', 'template_welcome', {
           to_name: addName.trim(),
@@ -268,14 +260,6 @@ export default function AdminAdvisorsPage() {
           maxStudentCapacity: 40,
           joinedDate: new Date().toISOString().split('T')[0],
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, 'users'), {
-          uid: cred.user.uid,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
-          role: ['advisor'],
-          status: 'active',
           createdAt: serverTimestamp(),
         });
         success++;

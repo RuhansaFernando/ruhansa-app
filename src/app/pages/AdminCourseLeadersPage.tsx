@@ -132,14 +132,6 @@ export default function AdminCourseLeadersPage() {
         level: formLevel,
         createdAt: serverTimestamp(),
       });
-      await addDoc(collection(db, 'users'), {
-        uid: cred.user.uid,
-        name: addName.trim(),
-        email: addEmail.trim(),
-        role: ['course_leader'],
-        status: addStatus,
-        createdAt: serverTimestamp(),
-      });
       try {
         await emailjs.send('service_y8aewpn', 'template_welcome', {
           to_name: addName.trim(),
@@ -230,14 +222,6 @@ export default function AdminCourseLeadersPage() {
           programme: row.Programme?.trim() ?? '',
           level: row.Level?.trim() ?? '',
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, 'users'), {
-          uid: cred.user.uid,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
-          role: ['course_leader'],
-          status: 'active',
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();
@@ -447,10 +431,10 @@ export default function AdminCourseLeadersPage() {
               <Select value={formLevel} onValueChange={setFormLevel}>
                 <SelectTrigger id="add-level"><SelectValue placeholder="— Select level —" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Year 1">Year 1</SelectItem>
-                  <SelectItem value="Year 2">Year 2</SelectItem>
-                  <SelectItem value="Year 3">Year 3</SelectItem>
-                  <SelectItem value="Year 4">Year 4</SelectItem>
+                  <SelectItem value="Year 1">1st Year</SelectItem>
+                  <SelectItem value="Year 2">2nd Year</SelectItem>
+                  <SelectItem value="Year 3">3rd Year</SelectItem>
+                  <SelectItem value="Year 4">4th Year</SelectItem>
                 </SelectContent>
               </Select>
             </div>

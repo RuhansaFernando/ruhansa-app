@@ -151,14 +151,6 @@ export default function AdminTutorsPage() {
           role: "academic_mentor",
           createdAt: serverTimestamp(),
         });
-        await addDoc(collection(db, "users"), {
-          uid: cred.user.uid,
-          name: formName.trim(),
-          email: formEmail.trim(),
-          role: ["academic_mentor"],
-          status: formStatus,
-          createdAt: serverTimestamp(),
-        });
         try {
           await emailjs.send('service_y8aewpn', 'template_welcome', {
             to_name: formName.trim(),
@@ -240,14 +232,6 @@ export default function AdminTutorsPage() {
           role: 'academic_mentor',
           status: 'active',
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, "users"), {
-          uid: cred.user.uid,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
-          role: ['academic_mentor'],
-          status: 'active',
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

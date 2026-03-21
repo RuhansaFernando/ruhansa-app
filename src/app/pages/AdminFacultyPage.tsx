@@ -65,7 +65,7 @@ export default function AdminFacultyPage() {
   // Add dialog
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
-  const [addEmployeeId, setAddEmployeeId] = useState("");
+  const [addStaffId, setAddStaffId] = useState("");
   const [addEmail, setAddEmail] = useState("");
   const [addDepartment, setAddDepartment] = useState("");
   const [addStatus, setAddStatus] = useState<"active" | "inactive">("active");
@@ -122,22 +122,22 @@ export default function AdminFacultyPage() {
   });
 
   const openAddDialog = () => {
-    setAddName(""); setAddEmployeeId(""); setAddEmail("");
+    setAddName(""); setAddStaffId(""); setAddEmail("");
     setAddDepartment(""); setAddStatus("active");
     setIsAddOpen(true);
   };
 
   const handleAddFaculty = async () => {
-    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addDepartment) {
+    if (!addName.trim() || !addStaffId.trim() || !addEmail.trim() || !addDepartment) {
       toast.error("Please fill in all required fields");
       return;
     }
-    const tempPassword = `${addEmployeeId.trim()}@DropGuard`;
+    const tempPassword = `${addStaffId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
       const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), tempPassword);
       await secondaryAuth.signOut();
-      await setDoc(doc(db, "faculty", addEmployeeId.trim()), {
+      await setDoc(doc(db, "faculty", addStaffId.trim()), {
         name: addName.trim(),
         email: addEmail.trim(),
         department: addDepartment,
@@ -149,19 +149,11 @@ export default function AdminFacultyPage() {
         joinedDate: new Date().toISOString().split("T")[0],
         createdAt: serverTimestamp(),
       });
-      await addDoc(collection(db, "users"), {
-        uid: cred.user.uid,
-        name: addName.trim(),
-        email: addEmail.trim(),
-        role: ["faculty"],
-        status: addStatus,
-        createdAt: serverTimestamp(),
-      });
       try {
         await emailjs.send('service_y8aewpn', 'template_welcome', {
           to_name: addName.trim(),
           to_email: addEmail.trim(),
-          user_id: addEmployeeId.trim(),
+          user_id: addStaffId.trim(),
           temp_password: tempPassword,
           login_url: 'http://localhost:5173',
         }, 'pqfkLZ1zbahk5O2Vi');
@@ -253,14 +245,6 @@ export default function AdminFacultyPage() {
           courses: [],
           joinedDate: new Date().toISOString().split("T")[0],
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, "users"), {
-          uid: cred.user.uid,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
-          role: ["faculty"],
-          status: "active",
           createdAt: serverTimestamp(),
         });
         try {
@@ -460,40 +444,38 @@ export default function AdminFacultyPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(""); setAddEmployeeId(""); setAddEmail(""); setAddDepartment(""); setAddStatus("active"); } setIsAddOpen(open); }}>
+      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(""); setAddStaffId(""); setAddEmail(""); setAddDepartment(""); setAddStatus("active"); } setIsAddOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Faculty</DialogTitle>
             <DialogDescription>Create a new faculty account</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <input type="text" style={{ display: "none" }} autoComplete="username" readOnly />
-            <input type="password" style={{ display: "none" }} autoComplete="current-password" readOnly />
             <div className="space-y-2">
-              <Label htmlFor="add-empid">Employee ID <span className="text-red-500">*</span></Label>
-              <Input id="add-empid" placeholder="e.g. EMP2024001" value={addEmployeeId} onChange={(e) => setAddEmployeeId(e.target.value)} autoComplete="off" />
+              <Label>Staff ID <span className="text-red-500">*</span></Label>
+              <Input placeholder="e.g. FAC001" value={addStaffId} onChange={(e) => setAddStaffId(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-name">Full Name <span className="text-red-500">*</span></Label>
-              <Input id="add-name" placeholder="Enter full name" value={addName} onChange={(e) => setAddName(e.target.value)} autoComplete="off" />
+              <Label>Full Name <span className="text-red-500">*</span></Label>
+              <Input placeholder="Enter full name" value={addName} onChange={(e) => setAddName(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
-              <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
+              <Label>Email <span className="text-red-500">*</span></Label>
+              <Input type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-department">Department <span className="text-red-500">*</span></Label>
+              <Label>Department <span className="text-red-500">*</span></Label>
               <Select value={addDepartment} onValueChange={setAddDepartment}>
-                <SelectTrigger id="add-department"><SelectValue placeholder="— Select —" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
                   {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-status">Status</Label>
+              <Label>Status</Label>
               <Select value={addStatus} onValueChange={(v) => setAddStatus(v as "active" | "inactive")}>
-                <SelectTrigger id="add-status"><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>

@@ -484,13 +484,9 @@ export default function RegistryStudentDetailsPage() {
                   <SelectValue placeholder="— Select Intake —" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2022 Spring">2022 Spring</SelectItem>
-                  <SelectItem value="2022 Fall">2022 Fall</SelectItem>
-                  <SelectItem value="2023 Spring">2023 Spring</SelectItem>
-                  <SelectItem value="2023 Fall">2023 Fall</SelectItem>
-                  <SelectItem value="2024 Spring">2024 Spring</SelectItem>
-                  <SelectItem value="2024 Fall">2024 Fall</SelectItem>
-                  <SelectItem value="2025 Fall">2025 Fall</SelectItem>
+                  {Array.from({ length: 13 }, (_, i) => String(2018 + i)).map((y) => (
+                    <SelectItem key={y} value={y}>{y}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

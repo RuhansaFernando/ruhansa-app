@@ -23,6 +23,11 @@ import {
 import { db } from "../../firebase";
 import Papa from "papaparse";
 
+const CSV_TEMPLATE_HEADERS =
+  "StudentID,FullName,Email,Gender,DateOfBirth,ContactNumber,Faculty,Programme,YearOfStudy,Intake,EnrollmentDate,StudentType,Address,EmergencyContactName,EmergencyContactNumber,EmergencyContactRelationship,Nationality,Religion";
+const CSV_TEMPLATE_SAMPLE =
+  "STD020,Amal Perera,amal.perera@university.lk,Male,2000-05-15,0771234567,Business School,BSc (Hons) Business Information Systems,Year 1,2025,2025-01-15,Full-time,123 Main Street Colombo,Nimal Perera,0779876543,Father,Sri Lankan,Buddhist";
+
 interface EnrolledStudent {
   id: string;
   studentId: string;
@@ -40,11 +45,6 @@ interface EnrolledStudent {
   status: string;
   accountActivated: boolean;
 }
-
-const CSV_TEMPLATE_HEADERS =
-  "StudentID,FullName,Email,Gender,DateOfBirth,ContactNumber,Faculty,Programme,YearOfStudy,Intake,EnrollmentDate,StudentType";
-const CSV_TEMPLATE_SAMPLE =
-  "STD020,Amal Perera,amal.perera@university.lk,Male,2000-05-15,0771234567,Business School,BSc (Hons) Business Information Systems,Year 1,2025,2025-01-15,Full-time";
 
 export default function RegistryEnrollmentPage() {
   const [students, setStudents] = useState<EnrolledStudent[]>([]);
@@ -142,6 +142,12 @@ export default function RegistryEnrollmentPage() {
         intake: row["Intake"]?.trim() ?? "",
         enrollmentDate: row["EnrollmentDate"]?.trim() ?? "",
         studentType: row["StudentType"]?.trim() ?? "",
+        address: row["Address"]?.trim() ?? "",
+        emergencyContactName: row["EmergencyContactName"]?.trim() ?? "",
+        emergencyContactNumber: row["EmergencyContactNumber"]?.trim() ?? "",
+        emergencyContactRelationship: row["EmergencyContactRelationship"]?.trim() ?? "",
+        nationality: row["Nationality"]?.trim() ?? "",
+        religion: row["Religion"]?.trim() ?? "",
         status: "pending",
         accountActivated: false,
         gpa: 0,
@@ -160,7 +166,6 @@ export default function RegistryEnrollmentPage() {
 
     setIsUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-
     toast.success(`${created} student${created !== 1 ? "s" : ""} enrolled, ${duplicates} duplicate${duplicates !== 1 ? "s" : ""} skipped`);
   };
 

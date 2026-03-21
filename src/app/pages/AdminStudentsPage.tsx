@@ -37,16 +37,15 @@ import {
   Upload,
   ArrowRight,
   Loader2,
+  PlayCircle,
 } from "lucide-react";
 import {
   collection,
   onSnapshot,
   updateDoc,
   doc,
-  serverTimestamp,
   query,
   orderBy,
-  setDoc,
   getDocs,
   where,
 } from "firebase/firestore";
@@ -54,7 +53,6 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import emailjs from '@emailjs/browser';
 import { db, secondaryAuth } from "../../firebase";
 import { FirebaseError } from "firebase/app";
-import { BulkImportModal } from "../components/BulkImportModal";
 
 interface StudentRecord {
   id: string;
@@ -65,6 +63,7 @@ interface StudentRecord {
   programme: string;
   level: string;
   status: "active" | "inactive";
+  accountActivated: boolean;
   riskLevel: string;
   riskScore: number;
   gpa: number;
@@ -98,8 +97,10 @@ export default function AdminStudentsPage() {
   const [editEmail, setEditEmail] = useState("");
   const [isEditSaving, setIsEditSaving] = useState(false);
 
-  // Bulk import
-  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  // Bulk activate pending accounts
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activateProgress, setActivateProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Mentor assignment
   const [mentorAssignOpen, setMentorAssignOpen] = useState(false);
@@ -123,6 +124,7 @@ export default function AdminStudentsPage() {
             programme: d.data().programme ?? "",
             level: d.data().level ?? "",
             status: d.data().status ?? "active",
+            accountActivated: d.data().accountActivated ?? false,
             riskLevel: d.data().riskLevel ?? "low",
             riskScore: d.data().riskScore ?? 0,
             gpa: d.data().gpa ?? 0,
@@ -278,64 +280,79 @@ export default function AdminStudentsPage() {
     const newStatus = student.status === "active" ? "inactive" : "active";
     try {
       await updateDoc(doc(db, "students", student.id), { status: newStatus });
-      toast.success(newStatus === "active" ? "Student account activated" : "Student account deactivated");
+      if (newStatus === "active") {
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: student.name,
+            to_email: student.email,
+            student_id: student.studentId,
+            password: `${student.studentId}@DropGuard`,
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
+        toast.success("Student account activated and welcome email sent.");
+      } else {
+        toast.success("Student account deactivated.");
+      }
     } catch {
       toast.error("Failed to update status. Please try again.");
     }
   };
 
-  const handleBulkImport = async (rows: any[]) => {
-    let success = 0;
-    let failed = 0;
-    const errors: string[] = [];
+  const handleActivatePending = async () => {
+    const pending = students.filter((s) => !s.accountActivated || s.status !== "active");
+    if (pending.length === 0) {
+      toast.info("No pending students to activate.");
+      setActivateConfirmOpen(false);
+      return;
+    }
+    setActivating(true);
+    setActivateConfirmOpen(false);
+    setActivateProgress({ current: 0, total: pending.length });
+    let succeeded = 0;
 
-    for (const row of rows) {
-      if (!row.StudentID?.trim() || !row.FullName?.trim() || !row.Email?.trim()) {
-        failed++;
-        errors.push(`Row skipped — missing required fields (StudentID, FullName, or Email)`);
-        continue;
-      }
-      const studentId = row.StudentID.trim();
-      const tempPassword = `${studentId}@DropGuard`;
+    for (let i = 0; i < pending.length; i++) {
+      const student = pending[i];
+      setActivateProgress({ current: i + 1, total: pending.length });
+      const tempPassword = `${student.studentId}@DropGuard`;
       try {
-        const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, student.email, tempPassword);
         await secondaryAuth.signOut();
-        await setDoc(doc(db, "students", studentId), {
-          studentId,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
+        await updateDoc(doc(db, "students", student.id), {
           uid: cred.user.uid,
           status: "active",
-          faculty: row.Faculty?.trim() ?? "",
-          programme: row.Programme?.trim() ?? "",
-          level: row.Level?.trim() ?? "",
-          intake: row.Intake?.trim() ?? "",
-          gender: row.Gender?.trim() ?? "",
-          contactNumber: row.ContactNumber?.trim() ?? "",
-          enrollmentDate: row.EnrollmentDate?.trim() ?? "",
-          academicMentor: "",
-          gpa: 0,
-          attendancePercentage: 0,
-          consecutiveAbsences: 0,
-          riskLevel: "low",
-          riskScore: 0,
-          flagged: false,
-          dateOfBirth: "",
+          accountActivated: true,
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
         });
-        success++;
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: student.name,
+            to_email: student.email,
+            student_id: student.studentId,
+            password: tempPassword,
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn(`Welcome email failed for ${student.studentId}:`, emailErr);
+        }
+        succeeded++;
       } catch (err) {
-        failed++;
         if (err instanceof FirebaseError && err.code === "auth/email-already-in-use") {
-          errors.push(`${row.Email.trim()} — email already in use`);
+          // Account exists — just mark as activated in Firestore
+          await updateDoc(doc(db, "students", student.id), {
+            status: "active",
+            accountActivated: true,
+          });
+          succeeded++;
         } else {
-          errors.push(`${row.StudentID} — ${err instanceof FirebaseError ? err.message : "Unknown error"}`);
+          console.warn(`Failed to activate ${student.studentId}:`, err);
         }
       }
     }
 
-    return { success, failed, errors };
+    setActivating(false);
+    setActivateProgress(null);
+    toast.success(`${succeeded} account${succeeded !== 1 ? "s" : ""} activated successfully.`);
   };
 
   const handleMentorFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -400,9 +417,26 @@ export default function AdminStudentsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => setBulkImportOpen(true)}>
-            <Upload className="h-4 w-4" />
-            Bulk Import CSV
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => setActivateConfirmOpen(true)}
+            disabled={activating || students.filter((s) => !s.accountActivated || s.status !== "active").length === 0}
+          >
+            {activating ? (
+              <><Loader2 className="h-4 w-4 animate-spin" />
+                {activateProgress ? `Activating ${activateProgress.current} of ${activateProgress.total}…` : "Activating…"}
+              </>
+            ) : (
+              <><PlayCircle className="h-4 w-4" />
+                Activate Pending
+                {students.filter((s) => !s.accountActivated || s.status !== "active").length > 0 && (
+                  <span className="ml-1 bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5 rounded-full">
+                    {students.filter((s) => !s.accountActivated || s.status !== "active").length}
+                  </span>
+                )}
+              </>
+            )}
           </Button>
           <Button className="gap-2" onClick={openAddDialog}>
             <UserPlus className="h-4 w-4" />
@@ -579,14 +613,37 @@ export default function AdminStudentsPage() {
         </CardContent>
       </Card>
 
+      {/* Activate Pending Confirmation Dialog */}
+      <Dialog open={activateConfirmOpen} onOpenChange={setActivateConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Activate Pending Accounts</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const count = students.filter((s) => !s.accountActivated || s.status !== "active").length;
+                return `${count} student${count !== 1 ? "s are" : " is"} pending activation. Create Firebase Auth accounts and send welcome emails to all of them?`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setActivateConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleActivatePending}>
+              Confirm &amp; Activate All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Student Dialog */}
       <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) resetAddDialog(); setIsAddOpen(open); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Activate Student Account</DialogTitle>
             <DialogDescription>Enter a Student ID to look up their details.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             {/* Step 1 — always visible */}
             <div className="space-y-2">
               <Label htmlFor="form-studentId">Student ID <span className="text-red-500">*</span></Label>
@@ -651,7 +708,7 @@ export default function AdminStudentsPage() {
               </>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-4 border-t">
             <Button size="sm" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
             {autoFilled && (
               <Button size="sm" disabled={isSaving} onClick={handleAddStudent}>
@@ -709,14 +766,6 @@ export default function AdminStudentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Bulk Import Modal */}
-      <BulkImportModal
-        open={bulkImportOpen}
-        onOpenChange={setBulkImportOpen}
-        role="student"
-        onImport={handleBulkImport}
-      />
 
       {/* Mentor Assignment Dialog */}
       <Dialog open={mentorAssignOpen} onOpenChange={(open) => { if (!open) { setMentorData([]); setMentorHeaders([]); setMentorMapping({ studentId: '', mentorName: '' }); setMentorResult(null); } setMentorAssignOpen(open); }}>

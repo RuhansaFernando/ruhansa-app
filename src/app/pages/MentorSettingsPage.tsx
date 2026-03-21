@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Calendar, Save, Loader2 } from 'lucide-react';
 import { db } from '../../firebase';
-import { collection, query, where, getDocs, updateDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useAuth } from '../AuthContext';
 
@@ -21,22 +21,12 @@ export default function MentorSettingsPage() {
 
     const fetchDoc = async () => {
       try {
-        const q = query(collection(db, 'users'), where('email', '==', user.email));
+        const q = query(collection(db, 'academic_mentors'), where('email', '==', user.email));
         const snap = await getDocs(q);
         if (!snap.empty) {
           const d = snap.docs[0];
           setDocId(d.id);
           setCalendarLink(d.data().calendarLink ?? '');
-        } else {
-          // No document found — create one as fallback using the user's uid
-          const fallbackId = (user as any)?.uid ?? user.id;
-          await setDoc(doc(db, 'users', fallbackId), {
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            calendarLink: '',
-          });
-          setDocId(fallbackId);
         }
       } catch {
         toast.error('Failed to load settings.');
@@ -55,7 +45,7 @@ export default function MentorSettingsPage() {
     }
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', docId), { calendarLink });
+      await updateDoc(doc(db, 'academic_mentors', docId), { calendarLink });
       toast.success('Calendar link saved successfully');
     } catch {
       toast.error('Failed to save. Please try again.');

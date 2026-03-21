@@ -10,10 +10,12 @@ import { Search, Plus, Edit, Trash2, BookOpen, Loader2, Upload, Download } from 
 import { toast } from 'sonner';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, query, orderBy,
+  doc, serverTimestamp, query, orderBy, where, getDocs,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useAuth } from '../AuthContext';
 import { CsvDataImportModal } from '../components/CsvDataImportModal';
+
 
 interface Module {
   id: string;
@@ -22,9 +24,10 @@ interface Module {
   programme: string;
   faculty: string;
   yearOfStudy: string;
+  semester: string;
   credits: number;
   status: 'active' | 'inactive';
-  components: any[];
+  components: { name: string; weight: number }[];
 }
 
 interface Programme {
@@ -34,19 +37,30 @@ interface Programme {
 }
 
 const YEARS_OF_STUDY = ['Year 1', 'Year 2', 'Year 3', 'Year 4'];
+const YEAR_DISPLAY: Record<string, string> = {
+  'Year 1': '1st Year',
+  'Year 2': '2nd Year',
+  'Year 3': '3rd Year',
+  'Year 4': '4th Year',
+};
+const SEMESTERS = ['Semester 1', 'Semester 2'];
 const CREDITS_OPTIONS = ['10', '15', '20', '30', '40', '60'];
 
 const CSV_FIELDS = [
   { key: 'moduleCode', label: 'Module Code', required: true, sampleValue: 'CS401' },
   { key: 'moduleName', label: 'Module Name', required: true, sampleValue: 'Software Engineering' },
   { key: 'programme', label: 'Programme', required: true, sampleValue: 'BSc (Hons) Computer Science' },
-  { key: 'faculty', label: 'Faculty', required: false, sampleValue: 'School of Computing' },
   { key: 'yearOfStudy', label: 'Year of Study', required: false, sampleValue: 'Year 1' },
+  { key: 'semester', label: 'Semester', required: true, sampleValue: 'Semester 1' },
   { key: 'credits', label: 'Credits', required: false, sampleValue: '20' },
+  { key: 'component1Name', label: 'Component 1 Name', required: false, sampleValue: 'Coursework' },
+  { key: 'component1Weight', label: 'Component 1 Weight', required: false, sampleValue: '40' },
+  { key: 'component2Name', label: 'Component 2 Name', required: false, sampleValue: 'Exam' },
+  { key: 'component2Weight', label: 'Component 2 Weight', required: false, sampleValue: '60' },
   { key: 'status', label: 'Status', required: false, sampleValue: 'active' },
 ];
 
-const downloadTemplate = () => {
+const downloadTemplate = (faculty: string) => {
   const csv =
     CSV_FIELDS.map((f) => f.key).join(',') +
     '\n' +
@@ -55,17 +69,20 @@ const downloadTemplate = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'modules_template.csv';
+  a.download = `modules_template_${faculty.replace(/\s+/g, '_')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 };
 
-export default function AdminModulesPage() {
+export default function FacultyAdminModulesPage() {
+  const { user } = useAuth();
+  const [myFaculty, setMyFaculty] = useState('');
+  const [loadingFaculty, setLoadingFaculty] = useState(true);
+
   const [modules, setModules] = useState<Module[]>([]);
   const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [programmeFilter, setProgrammeFilter] = useState('all');
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -75,17 +92,45 @@ export default function AdminModulesPage() {
   const [deletingModule, setDeletingModule] = useState<Module | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Form state
   const [formCode, setFormCode] = useState('');
   const [formName, setFormName] = useState('');
   const [formProgramme, setFormProgramme] = useState('');
-  const [formFaculty, setFormFaculty] = useState('');
   const [formYear, setFormYear] = useState('');
+  const [formSemester, setFormSemester] = useState('');
   const [formCredits, setFormCredits] = useState('20');
+  const [formComp1Name, setFormComp1Name] = useState('');
+  const [formComp1Weight, setFormComp1Weight] = useState('');
+  const [formComp2Name, setFormComp2Name] = useState('');
+  const [formComp2Weight, setFormComp2Weight] = useState('');
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active');
 
+  // Fetch the faculty admin's faculty from Firestore
   useEffect(() => {
+    if (!user?.email) return;
+    const fetchFaculty = async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'faculty_administrators'), where('email', '==', user.email))
+        );
+        if (!snap.empty) {
+          setMyFaculty(snap.docs[0].data().department ?? '');
+        }
+      } catch {
+        toast.error('Failed to load faculty information.');
+      } finally {
+        setLoadingFaculty(false);
+      }
+    };
+    fetchFaculty();
+  }, [user?.email]);
+
+  // Once faculty is known, subscribe to modules and programmes for this faculty
+  useEffect(() => {
+    if (!myFaculty) return;
+
     const unsubM = onSnapshot(
-      query(collection(db, 'modules'), orderBy('moduleCode')),
+      query(collection(db, 'modules'), where('faculty', '==', myFaculty), orderBy('moduleCode')),
       (snap) => {
         setModules(
           snap.docs.map((d) => ({
@@ -95,6 +140,7 @@ export default function AdminModulesPage() {
             programme: d.data().programme ?? '',
             faculty: d.data().faculty ?? '',
             yearOfStudy: d.data().yearOfStudy ?? '',
+            semester: d.data().semester ?? '',
             credits: d.data().credits ?? 0,
             status: d.data().status ?? 'active',
             components: d.data().components ?? [],
@@ -103,8 +149,9 @@ export default function AdminModulesPage() {
         setLoading(false);
       }
     );
+
     const unsubP = onSnapshot(
-      query(collection(db, 'programmes'), orderBy('programmeName')),
+      query(collection(db, 'programmes'), where('faculty', '==', myFaculty), orderBy('programmeName')),
       (snap) => {
         setProgrammes(
           snap.docs.map((d) => ({
@@ -115,34 +162,28 @@ export default function AdminModulesPage() {
         );
       }
     );
-    return () => { unsubM(); unsubP(); };
-  }, []);
 
-  // When programme changes in form, auto-fill faculty
-  const handleProgrammeChange = (value: string) => {
-    setFormProgramme(value);
-    const found = programmes.find((p) => p.programmeName === value);
-    setFormFaculty(found?.faculty ?? '');
-  };
+    return () => { unsubM(); unsubP(); };
+  }, [myFaculty]);
 
   const filtered = modules.filter((m) => {
     const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      m.moduleCode.toLowerCase().includes(q) || m.moduleName.toLowerCase().includes(q);
-    const matchesProg = programmeFilter === 'all' || m.programme === programmeFilter;
-    return matchesSearch && matchesProg;
+    return m.moduleCode.toLowerCase().includes(q) || m.moduleName.toLowerCase().includes(q);
   });
 
   const activeCount = modules.filter((m) => m.status === 'active').length;
-  const uniqueProgCount = [...new Set(modules.map((m) => m.programme).filter(Boolean))].length;
 
   const resetForm = () => {
     setFormCode('');
     setFormName('');
     setFormProgramme('');
-    setFormFaculty('');
     setFormYear('');
+    setFormSemester('');
     setFormCredits('20');
+    setFormComp1Name('');
+    setFormComp1Weight('');
+    setFormComp2Name('');
+    setFormComp2Weight('');
     setFormStatus('active');
   };
 
@@ -153,49 +194,91 @@ export default function AdminModulesPage() {
     setFormCode(m.moduleCode);
     setFormName(m.moduleName);
     setFormProgramme(m.programme);
-    setFormFaculty(m.faculty);
     setFormYear(m.yearOfStudy);
+    setFormSemester(m.semester ?? '');
     setFormCredits(String(m.credits));
+    const c1 = m.components?.[0];
+    const c2 = m.components?.[1];
+    setFormComp1Name(c1?.name ?? '');
+    setFormComp1Weight(c1?.weight != null ? String(c1.weight) : '');
+    setFormComp2Name(c2?.name ?? '');
+    setFormComp2Weight(c2?.weight != null ? String(c2.weight) : '');
     setFormStatus(m.status);
     setIsDialogOpen(true);
   };
 
   const openDelete = (m: Module) => { setDeletingModule(m); setIsDeleteOpen(true); };
 
+  const buildComponents = () => {
+    const comps: { name: string; weight: number }[] = [];
+    if (formComp1Name.trim() && formComp1Weight !== '') {
+      comps.push({ name: formComp1Name.trim(), weight: Number(formComp1Weight) });
+    }
+    if (formComp2Name.trim() && formComp2Weight !== '') {
+      comps.push({ name: formComp2Name.trim(), weight: Number(formComp2Weight) });
+    }
+    return comps;
+  };
+
+  const validateComponents = () => {
+    const w1 = formComp1Weight !== '' ? Number(formComp1Weight) : null;
+    const w2 = formComp2Weight !== '' ? Number(formComp2Weight) : null;
+    const hasComp1 = formComp1Name.trim() !== '' || w1 !== null;
+    const hasComp2 = formComp2Name.trim() !== '' || w2 !== null;
+
+    if (hasComp1 && (!formComp1Name.trim() || w1 === null)) {
+      toast.error('Component 1: both name and weight are required.');
+      return false;
+    }
+    if (hasComp2 && (!formComp2Name.trim() || w2 === null)) {
+      toast.error('Component 2: both name and weight are required.');
+      return false;
+    }
+    if (hasComp1 || hasComp2) {
+      const total = (w1 ?? 0) + (w2 ?? 0);
+      if (total !== 100) {
+        toast.error(`Component weights must add up to 100% (currently ${total}%).`);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleSave = async () => {
-    if (!formCode.trim() || !formName.trim() || !formProgramme) {
-      toast.error('Module Code, Name, and Programme are required');
+    if (!formCode.trim() || !formName.trim() || !formProgramme || !formSemester) {
+      toast.error('Module Code, Name, Programme, and Semester are required.');
       return;
     }
+    if (!validateComponents()) return;
+
     const codeUpper = formCode.trim().toUpperCase();
     const duplicate = modules.find(
       (m) => m.moduleCode.toUpperCase() === codeUpper && m.id !== editingModule?.id
     );
     if (duplicate) {
-      toast.error('A module with this code already exists.');
+      toast.error('A module with this code already exists in your faculty.');
       return;
     }
+
     setIsSaving(true);
     try {
       const payload = {
         moduleCode: codeUpper,
         moduleName: formName.trim(),
         programme: formProgramme,
-        faculty: formFaculty,
+        faculty: myFaculty,
         yearOfStudy: formYear,
+        semester: formSemester,
         credits: Number(formCredits),
         status: formStatus,
+        components: buildComponents(),
       };
       if (editingModule) {
-        await updateDoc(doc(db, 'modules', editingModule.id), {
-          ...payload,
-          components: editingModule.components ?? [],
-        });
+        await updateDoc(doc(db, 'modules', editingModule.id), payload);
         toast.success('Module updated successfully');
       } else {
         await addDoc(collection(db, 'modules'), {
           ...payload,
-          components: [],
           createdAt: serverTimestamp(),
         });
         toast.success('Module added successfully');
@@ -228,20 +311,28 @@ export default function AdminModulesPage() {
     const errors: string[] = [];
     for (const row of rows) {
       try {
-        if (!row.moduleCode?.trim() || !row.moduleName?.trim() || !row.programme?.trim()) {
-          errors.push(`Skipped — missing Code, Name, or Programme: "${row.moduleCode || ''}"`);
+        if (!row.moduleCode?.trim() || !row.moduleName?.trim() || !row.programme?.trim() || !row.semester?.trim()) {
+          errors.push(`Skipped — missing Code, Name, Programme, or Semester: "${row.moduleCode || ''}"`);
           failed++;
           continue;
+        }
+        const comps: { name: string; weight: number }[] = [];
+        if (row.component1Name?.trim() && row.component1Weight?.trim()) {
+          comps.push({ name: row.component1Name.trim(), weight: Number(row.component1Weight) });
+        }
+        if (row.component2Name?.trim() && row.component2Weight?.trim()) {
+          comps.push({ name: row.component2Name.trim(), weight: Number(row.component2Weight) });
         }
         await addDoc(collection(db, 'modules'), {
           moduleCode: row.moduleCode.trim().toUpperCase(),
           moduleName: row.moduleName.trim(),
           programme: row.programme.trim(),
-          faculty: row.faculty?.trim() ?? '',
+          faculty: myFaculty,
           yearOfStudy: row.yearOfStudy?.trim() ?? '',
+          semester: row.semester.trim(),
           credits: row.credits ? Number(row.credits) : 20,
           status: row.status === 'inactive' ? 'inactive' : 'active',
-          components: [],
+          components: comps,
           createdAt: serverTimestamp(),
         });
         success++;
@@ -253,7 +344,27 @@ export default function AdminModulesPage() {
     return { success, failed, errors };
   };
 
-  const uniqueProgrammes = [...new Set(modules.map((m) => m.programme).filter(Boolean))].sort();
+  if (loadingFaculty) {
+    return (
+      <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        Loading...
+      </div>
+    );
+  }
+
+  if (!myFaculty) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 gap-2 text-center px-4">
+        <p className="text-sm font-medium text-gray-700">No faculty/department assigned to your account.</p>
+        <p className="text-xs text-muted-foreground">Please contact your System Administrator to assign a department to your Faculty Administrator profile.</p>
+      </div>
+    );
+  }
+
+  const weightTotal =
+    (formComp1Weight !== '' ? Number(formComp1Weight) : 0) +
+    (formComp2Weight !== '' ? Number(formComp2Weight) : 0);
 
   return (
     <div className="space-y-6">
@@ -261,10 +372,10 @@ export default function AdminModulesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Modules</h1>
-          <p className="text-muted-foreground">Manage academic modules</p>
+          <p className="text-muted-foreground">{myFaculty}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={downloadTemplate}>
+<Button variant="outline" size="sm" className="gap-1.5" onClick={() => downloadTemplate(myFaculty)}>
             <Download className="h-4 w-4" />
             CSV Template
           </Button>
@@ -287,7 +398,7 @@ export default function AdminModulesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold text-blue-600">{modules.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Registered modules</p>
+            <p className="text-xs text-muted-foreground mt-1">In your faculty</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-green-500">
@@ -301,11 +412,13 @@ export default function AdminModulesPage() {
         </Card>
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Programmes</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Programmes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-purple-600">{uniqueProgCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Programmes with modules</p>
+            <div className="text-4xl font-bold text-purple-600">
+              {[...new Set(modules.map((m) => m.programme).filter(Boolean))].length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">With modules</p>
           </CardContent>
         </Card>
       </div>
@@ -314,8 +427,8 @@ export default function AdminModulesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Module Directory</CardTitle>
-          <div className="mt-3 flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1 max-w-sm">
+          <div className="mt-3">
+            <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by code or name..."
@@ -324,17 +437,6 @@ export default function AdminModulesPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
-              <SelectTrigger className="w-full sm:w-[260px]">
-                <SelectValue placeholder="All Programmes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Programmes</SelectItem>
-                {uniqueProgrammes.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -356,7 +458,9 @@ export default function AdminModulesPage() {
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Name</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Year</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Semester</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Credits</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Components</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
                     <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
                   </tr>
@@ -366,9 +470,15 @@ export default function AdminModulesPage() {
                     <tr key={m.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 font-mono font-medium text-blue-700">{m.moduleCode}</td>
                       <td className="px-4 py-3 font-medium">{m.moduleName}</td>
-                      <td className="px-4 py-3 text-muted-foreground max-w-[180px] truncate">{m.programme || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{m.yearOfStudy || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-[160px] truncate">{m.programme || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{m.yearOfStudy ? (YEAR_DISPLAY[m.yearOfStudy] ?? m.yearOfStudy) : '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{m.semester || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{m.credits}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {m.components.length > 0
+                          ? m.components.map((c) => `${c.name} ${c.weight}%`).join(' / ')
+                          : '—'}
+                      </td>
                       <td className="px-4 py-3">
                         <Badge
                           className={
@@ -414,14 +524,15 @@ export default function AdminModulesPage() {
 
       {/* Add / Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingModule ? 'Edit Module' : 'Add Module'}</DialogTitle>
             <DialogDescription>
               {editingModule ? 'Update module details' : 'Add a new academic module'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="mod-code">Module Code <span className="text-red-500">*</span></Label>
@@ -457,7 +568,7 @@ export default function AdminModulesPage() {
 
             <div className="space-y-2">
               <Label htmlFor="mod-programme">Programme <span className="text-red-500">*</span></Label>
-              <Select value={formProgramme} onValueChange={handleProgrammeChange}>
+              <Select value={formProgramme} onValueChange={setFormProgramme}>
                 <SelectTrigger id="mod-programme">
                   <SelectValue placeholder="— Select Programme —" />
                 </SelectTrigger>
@@ -467,21 +578,10 @@ export default function AdminModulesPage() {
                       <SelectItem key={p.id} value={p.programmeName}>{p.programmeName}</SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="__none__" disabled>No programmes — add in Programmes page first</SelectItem>
+                    <SelectItem value="__none__" disabled>No programmes in your faculty</SelectItem>
                   )}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="mod-faculty">Faculty</Label>
-              <Input
-                id="mod-faculty"
-                value={formFaculty}
-                readOnly
-                placeholder="Auto-filled from selected programme"
-                className="bg-gray-50 text-muted-foreground"
-              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -493,24 +593,93 @@ export default function AdminModulesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {YEARS_OF_STUDY.map((y) => (
-                      <SelectItem key={y} value={y}>{y}</SelectItem>
+                      <SelectItem key={y} value={y}>{YEAR_DISPLAY[y] ?? y}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="mod-status">Status</Label>
-                <Select value={formStatus} onValueChange={(v) => setFormStatus(v as 'active' | 'inactive')}>
-                  <SelectTrigger id="mod-status"><SelectValue /></SelectTrigger>
+                <Label htmlFor="mod-semester">Semester <span className="text-red-500">*</span></Label>
+                <Select value={formSemester} onValueChange={setFormSemester}>
+                  <SelectTrigger id="mod-semester">
+                    <SelectValue placeholder="— Select —" />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    {SEMESTERS.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {/* Assessment Components */}
+            <div className="rounded-md border p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Assessment Components</Label>
+                {(formComp1Weight !== '' || formComp2Weight !== '') && (
+                  <span className={`text-xs font-medium ${weightTotal === 100 ? 'text-green-600' : 'text-orange-500'}`}>
+                    Total: {weightTotal}% {weightTotal === 100 ? '✓' : '(must be 100%)'}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_100px] gap-4">
+                  <Label className="text-xs text-muted-foreground">Component 1 Name</Label>
+                  <Label className="text-xs text-muted-foreground">Weight %</Label>
+                </div>
+                <div className="grid grid-cols-[1fr_100px] gap-4">
+                  <Input
+                    placeholder="Name (e.g. Coursework)"
+                    value={formComp1Name}
+                    onChange={(e) => setFormComp1Name(e.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="e.g. 40"
+                    min={0}
+                    max={100}
+                    value={formComp1Weight}
+                    onChange={(e) => setFormComp1Weight(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_100px] gap-4">
+                  <Label className="text-xs text-muted-foreground">Component 2 Name</Label>
+                  <Label className="text-xs text-muted-foreground">Weight %</Label>
+                </div>
+                <div className="grid grid-cols-[1fr_100px] gap-4">
+                  <Input
+                    placeholder="Name (e.g. Exam)"
+                    value={formComp2Name}
+                    onChange={(e) => setFormComp2Name(e.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="e.g. 60"
+                    min={0}
+                    max={100}
+                    value={formComp2Weight}
+                    onChange={(e) => setFormComp2Weight(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mod-status">Status</Label>
+              <Select value={formStatus} onValueChange={(v) => setFormStatus(v as 'active' | 'inactive')}>
+                <SelectTrigger id="mod-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="pt-4 border-t">
             <Button size="sm" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
             <Button size="sm" disabled={isSaving} onClick={handleSave}>
               {isSaving ? 'Saving…' : editingModule ? 'Save Changes' : 'Add Module'}

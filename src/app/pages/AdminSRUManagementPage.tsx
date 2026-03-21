@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -75,7 +75,7 @@ export default function AdminSRUManagementPage() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), where('role', '==', 'sru'));
+    const q = query(collection(db, 'student_support_advisors'));
     const unsub = onSnapshot(q, (snap) => {
       setSruStaff(
         snap.docs.map((d) => ({

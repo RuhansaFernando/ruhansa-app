@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, Upload } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -90,22 +90,19 @@ export default function DashboardLayout() {
         { section: 'Academic Management' } as any,
         { label: 'Faculties', icon: Landmark, path: '/admin/faculties' },
         { label: 'Programmes', icon: GraduationCap, path: '/admin/programmes' },
-        { label: 'Modules', icon: BookOpen, path: '/admin/modules' },
       ];
     } else if (user.role === 'registry') {
       return [
         ...baseItems,
-        { section: 'Enrollment' } as any,
-        { label: 'Student Enrollment', icon: Upload, path: '/registry/enrollment' },
-        { section: 'Students' } as any,
-        { label: 'Student Details', icon: Users, path: '/registry/students' },
-        { label: 'Modules', icon: GraduationCap, path: '/registry/modules' },
+        { label: 'Student Records', icon: Users, path: '/registry/students' },
+        { label: 'Module Enrollment', icon: BookOpen, path: '/registry/module-enrollment' },
         { label: 'Academic Records', icon: FileText, path: '/registry/grades' },
         { label: 'Reports', icon: ClipboardList, path: '/registry/reports' },
       ];
     } else if (user.role === 'academic_admin') {
       return [
         { label: 'Upload Attendance', icon: ClipboardList, path: '/academic/upload' },
+        { label: 'Modules', icon: BookOpen, path: '/academic/modules' },
       ];
     } else if (user.role === 'sru') {
       return [

@@ -120,14 +120,6 @@ export default function AdminSRUPage() {
         createdAt: serverTimestamp(),
       });
 
-      await addDoc(collection(db, 'users'), {
-        uid: cred.user.uid,
-        name: addName.trim(),
-        email: addEmail.trim(),
-        role: ['ssa'],
-        status: addStatus,
-        createdAt: serverTimestamp(),
-      });
       try {
         await emailjs.send('service_y8aewpn', 'template_welcome', {
           to_name: addName.trim(),
@@ -216,14 +208,6 @@ export default function AdminSRUPage() {
           role: 'ssa',
           status: 'active',
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, 'users'), {
-          uid: cred.user.uid,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
-          role: ['ssa'],
-          status: 'active',
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

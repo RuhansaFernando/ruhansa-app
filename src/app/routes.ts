@@ -40,11 +40,11 @@ import AdminRegistryPage from './pages/AdminRegistryPage';
 import AdminAcademicPage from './pages/AdminAcademicPage';
 import AdminSRUManagementPage from './pages/AdminSRUManagementPage';
 import AdminRegistryManagementPage from './pages/AdminRegistryManagementPage';
-import RegistryModulesPage from './pages/RegistryModulesPage';
+import RegistryModuleEnrollmentPage from './pages/RegistryModuleEnrollmentPage';
 import RegistryGradesPage from './pages/RegistryGradesPage';
 import RegistryReportsPage from './pages/RegistryReportsPage';
-import RegistryStudentDetailsPage from './pages/RegistryStudentDetailsPage';
-import RegistryEnrollmentPage from './pages/RegistryEnrollmentPage';
+import RegistryStudentsPage from './pages/RegistryStudentsPage';
+import RegistryMentorsPage from './pages/RegistryMentorsPage';
 import AcademicUploadPage from './pages/AcademicUploadPage';
 import StudentMarksPage from './pages/StudentMarksPage';
 import StudentAttendancePage from './pages/StudentAttendancePage';
@@ -58,7 +58,7 @@ import CourseLeaderPage from './pages/CourseLeaderPage';
 import AdminCourseLeadersPage from './pages/AdminCourseLeadersPage';
 import SSASettingsPage from './pages/SSASettingsPage';
 import AdminProgrammesPage from './pages/AdminProgrammesPage';
-import AdminModulesPage from './pages/AdminModulesPage';
+import FacultyAdminModulesPage from './pages/FacultyAdminModulesPage';
 import AdminFacultiesPage from './pages/AdminFacultiesPage';
 import {
   RedirectToLogin,
@@ -307,10 +307,6 @@ export const router = createBrowserRouter([
         Component: AdminProgrammesPage,
       },
       {
-        path: 'modules',
-        Component: AdminModulesPage,
-      },
-      {
         path: 'faculties',
         Component: AdminFacultiesPage,
       },
@@ -341,16 +337,16 @@ export const router = createBrowserRouter([
         Component: AdminRegistryManagementPage,
       },
       {
-        path: 'enrollment',
-        Component: RegistryEnrollmentPage,
-      },
-      {
         path: 'students',
-        Component: RegistryStudentDetailsPage,
+        Component: RegistryStudentsPage,
       },
       {
-        path: 'modules',
-        Component: RegistryModulesPage,
+        path: 'mentors',
+        Component: RegistryMentorsPage,
+      },
+      {
+        path: 'module-enrollment',
+        Component: RegistryModuleEnrollmentPage,
       },
       {
         path: 'grades',
@@ -377,6 +373,10 @@ export const router = createBrowserRouter([
       {
         path: 'upload',
         Component: AcademicUploadPage,
+      },
+      {
+        path: 'modules',
+        Component: FacultyAdminModulesPage,
       },
       {
         path: 'change-password',

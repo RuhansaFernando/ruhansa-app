@@ -119,14 +119,6 @@ export default function AdminRegistryPage() {
         status: addStatus,
         createdAt: serverTimestamp(),
       });
-      await addDoc(collection(db, 'users'), {
-        uid: cred.user.uid,
-        name: addName.trim(),
-        email: addEmail.trim(),
-        role: ['registry'],
-        status: addStatus,
-        createdAt: serverTimestamp(),
-      });
       try {
         await emailjs.send('service_y8aewpn', 'template_welcome', {
           to_name: addName.trim(),
@@ -215,14 +207,6 @@ export default function AdminRegistryPage() {
           role: 'registry',
           status: 'active',
           mustChangePassword: true,
-          createdAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, 'users'), {
-          uid: cred.user.uid,
-          name: row.FullName.trim(),
-          email: row.Email.trim(),
-          role: ['registry'],
-          status: 'active',
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

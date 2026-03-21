@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import emailjs from '@emailjs/browser';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -14,6 +15,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDocs,
   serverTimestamp,
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -27,6 +29,7 @@ interface StaffUser {
   staffId: string;
   name: string;
   email: string;
+  department: string;
   status: 'active' | 'inactive';
   createdAt?: string;
 }
@@ -44,13 +47,14 @@ export default function AdminAcademicPage() {
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [faculties, setFaculties] = useState<string[]>([]);
 
   // Add dialog
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [addStaffId, setAddStaffId] = useState('');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
+  const [addDepartment, setAddDepartment] = useState('');
   const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -62,6 +66,7 @@ export default function AdminAcademicPage() {
   const [editStaffId, setEditStaffId] = useState('');
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editDepartment, setEditDepartment] = useState('');
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
   const [isEditSaving, setIsEditSaving] = useState(false);
 
@@ -74,6 +79,7 @@ export default function AdminAcademicPage() {
           staffId: d.data().staffId ?? '',
           name: d.data().name ?? '',
           email: d.data().email ?? '',
+          department: d.data().department ?? '',
           status: d.data().status ?? 'active',
           createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? undefined,
         })),
@@ -81,6 +87,12 @@ export default function AdminAcademicPage() {
       setLoading(false);
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    getDocs(collection(db, 'faculties')).then((snap) => {
+      setFaculties(snap.docs.map((d) => d.data().facultyName ?? '').filter(Boolean).sort());
+    });
   }, []);
 
   const total = staff.length;
@@ -93,28 +105,41 @@ export default function AdminAcademicPage() {
   });
 
   const openAddDialog = () => {
-    setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active');
+    setAddStaffId(''); setAddName(''); setAddEmail(''); setAddDepartment(''); setAddStatus('active');
     setIsAddDialogOpen(true);
   };
 
   const handleAddStaff = async () => {
-    if (!addStaffId.trim() || !addName.trim() || !addEmail.trim() || !addPassword.trim()) {
+    if (!addStaffId.trim() || !addName.trim() || !addEmail.trim() || !addDepartment) {
       toast.error('Please fill in all required fields');
       return;
     }
+    const tempPassword = `${addStaffId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), tempPassword);
       await secondaryAuth.signOut();
       await addDoc(collection(db, 'faculty_administrators'), {
         uid: cred.user.uid,
         staffId: addStaffId.trim(),
         name: addName.trim(),
         email: addEmail.trim(),
+        department: addDepartment,
         role: 'academic_admin',
         status: addStatus,
         createdAt: serverTimestamp(),
       });
+      try {
+        await emailjs.send('service_y8aewpn', 'template_welcome', {
+          to_name: addName.trim(),
+          to_email: addEmail.trim(),
+          user_id: addStaffId.trim(),
+          temp_password: tempPassword,
+          login_url: 'http://localhost:5173',
+        }, 'pqfkLZ1zbahk5O2Vi');
+      } catch (emailErr) {
+        console.warn('Welcome email failed:', emailErr);
+      }
       toast.success('Faculty Administrator account created successfully');
       setIsAddDialogOpen(false);
     } catch (err) {
@@ -137,6 +162,7 @@ export default function AdminAcademicPage() {
     setEditStaffId(user.staffId);
     setEditName(user.name);
     setEditEmail(user.email);
+    setEditDepartment(user.department);
     setEditStatus(user.status);
     setIsEditDialogOpen(true);
   };
@@ -152,6 +178,7 @@ export default function AdminAcademicPage() {
         staffId: editStaffId.trim(),
         name: editName.trim(),
         email: editEmail.trim(),
+        department: editDepartment,
         status: editStatus,
       });
       toast.success('Account updated successfully');
@@ -189,12 +216,24 @@ export default function AdminAcademicPage() {
           staffId: row.StaffID.trim(),
           name: row.FullName.trim(),
           email: row.Email.trim(),
+          department: row.Department?.trim() ?? '',
           role: 'academic_admin',
           status: 'active',
           mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: row.FullName.trim(),
+            to_email: row.Email.trim(),
+            user_id: row.StaffID.trim(),
+            temp_password: tempPassword,
+            login_url: 'http://localhost:5173',
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
         success++;
       } catch (err: any) {
         errors.push(`${row.FullName || row.Email} — ${err.message}`);
@@ -301,6 +340,7 @@ export default function AdminAcademicPage() {
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Staff ID</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Department</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Created</th>
                     <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
@@ -312,6 +352,7 @@ export default function AdminAcademicPage() {
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{user.staffId || '—'}</td>
                       <td className="px-4 py-3 font-medium">{user.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{user.department || '—'}</td>
                       <td className="px-4 py-3">
                         <Badge
                           className={
@@ -361,35 +402,38 @@ export default function AdminAcademicPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active'); } setIsAddDialogOpen(open); }}>
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddDepartment(''); setAddStatus('active'); } setIsAddDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Faculty Administrator Account</DialogTitle>
             <DialogDescription>Create a new Faculty Administrator account</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4" autoComplete="off">
-            <input type="text" style={{ display: 'none' }} autoComplete="username" readOnly />
-            <input type="password" style={{ display: 'none' }} autoComplete="current-password" readOnly />
+          <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="add-staffid">Staff ID <span className="text-red-500">*</span></Label>
-              <Input id="add-staffid" placeholder="Enter ID" value={addStaffId} onChange={(e) => setAddStaffId(e.target.value)} autoComplete="off" />
+              <Label>Staff ID <span className="text-red-500">*</span></Label>
+              <Input placeholder="Enter ID" value={addStaffId} onChange={(e) => setAddStaffId(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-name">Full Name <span className="text-red-500">*</span></Label>
-              <Input id="add-name" placeholder="Enter full name" value={addName} onChange={(e) => setAddName(e.target.value)} autoComplete="off" />
+              <Label>Full Name <span className="text-red-500">*</span></Label>
+              <Input placeholder="Enter full name" value={addName} onChange={(e) => setAddName(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
-              <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
+              <Label>Email <span className="text-red-500">*</span></Label>
+              <Input type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input id="add-password" type="password" placeholder="Enter temporary password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
+              <Label>Department <span className="text-red-500">*</span></Label>
+              <Select value={addDepartment} onValueChange={setAddDepartment}>
+                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                <SelectContent>
+                  {faculties.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-status">Status</Label>
+              <Label>Status</Label>
               <Select value={addStatus} onValueChange={(v) => setAddStatus(v as 'active' | 'inactive')}>
-                <SelectTrigger id="add-status"><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
@@ -414,15 +458,13 @@ export default function AdminAcademicPage() {
       />
 
       {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditDepartment(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Faculty Administrator Account</DialogTitle>
             <DialogDescription>Update this staff member's information</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4" autoComplete="off">
-            <input type="text" style={{ display: 'none' }} autoComplete="username" readOnly />
-            <input type="password" style={{ display: 'none' }} autoComplete="current-password" readOnly />
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="edit-staffid">Staff ID <span className="text-red-500">*</span></Label>
               <Input id="edit-staffid" placeholder="Enter ID" value={editStaffId} onChange={(e) => setEditStaffId(e.target.value)} autoComplete="off" />
@@ -434,6 +476,15 @@ export default function AdminAcademicPage() {
             <div className="space-y-2">
               <Label htmlFor="edit-email">Email <span className="text-red-500">*</span></Label>
               <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} autoComplete="off" />
+            </div>
+            <div className="space-y-2">
+              <Label>Department <span className="text-red-500">*</span></Label>
+              <Select value={editDepartment} onValueChange={setEditDepartment}>
+                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                <SelectContent>
+                  {faculties.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-status">Status</Label>
