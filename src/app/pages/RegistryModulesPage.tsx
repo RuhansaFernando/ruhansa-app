@@ -236,6 +236,22 @@ export default function RegistryModulesPage() {
   const weightTotal = Number(comp1Weight) + Number(comp2Weight);
   const weightValid = weightTotal === 100;
 
+  const handleSeedModules = async () => {
+    const sampleModules = [
+      { moduleCode: 'BIS301', moduleName: 'Business Information Systems', programme: 'BSc (Hons) Business Information Systems', level: 'Level 3', credits: 20, status: 'active' as const, semester: 'Semester 1', components: [] },
+      { moduleCode: 'BIS401', moduleName: 'Database Management', programme: 'BSc (Hons) Business Information Systems', level: 'Level 4', credits: 20, status: 'active' as const, semester: 'Semester 1', components: [] },
+      { moduleCode: 'CS401', moduleName: 'Software Engineering', programme: 'BSc (Hons) Computer Science', level: 'Level 4', credits: 20, status: 'active' as const, semester: 'Semester 1', components: [] },
+    ];
+    try {
+      for (const m of sampleModules) {
+        await addDoc(collection(db, 'modules'), { ...m, createdAt: serverTimestamp() });
+      }
+      toast.success('3 sample modules added successfully');
+    } catch {
+      toast.error('Failed to seed modules.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -339,6 +355,11 @@ export default function RegistryModulesPage() {
             <div className="text-center py-12 text-muted-foreground">
               <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No modules found matching your criteria</p>
+              {modules.length === 0 && (
+                <Button variant="outline" size="sm" className="mt-4" onClick={handleSeedModules}>
+                  Add Sample Modules
+                </Button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">

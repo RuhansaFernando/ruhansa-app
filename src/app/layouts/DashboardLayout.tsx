@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -28,8 +28,13 @@ export default function DashboardLayout() {
   useEffect(() => {
     if (!user) {
       navigate('/login');
+    } else if (user.mustChangePassword) {
+      const roleBase = user.role === 'academic_mentor' ? 'mentor' : user.role === 'academic_admin' ? 'academic' : user.role === 'course_leader' ? 'course-leader' : user.role;
+      if (!location.pathname.endsWith('/change-password')) {
+        navigate(`/${roleBase}/change-password`);
+      }
     }
-  }, [user, navigate]);
+  }, [user, navigate, location.pathname]);
 
   if (!user) {
     return null;
@@ -53,9 +58,10 @@ export default function DashboardLayout() {
       ];
     } else if (user.role === 'student') {
       return [
-        ...baseItems,
-        { label: 'My Appointments', icon: Calendar, path: '/student/appointments' },
-        { label: 'Profile', icon: User, path: '/student/settings' },
+        { label: 'Dashboard', icon: LayoutDashboard, path: '/student/dashboard' },
+        { label: 'My Marks', icon: FileText, path: '/student/marks' },
+        { label: 'My Attendance', icon: ClipboardList, path: '/student/attendance' },
+        { label: 'Appointments', icon: Calendar, path: '/student/appointments' },
       ];
     } else if (user.role === 'faculty') {
       return [
@@ -74,12 +80,18 @@ export default function DashboardLayout() {
     } else if (user.role === 'admin') {
       return [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
+        { section: 'User Management' } as any,
         { label: 'Students', icon: Users, path: '/admin/students' },
         { label: 'Registry', icon: Building2, path: '/admin/registry-staff' },
         { label: 'Student Support Advisors', icon: ClipboardCheck, path: '/admin/sru-staff' },
         { label: 'Faculty Administrators', icon: GraduationCap, path: '/admin/academic-staff' },
         { label: 'Academic Mentors', icon: BookUser, path: '/admin/tutors' },
-        { label: 'Student Counsellors', icon: Heart, path: '/admin/counsellors' },
+        { label: 'External Counsellors', icon: Heart, path: '/admin/counsellors' },
+        { label: 'Course Leaders', icon: GraduationCap, path: '/admin/course-leaders' },
+        { section: 'Academic Management' } as any,
+        { label: 'Faculties', icon: Landmark, path: '/admin/faculties' },
+        { label: 'Programmes', icon: GraduationCap, path: '/admin/programmes' },
+        { label: 'Modules', icon: BookOpen, path: '/admin/modules' },
       ];
     } else if (user.role === 'registry') {
       return [
@@ -95,24 +107,21 @@ export default function DashboardLayout() {
       ];
     } else if (user.role === 'sru') {
       return [
-        ...baseItems,
+        { label: 'Dashboard', icon: LayoutDashboard, path: '/sru/dashboard' },
         { label: 'Students', icon: Users, path: '/sru/students' },
-        { label: 'Attendance', icon: ClipboardList, path: '/sru/attendance' },
-        { label: 'Interventions', icon: Target, path: '/sru/interventions' },
         { label: 'Alerts', icon: Bell, path: '/sru/alerts' },
+        { label: 'Interventions', icon: Target, path: '/sru/interventions' },
+        { label: 'Appointments', icon: Calendar, path: '/sru/appointments' },
         { label: 'Reports', icon: FileText, path: '/sru/reports' },
       ];
     } else if (user.role === 'academic_mentor') {
       return [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/mentor/dashboard' },
-        { label: 'My Appointments', icon: Calendar, path: '/mentor/appointments' },
         { label: 'My Students', icon: Users, path: '/mentor/students' },
       ];
-    } else if (user.role === 'student_counsellor') {
+    } else if (user.role === 'course_leader') {
       return [
-        { label: 'Dashboard', icon: LayoutDashboard, path: '/counsellor/dashboard' },
-        { label: 'My Appointments', icon: Calendar, path: '/counsellor/appointments' },
-        { label: 'My Students', icon: Users, path: '/counsellor/students' },
+        { label: 'Mentor Assignment', icon: BookUser, path: '/course-leader/mentor-assignment' },
       ];
     }
 
@@ -143,6 +152,8 @@ export default function DashboardLayout() {
         return 'Academic Mentor';
       case 'student_counsellor':
         return 'Student Counsellor';
+      case 'course_leader':
+        return 'Course Leader';
       default:
         return user.role;
     }
@@ -153,6 +164,7 @@ export default function DashboardLayout() {
       case 'academic_mentor': return 'mentor';
       case 'student_counsellor': return 'counsellor';
       case 'academic_admin': return 'academic';
+      case 'course_leader': return 'course-leader';
       default: return user.role;
     }
   };
@@ -167,16 +179,22 @@ export default function DashboardLayout() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-52">
+        {user.role === 'academic_mentor' && (
+          <DropdownMenuItem onClick={() => navigate('/mentor/settings')}>
+            <Calendar className="mr-2 h-4 w-4" />
+            Calendar Settings
+          </DropdownMenuItem>
+        )}
+        {user.role === 'sru' && (
+          <DropdownMenuItem onClick={() => navigate('/sru/settings')}>
+            <Calendar className="mr-2 h-4 w-4" />
+            Calendar Settings
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => navigate(`/${basePath}/change-password`)}>
           <KeyRound className="mr-2 h-4 w-4" />
           Change Password
         </DropdownMenuItem>
-        {['sru', 'academic_mentor', 'student_counsellor'].includes(user.role) && (
-          <DropdownMenuItem onClick={() => navigate(`/${basePath}/availability`)}>
-            <Clock className="mr-2 h-4 w-4" />
-            Availability Settings
-          </DropdownMenuItem>
-        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="text-red-600 focus:text-red-600 focus:bg-red-50"
@@ -195,7 +213,7 @@ export default function DashboardLayout() {
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white border-r">
         {/* Logo Section */}
         <div className="flex items-center p-2 border-b bg-white">
-          <Link to={user.role === 'academic_admin' ? '/academic/upload' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : `/${user.role}/dashboard`}>
+          <Link to={user.role === 'academic_admin' ? '/academic/upload' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/mentor-assignment' : `/${user.role}/dashboard`}>
             <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
           </Link>
         </div>
@@ -204,9 +222,19 @@ export default function DashboardLayout() {
         <nav className="flex-1 overflow-y-auto p-3">
           <div className="space-y-1">
             {navigationItems.map((item) => {
+              if (item.section) {
+                return (
+                  <div key={item.section} className="px-4 pt-4 pb-1">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      {item.section}
+                    </p>
+                  </div>
+                );
+              }
+
               const isActive = location.pathname.split('?')[0] === item.path.split('?')[0];
               const isUserManagementSection = location.pathname.includes('/admin/users');
-              
+
               if (item.subItems) {
                 return (
                   <div key={item.path}>
@@ -286,7 +314,7 @@ export default function DashboardLayout() {
               <p className="text-sm font-semibold truncate">{user.name}</p>
               <p className="text-xs text-muted-foreground truncate">{getRoleName()}</p>
             </div>
-            <SettingsDropdown />
+            {user.role !== 'admin' && <SettingsDropdown />}
           </div>
         </div>
       </aside>
@@ -300,7 +328,7 @@ export default function DashboardLayout() {
           >
             {/* Logo Section */}
             <div className="flex items-center justify-between p-2 border-b bg-white">
-              <Link to={user.role === 'academic_admin' ? '/academic/upload' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : `/${user.role}/dashboard`}>
+              <Link to={user.role === 'academic_admin' ? '/academic/upload' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/mentor-assignment' : `/${user.role}/dashboard`}>
                 <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
               </Link>
               <Button
@@ -316,9 +344,19 @@ export default function DashboardLayout() {
             <nav className="flex-1 overflow-y-auto p-3">
               <div className="space-y-1">
                 {navigationItems.map((item) => {
+                  if (item.section) {
+                    return (
+                      <div key={item.section} className="px-4 pt-4 pb-1">
+                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                          {item.section}
+                        </p>
+                      </div>
+                    );
+                  }
+
                   const isActive = location.pathname.split('?')[0] === item.path.split('?')[0];
                   const isUserManagementSection = location.pathname.includes('/admin/users');
-                  
+
                   if (item.subItems) {
                     return (
                       <div key={item.path}>
@@ -398,7 +436,7 @@ export default function DashboardLayout() {
                   <p className="text-sm font-semibold truncate">{user.name}</p>
                   <p className="text-xs text-muted-foreground truncate">{getRoleName()}</p>
                 </div>
-                <SettingsDropdown />
+                {user.role !== 'admin' && <SettingsDropdown />}
               </div>
             </div>
           </aside>

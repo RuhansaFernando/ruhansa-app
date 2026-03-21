@@ -37,18 +37,18 @@ import {
   query,
   orderBy,
 } from "firebase/firestore";
-import { db, secondaryAuth } from "../../firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { FirebaseError } from "firebase/app";
+import { db } from "../../firebase";
 
 interface Counsellor {
   id: string;
-  counsellorId: string;
   name: string;
-  email: string;
   specialisation: string;
   status: "active" | "inactive";
-  createdAt?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  qualification?: string;
+  certificationBody?: string;
+  registrationNumber?: string;
 }
 
 export default function AdminCounsellorsPage() {
@@ -63,13 +63,14 @@ export default function AdminCounsellorsPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Form state
-  const [formCounsellorId, setFormCounsellorId] = useState("");
   const [formName, setFormName] = useState("");
-  const [formEmail, setFormEmail] = useState("");
   const [formSpecialisation, setFormSpecialisation] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
-  const [formPassword, setFormPassword] = useState("");
-  const [formConfirmPassword, setFormConfirmPassword] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [qualification, setQualification] = useState("");
+  const [certificationBody, setCertificationBody] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "student_counsellors"), orderBy("name"));
@@ -77,12 +78,14 @@ export default function AdminCounsellorsPage() {
       setCounsellors(
         snapshot.docs.map((d) => ({
           id: d.id,
-          counsellorId: d.data().counsellorId ?? "",
           name: d.data().name ?? "",
-          email: d.data().email ?? "",
           specialisation: d.data().specialisation ?? "",
           status: d.data().status ?? "active",
-          createdAt: d.data().createdAt?.toDate?.().toISOString() ?? undefined,
+          contactEmail: d.data().contactEmail ?? "",
+          contactPhone: d.data().contactPhone ?? "",
+          qualification: d.data().qualification ?? "",
+          certificationBody: d.data().certificationBody ?? "",
+          registrationNumber: d.data().registrationNumber ?? "",
         })),
       );
       setLoading(false);
@@ -90,25 +93,33 @@ export default function AdminCounsellorsPage() {
     return () => unsub();
   }, []);
 
-  const openAddDialog = () => {
-    setEditingCounsellor(null);
-    setFormCounsellorId("");
+  const resetForm = () => {
     setFormName("");
-    setFormEmail("");
     setFormSpecialisation("");
     setFormStatus("active");
-    setFormPassword("");
-    setFormConfirmPassword("");
+    setContactEmail("");
+    setContactPhone("");
+    setQualification("");
+    setCertificationBody("");
+    setRegistrationNumber("");
+  };
+
+  const openAddDialog = () => {
+    setEditingCounsellor(null);
+    resetForm();
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (counsellor: Counsellor) => {
     setEditingCounsellor(counsellor);
-    setFormCounsellorId(counsellor.counsellorId);
     setFormName(counsellor.name);
-    setFormEmail(counsellor.email);
     setFormSpecialisation(counsellor.specialisation);
     setFormStatus(counsellor.status);
+    setContactEmail(counsellor.contactEmail ?? "");
+    setContactPhone(counsellor.contactPhone ?? "");
+    setQualification(counsellor.qualification ?? "");
+    setCertificationBody(counsellor.certificationBody ?? "");
+    setRegistrationNumber(counsellor.registrationNumber ?? "");
     setIsDialogOpen(true);
   };
 
@@ -134,58 +145,43 @@ export default function AdminCounsellorsPage() {
   };
 
   const handleSave = async () => {
-    if (!formCounsellorId.trim() || !formName.trim() || !formEmail.trim() || !formSpecialisation) {
-      toast.error("Please fill in all required fields");
+    if (!formName.trim() || !formSpecialisation || !contactEmail.trim() || !qualification.trim() || !certificationBody.trim() || !registrationNumber.trim()) {
+      toast.error("Please fill in all required fields including verification details");
       return;
-    }
-    if (!editingCounsellor) {
-      if (!formPassword.trim()) {
-        toast.error("Please enter a password");
-        return;
-      }
-      if (formPassword.length < 6) {
-        toast.error("Password must be at least 6 characters");
-        return;
-      }
     }
 
     setIsSaving(true);
     try {
       if (editingCounsellor) {
         await updateDoc(doc(db, "student_counsellors", editingCounsellor.id), {
-          counsellorId: formCounsellorId.trim(),
           name: formName.trim(),
-          email: formEmail.trim(),
-          specialisation: formSpecialisation.trim(),
+          specialisation: formSpecialisation,
           status: formStatus,
+          contactEmail: contactEmail.trim(),
+          contactPhone: contactPhone.trim(),
+          qualification: qualification.trim(),
+          certificationBody: certificationBody.trim(),
+          registrationNumber: registrationNumber.trim(),
         });
-        toast.success("Student Counsellor updated successfully");
+        toast.success("Counsellor updated successfully");
       } else {
-        const cred = await createUserWithEmailAndPassword(secondaryAuth, formEmail.trim(), formPassword.trim());
-        await secondaryAuth.signOut();
         await addDoc(collection(db, "student_counsellors"), {
-          uid: cred.user.uid,
-          counsellorId: formCounsellorId.trim(),
           name: formName.trim(),
-          email: formEmail.trim(),
-          specialisation: formSpecialisation.trim(),
+          specialisation: formSpecialisation,
           status: formStatus,
-          role: "student_counsellor",
+          contactEmail: contactEmail.trim(),
+          contactPhone: contactPhone.trim(),
+          qualification: qualification.trim(),
+          certificationBody: certificationBody.trim(),
+          registrationNumber: registrationNumber.trim(),
+          verified: true,
           createdAt: serverTimestamp(),
         });
-        toast.success("Student Counsellor account created successfully");
+        toast.success("External counsellor added successfully");
       }
       setIsDialogOpen(false);
-    } catch (err) {
-      if (err instanceof FirebaseError) {
-        if (err.code === "auth/email-already-in-use") {
-          toast.error("An account with this email already exists.");
-        } else {
-          toast.error(`Failed to create account: ${err.message}`);
-        }
-      } else {
-        toast.error("Failed to save student counsellor. Please try again.");
-      }
+    } catch {
+      toast.error("Failed to save counsellor. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -212,10 +208,8 @@ export default function AdminCounsellorsPage() {
   const filtered = counsellors.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.counsellorId.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all" || c.status === statusFilter;
+      (c.contactEmail ?? "").toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -227,14 +221,14 @@ export default function AdminCounsellorsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Student Counsellors</h1>
+          <h1 className="text-3xl font-bold">External Counsellors</h1>
           <p className="text-muted-foreground">
-            Manage student counsellors available for student appointments
+            Manage external counsellor contacts. SSAs refer students to these professionals when mental health support is needed.
           </p>
         </div>
         <Button className="gap-2" onClick={openAddDialog}>
           <UserPlus className="h-4 w-4" />
-          Add Student Counsellor
+          Add External Counsellor
         </Button>
       </div>
 
@@ -242,33 +236,29 @@ export default function AdminCounsellorsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
-            <CardDescription>Total Student Counsellors</CardDescription>
+            <CardDescription>Total Counsellors</CardDescription>
             <CardTitle className="text-3xl">{counsellors.length}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Registered accounts</p>
+            <p className="text-xs text-muted-foreground">Registered contacts</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
             <CardDescription>Active</CardDescription>
-            <CardTitle className="text-3xl text-green-600">
-              {activeCounsellors}
-            </CardTitle>
+            <CardTitle className="text-3xl text-green-600">{activeCounsellors}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Active accounts</p>
+            <p className="text-xs text-muted-foreground">Active counsellors</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-red-500">
           <CardHeader className="pb-3">
             <CardDescription>Inactive</CardDescription>
-            <CardTitle className="text-3xl text-gray-500">
-              {inactiveCounsellors}
-            </CardTitle>
+            <CardTitle className="text-3xl text-gray-500">{inactiveCounsellors}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Inactive accounts</p>
+            <p className="text-xs text-muted-foreground">Inactive counsellors</p>
           </CardContent>
         </Card>
       </div>
@@ -276,8 +266,8 @@ export default function AdminCounsellorsPage() {
       {/* Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Student Counsellor Directory</CardTitle>
-          <CardDescription>All registered student counsellors</CardDescription>
+          <CardTitle>Counsellor Directory</CardTitle>
+          <CardDescription>All registered external counsellors</CardDescription>
         </CardHeader>
         <CardContent>
           {/* Filters */}
@@ -285,7 +275,7 @@ export default function AdminCounsellorsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder="Search by name or email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -312,17 +302,17 @@ export default function AdminCounsellorsPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No student counsellors found matching your criteria</p>
+              <p>No counsellors found matching your criteria</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Staff ID</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Specialisation</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Phone</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
                     <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
                   </tr>
@@ -333,9 +323,29 @@ export default function AdminCounsellorsPage() {
                       key={counsellor.id}
                       className="border-b last:border-0 hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{counsellor.counsellorId || '—'}</td>
-                      <td className="px-4 py-3 font-medium">{counsellor.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{counsellor.email}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{counsellor.name}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                            ✅ Verified
+                          </span>
+                          {counsellor.certificationBody && (
+                            <span className="text-xs text-muted-foreground">
+                              {counsellor.certificationBody}
+                            </span>
+                          )}
+                        </div>
+                        {counsellor.registrationNumber && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Reg: {counsellor.registrationNumber}
+                          </p>
+                        )}
+                        {counsellor.qualification && (
+                          <p className="text-xs text-muted-foreground">
+                            {counsellor.qualification}
+                          </p>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         {counsellor.specialisation ? (
                           <Badge className={getSpecialisationBadgeClass(counsellor.specialisation)}>
@@ -343,6 +353,8 @@ export default function AdminCounsellorsPage() {
                           </Badge>
                         ) : '—'}
                       </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{counsellor.contactEmail || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{counsellor.contactPhone || '—'}</td>
                       <td className="px-4 py-3">
                         <Badge
                           className={
@@ -397,35 +409,26 @@ export default function AdminCounsellorsPage() {
       </Card>
 
       {/* Add / Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setEditingCounsellor(null); setFormCounsellorId(''); setFormName(''); setFormEmail(''); setFormSpecialisation(''); setFormStatus('active'); setFormPassword(''); setFormConfirmPassword(''); } setIsDialogOpen(open); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) resetForm();
+          setIsDialogOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingCounsellor ? "Edit Student Counsellor" : "Add Student Counsellor"}
+              {editingCounsellor ? "Edit External Counsellor" : "Add External Counsellor"}
             </DialogTitle>
             <DialogDescription>
               {editingCounsellor
-                ? "Update the student counsellor's information"
-                : "Add a new student counsellor to the system"}
+                ? "Update the counsellor's contact information"
+                : "Add a new external counsellor contact"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4" autoComplete="off">
-            <input type="text" style={{display:'none'}} autoComplete="username" readOnly />
-            <input type="password" style={{display:'none'}} autoComplete="current-password" readOnly />
-            <div className="space-y-2">
-              <Label htmlFor="counsellorStaffId">
-                Staff ID <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="counsellorStaffId"
-                autoComplete="off"
-                placeholder="Enter ID"
-                value={formCounsellorId}
-                onChange={(e) => setFormCounsellorId(e.target.value)}
-              />
-            </div>
-
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="counsellorName">
                 Full Name <span className="text-red-500">*</span>
@@ -440,45 +443,10 @@ export default function AdminCounsellorsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="counsellorEmail">
-                Email <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="counsellorEmail"
-                type="email"
-                autoComplete="off"
-                placeholder="Enter email address"
-                value={formEmail}
-                onChange={(e) => setFormEmail(e.target.value)}
-              />
-            </div>
-
-            {!editingCounsellor && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="counsellorPassword">
-                    Temporary Password <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="counsellorPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Enter temporary password"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="space-y-2">
               <Label htmlFor="counsellorSpecialisation">
                 Specialisation <span className="text-red-500">*</span>
               </Label>
-              <Select
-                value={formSpecialisation}
-                onValueChange={setFormSpecialisation}
-              >
+              <Select value={formSpecialisation} onValueChange={setFormSpecialisation}>
                 <SelectTrigger id="counsellorSpecialisation">
                   <SelectValue placeholder="Select specialisation" />
                 </SelectTrigger>
@@ -488,6 +456,74 @@ export default function AdminCounsellorsPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contactEmail">
+                Contact Email <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="contactEmail"
+                type="email"
+                placeholder="e.g. counsellor@example.com"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contactPhone">Contact Phone</Label>
+              <Input
+                id="contactPhone"
+                type="tel"
+                placeholder="e.g. +44 7700 900000"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="qualification">
+                Qualification <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="qualification"
+                placeholder="e.g. MSc Clinical Psychology, Diploma in Counselling"
+                value={qualification}
+                onChange={(e) => setQualification(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="certificationBody">
+                Certification Body <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="certificationBody"
+                placeholder="e.g. Sri Lanka Counsellors Association, BACP"
+                value={certificationBody}
+                onChange={(e) => setCertificationBody(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="registrationNumber">
+                Registration Number <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="registrationNumber"
+                placeholder="e.g. SLCA-2021-0234"
+                value={registrationNumber}
+                onChange={(e) => setRegistrationNumber(e.target.value)}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter the counsellor's professional registration or license number to verify their credentials.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -508,15 +544,11 @@ export default function AdminCounsellorsPage() {
           </div>
 
           <DialogFooter>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsDialogOpen(false)}
-            >
+            <Button size="sm" variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>
             <Button size="sm" disabled={isSaving} onClick={handleSave}>
-              {isSaving ? "Creating…" : editingCounsellor ? "Save Changes" : "Create Account"}
+              {isSaving ? "Saving…" : editingCounsellor ? "Save Changes" : "Add Counsellor"}
             </Button>
           </DialogFooter>
         </DialogContent>

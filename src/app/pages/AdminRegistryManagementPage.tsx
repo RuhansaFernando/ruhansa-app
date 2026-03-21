@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -46,8 +46,7 @@ export default function AdminRegistryManagementPage() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), where('role', '==', 'registry'));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(collection(db, 'registry'), (snap) => {
       setRegistryStaff(
         snap.docs.map((d) => ({
           id: d.id,

@@ -69,6 +69,8 @@ export default function LoginPage() {
             role: "sru",
             email: firebaseEmail,
             password: "",
+            mustChangePassword: sruDoc.data().mustChangePassword ?? false,
+            firestoreCollection: "student_support_advisors",
           });
           navigate("/sru/dashboard");
         } else {
@@ -83,6 +85,8 @@ export default function LoginPage() {
             role: "registry",
             email: firebaseEmail,
             password: "",
+            mustChangePassword: regDoc.data().mustChangePassword ?? false,
+            firestoreCollection: "registry",
           });
           navigate("/registry/dashboard");
         } else {
@@ -97,6 +101,8 @@ export default function LoginPage() {
             role: "academic_admin",
             email: firebaseEmail,
             password: "",
+            mustChangePassword: acaDoc.data().mustChangePassword ?? false,
+            firestoreCollection: "faculty_administrators",
           });
           navigate("/academic/upload");
         } else {
@@ -111,22 +117,26 @@ export default function LoginPage() {
             role: "academic_mentor",
             email: firebaseEmail,
             password: "",
+            mustChangePassword: mentorDoc.data().mustChangePassword ?? false,
+            firestoreCollection: "academic_mentors",
           });
           navigate("/mentor/dashboard");
         } else {
-        // 6. Check "student_counsellors" collection by email
-        const scQ = query(collection(db, "student_counsellors"), where("email", "==", firebaseEmail));
-        const scSnap = await getDocs(scQ);
-        if (!scSnap.empty) {
-          const scDoc = scSnap.docs[0];
+        // 6. Check "course_leaders" collection by email
+        const clQ = query(collection(db, "course_leaders"), where("email", "==", firebaseEmail));
+        const clSnap = await getDocs(clQ);
+        if (!clSnap.empty) {
+          const clDoc = clSnap.docs[0];
           login({
-            id: scDoc.id,
-            name: scDoc.data().name ?? firebaseEmail,
-            role: "student_counsellor",
+            id: clDoc.id,
+            name: clDoc.data().name ?? firebaseEmail,
+            role: "course_leader",
             email: firebaseEmail,
             password: "",
+            mustChangePassword: clDoc.data().mustChangePassword ?? false,
+            firestoreCollection: "course_leaders",
           });
-          navigate("/counsellor/dashboard");
+          navigate("/course-leader/mentor-assignment");
         } else {
         // 7. Check Firestore students collection
         const q = query(

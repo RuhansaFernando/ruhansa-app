@@ -4,16 +4,17 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { KeyRound, Eye, EyeOff } from 'lucide-react';
-import { auth } from '../../firebase';
+import { auth, db } from '../../firebase';
 import {
   reauthenticateWithCredential,
   updatePassword,
   EmailAuthProvider,
 } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../AuthContext';
 
 export default function ChangePasswordPage() {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -58,6 +59,10 @@ export default function ChangePasswordPage() {
       );
       await reauthenticateWithCredential(firebaseUser, credential);
       await updatePassword(firebaseUser, newPassword);
+      if (user?.mustChangePassword && user.firestoreCollection) {
+        await updateDoc(doc(db, user.firestoreCollection, user.id), { mustChangePassword: false });
+        login({ ...user, mustChangePassword: false });
+      }
       setSuccessMessage('Password updated successfully');
       setCurrentPassword('');
       setNewPassword('');

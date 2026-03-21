@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router';
 import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
@@ -48,12 +49,14 @@ interface StudentDoc {
   attendancePercentage: number;
   consecutiveAbsences: number;
   status: string;
+  lastContact?: string;
 }
 
 const PAGE_SIZE = 10;
 
 export default function SRUStudentsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [students, setStudents] = useState<StudentDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,6 +66,7 @@ export default function SRUStudentsPage() {
   const [programmeFilter, setProgrammeFilter] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('risk');
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -92,6 +96,7 @@ export default function SRUStudentsPage() {
           attendancePercentage: d.data().attendancePercentage ?? 100,
           consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
           status: d.data().status ?? 'active',
+          lastContact: d.data().lastContact ?? '',
         }))
       );
       setLoading(false);
@@ -120,8 +125,15 @@ export default function SRUStudentsPage() {
       const matchesLevel = levelFilter === 'all' || s.level === levelFilter;
       const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
       return matchesSearch && matchesRisk && matchesProgramme && matchesLevel && matchesStatus;
+    }).sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'attendance') return a.attendancePercentage - b.attendancePercentage;
+      if (sortBy === 'gpa') return a.gpa - b.gpa;
+      // Default: sort by risk (high first)
+      const order = { high: 0, medium: 1, low: 2 };
+      return (order[a.riskLevel as keyof typeof order] ?? 2) - (order[b.riskLevel as keyof typeof order] ?? 2);
     });
-  }, [students, search, riskFilter, programmeFilter, levelFilter, statusFilter]);
+  }, [students, search, riskFilter, programmeFilter, levelFilter, statusFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -129,7 +141,7 @@ export default function SRUStudentsPage() {
   // Reset to page 1 on filter change
   useEffect(() => {
     setPage(1);
-  }, [search, riskFilter, programmeFilter, levelFilter, statusFilter]);
+  }, [search, riskFilter, programmeFilter, levelFilter, statusFilter, sortBy]);
 
   const openIntervention = (student: StudentDoc) => {
     setSelectedStudent(student);
@@ -349,6 +361,17 @@ export default function SRUStudentsPage() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="risk">Sort: Risk ↓</SelectItem>
+                <SelectItem value="name">Sort: Name A–Z</SelectItem>
+                <SelectItem value="attendance">Sort: Attendance ↑</SelectItem>
+                <SelectItem value="gpa">Sort: GPA ↑</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -421,10 +444,24 @@ export default function SRUStudentsPage() {
                     <p className="text-xs text-muted-foreground">Absences</p>
                   </div>
 
-                  {/* Risk badge */}
+                  {/* Risk score + badge */}
                   <div className="text-center min-w-[70px]">
+                    <p className={`text-lg font-bold ${
+                      student.riskLevel === 'high' ? 'text-red-600' :
+                      student.riskLevel === 'medium' ? 'text-amber-600' : 'text-green-600'
+                    }`}>
+                      {student.riskLevel === 'high' ? '75+' : student.riskLevel === 'medium' ? '40-74' : '<40'}
+                    </p>
                     {getRiskBadge(student.riskLevel)}
                     <p className="text-xs text-muted-foreground mt-1">Risk</p>
+                  </div>
+
+                  {/* Last Contact */}
+                  <div className="text-center min-w-[90px]">
+                    <p className="text-sm text-muted-foreground">
+                      {student.lastContact || 'Never'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Last Contact</p>
                   </div>
 
                   {/* Actions */}
@@ -433,7 +470,7 @@ export default function SRUStudentsPage() {
                       size="sm"
                       variant="outline"
                       onClick={() =>
-                        window.location.assign(`/sru/student/${student.id}`)
+                        navigate(`/sru/students/${student.id}`)
                       }
                     >
                       View Profile

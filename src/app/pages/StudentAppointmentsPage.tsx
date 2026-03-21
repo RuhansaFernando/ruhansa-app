@@ -1,460 +1,519 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  collection, getDocs, doc, updateDoc, addDoc, serverTimestamp, query, orderBy, where,
+} from 'firebase/firestore';
+import { db } from '../../firebase';
+import { useAuth } from '../AuthContext';
+import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Calendar as CalendarIcon, Clock, User, Plus, X, CheckCircle, AlertCircle, Search } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Label } from '../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '../AuthContext';
-import { useData } from '../DataContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Calendar, Clock, Users, Plus, Loader2 } from 'lucide-react';
+import { CALENDAR_LINKS } from '../config/calendarLinks';
+
+interface AppointmentDoc {
+  id: string;
+  studentId: string;
+  advisorId?: string;
+  mentorId?: string;
+  counsellorId?: string;
+  advisorName?: string;
+  mentorName?: string;
+  counsellorName?: string;
+  whoToMeet?: string;
+  type: string;
+  date: string;
+  time: string;
+  reason?: string;
+  status: 'pending' | 'scheduled' | 'completed' | 'cancelled';
+}
+
+interface StaffMember {
+  id: string;
+  name: string;
+}
+
+const APPOINTMENT_TYPES = [
+  'Academic Support',
+  'Personal Guidance',
+  'Career Advice',
+  'Mental Health Support',
+  'General Enquiry',
+];
+
+const WHO_OPTIONS = [
+  { value: 'sru', label: 'Student Support Advisor', collection: 'student_support_advisors', field: 'advisorId', nameField: 'advisorName' },
+  { value: 'mentor', label: 'Academic Mentor', collection: 'academic_mentors', field: 'mentorId', nameField: 'mentorName' },
+  { value: 'counsellor', label: 'Student Counsellor', collection: 'student_counsellors', field: 'counsellorId', nameField: 'counsellorName' },
+];
+
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case 'pending':
+      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Pending</Badge>;
+    case 'scheduled':
+      return <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">Scheduled</Badge>;
+    case 'completed':
+      return <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Completed</Badge>;
+    case 'cancelled':
+      return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Cancelled</Badge>;
+    default:
+      return <Badge className="text-xs">{status}</Badge>;
+  }
+};
+
+const getWithName = (a: AppointmentDoc) =>
+  a.advisorName || a.mentorName || a.counsellorName || a.whoToMeet || '—';
 
 export default function StudentAppointmentsPage() {
   const { user } = useAuth();
-  const { appointments, addAppointment } = useData();
-  
-  const [isBookDialogOpen, setIsBookDialogOpen] = useState(false);
-  const [appointmentType, setAppointmentType] = useState('');
-  const [selectedStaffType, setSelectedStaffType] = useState('');
-  const [selectedStaffMember, setSelectedStaffMember] = useState('');
-  const [appointmentDate, setAppointmentDate] = useState('');
-  const [appointmentTime, setAppointmentTime] = useState('');
-  const [appointmentReason, setAppointmentReason] = useState('');
-  const [appointmentNotes, setAppointmentNotes] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
 
-  // Available staff members
-  const staffMembers = {
-    advisor: [
-      { id: 'adv1', name: 'Dr. Sarah Johnson' },
-      { id: 'adv2', name: 'Prof. Michael Chen' },
-      { id: 'adv3', name: 'Dr. Emily Davis' },
-    ],
-    counselor: [
-      { id: 'cou1', name: 'Lisa Anderson' },
-      { id: 'cou2', name: 'Dr. Robert Martinez' },
-      { id: 'cou3', name: 'Jennifer White' },
-    ],
-    faculty: [
-      { id: 'fac1', name: 'Prof. David Brown' },
-      { id: 'fac2', name: 'Dr. Amanda Taylor' },
-      { id: 'fac3', name: 'Prof. James Wilson' },
-    ],
-    support: [
-      { id: 'sup1', name: 'Career Services - John Smith' },
-      { id: 'sup2', name: 'Financial Aid - Maria Garcia' },
-      { id: 'sup3', name: 'Tutoring Center - Alex Thompson' },
-    ],
+  const [appointments, setAppointments] = useState<AppointmentDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'pending' | 'past'>('upcoming');
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    appointmentType: '',
+    whoToMeet: '',
+    selectedPersonId: '',
+    selectedPersonName: '',
+    preferredDate: '',
+    preferredTime: '',
+    reason: '',
+  });
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  // Student info for booking
+  const [studentInfo, setStudentInfo] = useState<{ name: string; programme: string } | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [apptSnap, studentSnap] = await Promise.all([
+          getDocs(query(collection(db, 'appointments'), orderBy('date', 'desc'))),
+          getDocs(query(collection(db, 'students'), where('uid', '==', user?.id))),
+        ]);
+
+        setAppointments(
+          apptSnap.docs
+            .map((d) => ({
+              id: d.id,
+              studentId: d.data().studentId ?? '',
+              advisorId: d.data().advisorId ?? '',
+              mentorId: d.data().mentorId ?? '',
+              counsellorId: d.data().counsellorId ?? '',
+              advisorName: d.data().advisorName ?? '',
+              mentorName: d.data().mentorName ?? '',
+              counsellorName: d.data().counsellorName ?? '',
+              whoToMeet: d.data().whoToMeet ?? '',
+              type: d.data().type ?? d.data().appointmentType ?? '',
+              date: d.data().date ?? d.data().preferredDate ?? '',
+              time: d.data().time ?? d.data().preferredTime ?? '',
+              reason: d.data().reason ?? d.data().notes ?? '',
+              status: d.data().status ?? 'pending',
+            }))
+            .filter((a) => a.studentId === user?.id)
+        );
+
+        if (!studentSnap.empty) {
+          const d = studentSnap.docs[0].data();
+          setStudentInfo({ name: d.name ?? '', programme: d.programme ?? '' });
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [user?.id]);
+
+  // Fetch staff when "who to meet" changes
+  useEffect(() => {
+    if (!form.whoToMeet) { setStaffList([]); return; }
+    const who = WHO_OPTIONS.find((o) => o.value === form.whoToMeet);
+    if (!who) return;
+    setLoadingStaff(true);
+    setForm((prev) => ({ ...prev, selectedPersonId: '', selectedPersonName: '' }));
+    getDocs(query(collection(db, who.collection), where('status', '==', 'active')))
+      .then((snap) => {
+        setStaffList(snap.docs.map((d) => ({ id: d.id, name: d.data().name ?? '' })));
+      })
+      .finally(() => setLoadingStaff(false));
+  }, [form.whoToMeet]);
+
+  const cancelAppointment = async (id: string) => {
+    setCancellingId(id);
+    try {
+      await updateDoc(doc(db, 'appointments', id), { status: 'cancelled' });
+      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'cancelled' } : a)));
+    } finally {
+      setCancellingId(null);
+    }
   };
 
-  // Available time slots
-  const timeSlots = [
-    '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
-    '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM'
-  ];
-
-  const studentAppointments = appointments.filter((a) => a.studentId === user?.id);
-  
-  const filteredAppointments = filterStatus === 'all' 
-    ? studentAppointments 
-    : studentAppointments.filter(a => a.status === filterStatus);
-
-  const upcomingAppointments = studentAppointments.filter((a) => a.status === 'scheduled');
-  const completedAppointments = studentAppointments.filter((a) => a.status === 'completed');
-
-  const handleBookAppointment = () => {
-    if (!appointmentType || !selectedStaffType || !selectedStaffMember || !appointmentDate || !appointmentTime || !appointmentReason) {
-      toast.error('Please fill in all required fields');
+  const handleBook = async () => {
+    setFormError('');
+    const { appointmentType, whoToMeet, selectedPersonId, selectedPersonName, preferredDate, preferredTime, reason } = form;
+    if (!appointmentType || !whoToMeet || !selectedPersonId || !preferredDate || !preferredTime || !reason) {
+      setFormError('Please fill in all required fields.');
       return;
     }
 
-    const staffMember = staffMembers[selectedStaffType as keyof typeof staffMembers].find(
-      s => s.id === selectedStaffMember
-    );
+    setSaving(true);
+    try {
+      const who = WHO_OPTIONS.find((o) => o.value === whoToMeet)!;
+      const docData: Record<string, any> = {
+        studentId: user?.id ?? '',
+        studentName: studentInfo?.name ?? user?.name ?? '',
+        programme: studentInfo?.programme ?? '',
+        appointmentType,
+        type: appointmentType,
+        whoToMeet: who.label,
+        [who.field]: selectedPersonId,
+        [who.nameField]: selectedPersonName,
+        date: preferredDate,
+        preferredDate,
+        time: preferredTime,
+        preferredTime,
+        reason,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      };
 
-    const newAppointment = {
-      id: `apt${Date.now()}`,
-      studentId: user?.id || '',
-      advisorId: selectedStaffMember,
-      type: appointmentType,
-      date: appointmentDate,
-      time: appointmentTime,
-      status: 'scheduled' as const,
-      notes: `${appointmentReason}${appointmentNotes ? `\n\nAdditional Notes: ${appointmentNotes}` : ''}`,
-    };
+      const ref = await addDoc(collection(db, 'appointments'), docData);
+      setAppointments((prev) => [
+        {
+          id: ref.id,
+          studentId: user?.id ?? '',
+          advisorId: who.field === 'advisorId' ? selectedPersonId : '',
+          mentorId: who.field === 'mentorId' ? selectedPersonId : '',
+          counsellorId: who.field === 'counsellorId' ? selectedPersonId : '',
+          advisorName: who.nameField === 'advisorName' ? selectedPersonName : '',
+          mentorName: who.nameField === 'mentorName' ? selectedPersonName : '',
+          counsellorName: who.nameField === 'counsellorName' ? selectedPersonName : '',
+          whoToMeet: who.label,
+          type: appointmentType,
+          date: preferredDate,
+          time: preferredTime,
+          reason,
+          status: 'pending',
+        },
+        ...prev,
+      ]);
 
-    addAppointment(newAppointment);
-    
-    toast.success('Appointment Request Submitted!', {
-      description: `Your ${appointmentType} with ${staffMember?.name} has been scheduled for ${new Date(appointmentDate).toLocaleDateString()} at ${appointmentTime}. You will receive a confirmation email shortly.`
-    });
-
-    // Reset form
-    setIsBookDialogOpen(false);
-    setAppointmentType('');
-    setSelectedStaffType('');
-    setSelectedStaffMember('');
-    setAppointmentDate('');
-    setAppointmentTime('');
-    setAppointmentReason('');
-    setAppointmentNotes('');
-  };
-
-  const handleCancelAppointment = (appointmentId: string) => {
-    const appointment = studentAppointments.find((a) => a.id === appointmentId);
-    if (appointment) {
-      toast.info('Appointment cancellation requested', {
-        description: 'Your advisor will be notified. You will receive a confirmation email.'
-      });
+      setModalOpen(false);
+      setForm({ appointmentType: '', whoToMeet: '', selectedPersonId: '', selectedPersonName: '', preferredDate: '', preferredTime: '', reason: '' });
+      setActiveTab('pending');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      scheduled: 'bg-blue-500',
-      completed: 'bg-green-500',
-      cancelled: 'bg-gray-500',
-    };
-    return <Badge className={colors[status as keyof typeof colors]}>{status.toUpperCase()}</Badge>;
-  };
+  const today = new Date().toISOString().split('T')[0];
 
-  const getAppointmentIcon = (type: string) => {
-    return <User className="h-5 w-5" />;
-  };
+  const tabData = useMemo(() => ({
+    upcoming: appointments.filter((a) => a.status === 'scheduled' && a.date >= today),
+    pending: appointments.filter((a) => a.status === 'pending'),
+    past: appointments.filter((a) => a.status === 'completed' || a.status === 'cancelled'),
+  }), [appointments, today]);
 
-  const minDate = new Date().toISOString().split('T')[0];
+  const totalCount = appointments.length;
+  const upcomingCount = tabData.upcoming.length;
+  const pendingCount = tabData.pending.length;
+
+  const minDate = today;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">My Appointments</h1>
-        <p className="text-muted-foreground">
-          Book and manage appointments with advisors, counselors, and support staff
+        <h1 className="text-2xl font-bold tracking-tight">Appointments</h1>
+        <p className="text-muted-foreground text-sm mt-1">Book and manage your appointments</p>
+      </div>
+
+      {/* Google Calendar booking buttons */}
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-gray-700 mb-3">Choose who you want to book with:</p>
+
+        <button
+          onClick={() => window.open(CALENDAR_LINKS.ssa, '_blank')}
+          className="w-full flex items-center gap-3 p-4 border rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
+        >
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-blue-600 text-lg">👩‍💼</span>
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-sm text-gray-900">Student Support Advisor</p>
+            <p className="text-xs text-gray-500 mt-0.5">Academic concerns, attendance issues, general welfare · 30 min</p>
+          </div>
+          <span className="text-xs text-blue-600 font-medium">Book →</span>
+        </button>
+
+        <button
+          onClick={() => window.open(CALENDAR_LINKS.mentor, '_blank')}
+          className="w-full flex items-center gap-3 p-4 border rounded-xl hover:bg-green-50 hover:border-green-300 transition-colors text-left"
+        >
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-green-600 text-lg">👨‍🏫</span>
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-sm text-gray-900">Academic Mentor</p>
+            <p className="text-xs text-gray-500 mt-0.5">Module difficulties, study strategies, academic progress · 45 min</p>
+          </div>
+          <span className="text-xs text-green-600 font-medium">Book →</span>
+        </button>
+
+        <p className="text-xs text-gray-400 text-center mt-2">
+          You will be redirected to Google Calendar. A Google Meet link will be automatically generated.
         </p>
+
+        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          <p className="font-medium mb-1">🧠 Need mental health support?</p>
+          <p className="text-xs leading-relaxed">If you are experiencing stress, anxiety or any mental health concerns, please speak to your Student Support Advisor first. They will provide support and refer you to a counsellor if needed.</p>
+        </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
-            <CalendarIcon className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{upcomingAppointments.length}</div>
-            <p className="text-xs text-muted-foreground">Scheduled sessions</p>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="border-l-4 border-l-blue-500">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Appointments</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : totalCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">All time</p>
+              </div>
+              <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
+                <Calendar className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{completedAppointments.length}</div>
-            <p className="text-xs text-muted-foreground">Past sessions</p>
+        <Card className="border-l-4 border-l-green-500">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Upcoming</p>
+                <p className="text-3xl font-bold mt-1 text-green-600">{loading ? '—' : upcomingCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Confirmed sessions</p>
+              </div>
+              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-amber-500">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Requests</p>
+                <p className="text-3xl font-bold mt-1 text-amber-600">{loading ? '—' : pendingCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Awaiting confirmation</p>
+              </div>
+              <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
+                <Users className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Appointment Booking Guide */}
-      <Card className="border-blue-200 bg-blue-50/50">
-        <CardHeader>
-          <CardTitle className="text-blue-900">How to Book an Appointment</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-4 text-sm">
-            <div className="flex items-start gap-2">
-              <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold flex-shrink-0">1</div>
-              <div>
-                <div className="font-semibold text-blue-900">Choose Type</div>
-                <div className="text-blue-700">Select appointment type</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold flex-shrink-0">2</div>
-              <div>
-                <div className="font-semibold text-blue-900">Select Staff</div>
-                <div className="text-blue-700">Pick advisor or counselor</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold flex-shrink-0">3</div>
-              <div>
-                <div className="font-semibold text-blue-900">Pick Time</div>
-                <div className="text-blue-700">Choose date and time slot</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold flex-shrink-0">4</div>
-              <div>
-                <div className="font-semibold text-blue-900">Confirm</div>
-                <div className="text-blue-700">Receive email confirmation</div>
-              </div>
-            </div>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b">
+        {(['upcoming', 'pending', 'past'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tabData[tab].length > 0 && (
+              <span className="ml-2 text-xs bg-gray-100 rounded-full px-1.5 py-0.5">
+                {tabData[tab].length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="rounded-lg border bg-white overflow-x-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground gap-2 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading appointments...
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Appointments List */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle>Your Appointments</CardTitle>
-              <CardDescription>View appointment status and details</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Appointments</SelectItem>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={() => setIsBookDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Appointment
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredAppointments.length === 0 ? (
-            <div className="text-center py-12">
-              <CalendarIcon className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="font-semibold mb-2">No Appointments Found</h3>
-              <p className="text-muted-foreground mb-6">
-                {filterStatus === 'all' 
-                  ? 'You haven\'t booked any appointments yet.'
-                  : `No ${filterStatus} appointments.`}
-              </p>
-              <Button onClick={() => setIsBookDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Book Your First Appointment
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredAppointments.map((appointment) => (
-                <Card key={appointment.id} className={`border-l-4 ${
-                  appointment.status === 'scheduled' ? 'border-l-blue-500' :
-                  appointment.status === 'completed' ? 'border-l-green-500' :
-                  'border-l-gray-400'
-                }`}>
-                  <CardContent className="pt-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg ${
-                          appointment.status === 'scheduled' ? 'bg-blue-50' :
-                          appointment.status === 'completed' ? 'bg-green-50' :
-                          'bg-gray-50'
-                        }`}>
-                          {getAppointmentIcon(appointment.type)}
-                        </div>
-                        <div>
-                          <h4 className="font-semibold text-lg">{appointment.type}</h4>
-                          <p className="text-sm text-muted-foreground">Appointment ID: {appointment.id}</p>
-                        </div>
-                      </div>
-                      {getStatusBadge(appointment.status)}
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2 mb-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">Date:</span>
-                        <span>{new Date(appointment.date).toLocaleDateString('en-US', { 
-                          weekday: 'short', 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">Time:</span>
-                        <span>{appointment.time}</span>
-                      </div>
-                    </div>
-
-                    {appointment.notes && (
-                      <div className="p-3 bg-muted rounded-md mb-4">
-                        <p className="text-sm"><strong>Notes:</strong> {appointment.notes}</p>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      {appointment.status === 'scheduled' && (
-                        <>
-                          <Button variant="outline" size="sm">
-                            Reschedule
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-red-600 hover:text-red-700"
-                            onClick={() => handleCancelAppointment(appointment.id)}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Cancel
-                          </Button>
-                        </>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Date</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Time</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">With</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Type</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Reason</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tabData[activeTab].length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                    No {activeTab} appointments.
+                  </td>
+                </tr>
+              ) : (
+                tabData[activeTab].map((a) => (
+                  <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm whitespace-nowrap">{a.date || '—'}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap">{a.time || '—'}</td>
+                    <td className="px-4 py-3 text-sm">{getWithName(a)}</td>
+                    <td className="px-4 py-3 text-sm">{a.type || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px]">
+                      <span className="truncate block">{a.reason || '—'}</span>
+                    </td>
+                    <td className="px-4 py-3">{getStatusBadge(a.status)}</td>
+                    <td className="px-4 py-3">
+                      {(a.status === 'pending' || a.status === 'scheduled') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-3 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          disabled={cancellingId === a.id}
+                          onClick={() => cancelAppointment(a.id)}
+                        >
+                          {cancellingId === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Cancel'}
+                        </Button>
                       )}
-                      {appointment.status === 'completed' && (
-                        <Badge variant="outline" className="text-green-600">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Completed
-                        </Badge>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-      {/* Book Appointment Dialog */}
-      <Dialog open={isBookDialogOpen} onOpenChange={setIsBookDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      {/* Book Appointment Modal */}
+      <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) { setModalOpen(false); setFormError(''); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Book an Appointment</DialogTitle>
-            <DialogDescription>
-              Schedule a meeting with academic advisors, counselors, or support staff
-            </DialogDescription>
+            <DialogTitle className="text-base">Book Appointment</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Appointment Type */}
-            <div>
-              <Label className="required">Appointment Type *</Label>
-              <Select value={appointmentType} onValueChange={setAppointmentType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select appointment type" />
-                </SelectTrigger>
+            <div className="space-y-1.5">
+              <Label>Appointment Type *</Label>
+              <Select value={form.appointmentType} onValueChange={(v) => setForm((p) => ({ ...p, appointmentType: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Academic Advising">Academic Advising</SelectItem>
-                  <SelectItem value="Counseling Session">Counseling Session</SelectItem>
-                  <SelectItem value="Faculty Mentoring">Faculty Mentoring</SelectItem>
-                  <SelectItem value="Career Guidance">Career Guidance</SelectItem>
-                  <SelectItem value="Financial Aid">Financial Aid Consultation</SelectItem>
-                  <SelectItem value="Tutoring Session">Tutoring Session</SelectItem>
-                  <SelectItem value="Progress Review">Progress Review</SelectItem>
+                  {APPOINTMENT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Staff Type */}
-            <div>
-              <Label className="required">Staff Type *</Label>
-              <Select value={selectedStaffType} onValueChange={(value) => {
-                setSelectedStaffType(value);
-                setSelectedStaffMember('');
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select staff type" />
-                </SelectTrigger>
+            <div className="space-y-1.5">
+              <Label>Who to Meet *</Label>
+              <Select value={form.whoToMeet} onValueChange={(v) => setForm((p) => ({ ...p, whoToMeet: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select who to meet" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="advisor">Academic Advisor</SelectItem>
-                  <SelectItem value="counselor">Counselor</SelectItem>
-                  <SelectItem value="faculty">Faculty Member</SelectItem>
-                  <SelectItem value="support">Support Staff</SelectItem>
+                  {WHO_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Staff Member */}
-            {selectedStaffType && (
-              <div>
-                <Label className="required">Staff Member *</Label>
-                <Select value={selectedStaffMember} onValueChange={setSelectedStaffMember}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select staff member" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {staffMembers[selectedStaffType as keyof typeof staffMembers].map((staff) => (
-                      <SelectItem key={staff.id} value={staff.id}>
-                        {staff.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {form.whoToMeet && (
+              <div className="space-y-1.5">
+                <Label>Select Person *</Label>
+                {loadingStaff ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading...
+                  </div>
+                ) : (
+                  <Select
+                    value={form.selectedPersonId}
+                    onValueChange={(v) => {
+                      const person = staffList.find((s) => s.id === v);
+                      setForm((p) => ({ ...p, selectedPersonId: v, selectedPersonName: person?.name ?? '' }));
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select a person" /></SelectTrigger>
+                    <SelectContent>
+                      {staffList.length === 0 ? (
+                        <SelectItem value="_none" disabled>No staff available</SelectItem>
+                      ) : (
+                        staffList.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             )}
 
-            {/* Date and Time */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="required">Preferred Date *</Label>
+              <div className="space-y-1.5">
+                <Label>Preferred Date *</Label>
                 <Input
                   type="date"
-                  value={appointmentDate}
-                  onChange={(e) => setAppointmentDate(e.target.value)}
                   min={minDate}
+                  value={form.preferredDate}
+                  onChange={(e) => setForm((p) => ({ ...p, preferredDate: e.target.value }))}
                 />
               </div>
-
-              <div>
-                <Label className="required">Preferred Time *</Label>
-                <Select value={appointmentTime} onValueChange={setAppointmentTime}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeSlots.map((slot) => (
-                      <SelectItem key={slot} value={slot}>
-                        {slot}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-1.5">
+                <Label>Preferred Time *</Label>
+                <Input
+                  type="time"
+                  value={form.preferredTime}
+                  onChange={(e) => setForm((p) => ({ ...p, preferredTime: e.target.value }))}
+                />
               </div>
             </div>
 
-            {/* Reason */}
-            <div>
-              <Label className="required">Reason for Appointment *</Label>
+            <div className="space-y-1.5">
+              <Label>Reason *</Label>
               <Textarea
-                value={appointmentReason}
-                onChange={(e) => setAppointmentReason(e.target.value)}
-                placeholder="Please briefly describe the purpose of your appointment"
+                placeholder="Briefly describe the purpose of your appointment..."
                 rows={3}
+                value={form.reason}
+                onChange={(e) => setForm((p) => ({ ...p, reason: e.target.value }))}
               />
             </div>
 
-            {/* Additional Notes */}
-            <div>
-              <Label>Additional Notes (Optional)</Label>
-              <Textarea
-                value={appointmentNotes}
-                onChange={(e) => setAppointmentNotes(e.target.value)}
-                placeholder="Any other information you'd like to share"
-                rows={2}
-              />
-            </div>
+            {formError && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
+                {formError}
+              </div>
+            )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-              <strong>Note:</strong> Your appointment request will be reviewed by the staff member. 
-              You will receive an email confirmation once approved. A reminder will be sent 24 hours before the appointment.
-            </div>
-
-            <div className="flex gap-2 justify-end pt-4">
-              <Button variant="outline" onClick={() => setIsBookDialogOpen(false)}>
+            <div className="flex gap-2 justify-end pt-1">
+              <Button variant="outline" onClick={() => { setModalOpen(false); setFormError(''); }}>
                 Cancel
               </Button>
-              <Button onClick={handleBookAppointment}>
-                <Plus className="h-4 w-4 mr-2" />
-                Book Appointment
+              <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleBook} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Submit Request
               </Button>
             </div>
           </div>

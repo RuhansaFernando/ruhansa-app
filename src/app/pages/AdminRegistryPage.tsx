@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Search, UserPlus, Edit, Users, UserCheck, UserX, Loader2 } from 'lucide-react';
+import { Search, UserPlus, Upload, Edit, Users, UserCheck, UserX, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   collection,
@@ -19,6 +19,7 @@ import {
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../../firebase';
 import { FirebaseError } from 'firebase/app';
+import { BulkImportModal } from '../components/BulkImportModal';
 
 interface StaffUser {
   id: string;
@@ -52,6 +53,8 @@ export default function AdminRegistryPage() {
   const [addPassword, setAddPassword] = useState('');
   const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
   const [isSaving, setIsSaving] = useState(false);
+
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Edit dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -171,6 +174,36 @@ export default function AdminRegistryPage() {
     }
   };
 
+  const handleBulkImport = async (rows: any[]) => {
+    let success = 0; let failed = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        if (!row.StaffID || !row.FullName || !row.Email) {
+          errors.push(`Row skipped — missing fields: ${row.FullName || row.Email || 'unknown'}`);
+          failed++; continue;
+        }
+        const tempPassword = `${row.StaffID.trim()}@DropGuard`;
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
+        await addDoc(collection(db, 'registry'), {
+          uid: cred.user.uid,
+          staffId: row.StaffID.trim(),
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          role: 'registry',
+          status: 'active',
+          mustChangePassword: true,
+          createdAt: serverTimestamp(),
+        });
+        await secondaryAuth.signOut();
+        success++;
+      } catch (err: any) {
+        errors.push(`${row.FullName || row.Email} — ${err.message}`);
+        failed++;
+      }
+    }
+    return { success, failed, errors };
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -179,10 +212,16 @@ export default function AdminRegistryPage() {
           <h1 className="text-3xl font-bold">Registry Management</h1>
           <p className="text-muted-foreground">Manage Registry department accounts</p>
         </div>
-        <Button className="gap-2" onClick={openAddDialog}>
-          <UserPlus className="h-4 w-4" />
-          Add Registry
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setBulkImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <UserPlus className="h-4 w-4" />
+            Add Registry
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -366,6 +405,13 @@ export default function AdminRegistryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BulkImportModal
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+        role="registry"
+        onImport={handleBulkImport}
+      />
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import Papa from "papaparse";
 import {
   Card,
   CardContent,
@@ -33,6 +34,9 @@ import {
   UserCheck,
   UserX,
   Users,
+  Upload,
+  ArrowRight,
+  Loader2,
 } from "lucide-react";
 import {
   collection,
@@ -47,6 +51,7 @@ import {
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { db, secondaryAuth } from "../../firebase";
 import { FirebaseError } from "firebase/app";
+import { BulkImportModal } from "../components/BulkImportModal";
 
 interface StudentRecord {
   id: string;
@@ -85,6 +90,17 @@ export default function AdminStudentsPage() {
   const [editStudentId, setEditStudentId] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [isEditSaving, setIsEditSaving] = useState(false);
+
+  // Bulk import
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+
+  // Mentor assignment
+  const [mentorAssignOpen, setMentorAssignOpen] = useState(false);
+  const [mentorHeaders, setMentorHeaders] = useState<string[]>([]);
+  const [mentorData, setMentorData] = useState<any[]>([]);
+  const [mentorMapping, setMentorMapping] = useState<{ studentId: string; mentorName: string }>({ studentId: '', mentorName: '' });
+  const [mentorSubmitting, setMentorSubmitting] = useState(false);
+  const [mentorResult, setMentorResult] = useState<{ updated: number; skipped: number; errors: string[] } | null>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -239,6 +255,112 @@ export default function AdminStudentsPage() {
     }
   };
 
+  const handleBulkImport = async (rows: any[]) => {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      if (!row.StudentID?.trim() || !row.FullName?.trim() || !row.Email?.trim()) {
+        failed++;
+        errors.push(`Row skipped — missing required fields (StudentID, FullName, or Email)`);
+        continue;
+      }
+      const studentId = row.StudentID.trim();
+      const tempPassword = `${studentId}@DropGuard`;
+      try {
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
+        await secondaryAuth.signOut();
+        await setDoc(doc(db, "students", studentId), {
+          studentId,
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          uid: cred.user.uid,
+          status: "active",
+          role: "student",
+          faculty: row.Faculty?.trim() ?? "",
+          programme: row.Programme?.trim() ?? "",
+          level: row.Level?.trim() ?? "",
+          intake: row.Intake?.trim() ?? "",
+          gender: row.Gender?.trim() ?? "",
+          contactNumber: row.ContactNumber?.trim() ?? "",
+          enrollmentDate: row.EnrollmentDate?.trim() ?? "",
+          academicMentor: "",
+          gpa: 0,
+          attendancePercentage: 0,
+          consecutiveAbsences: 0,
+          riskLevel: "low",
+          riskScore: 0,
+          flagged: false,
+          dateOfBirth: "",
+          mustChangePassword: true,
+          createdAt: serverTimestamp(),
+        });
+        success++;
+      } catch (err) {
+        failed++;
+        if (err instanceof FirebaseError && err.code === "auth/email-already-in-use") {
+          errors.push(`${row.Email.trim()} — email already in use`);
+        } else {
+          errors.push(`${row.StudentID} — ${err instanceof FirebaseError ? err.message : "Unknown error"}`);
+        }
+      }
+    }
+
+    return { success, failed, errors };
+  };
+
+  const handleMentorFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    Papa.parse(f, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const headers = results.meta.fields ?? [];
+        setMentorHeaders(headers);
+        setMentorData(results.data as any[]);
+        // Auto-map columns
+        const studentIdCol = headers.find((h) =>
+          h.toLowerCase().replace(/[^a-z]/g, '').includes('studentid') ||
+          h.toLowerCase().replace(/[^a-z]/g, '').includes('studentno')
+        ) ?? '';
+        const mentorCol = headers.find((h) =>
+          h.toLowerCase().replace(/[^a-z]/g, '').includes('mentor') ||
+          h.toLowerCase().replace(/[^a-z]/g, '').includes('advisor')
+        ) ?? '';
+        setMentorMapping({ studentId: studentIdCol, mentorName: mentorCol });
+        setMentorResult(null);
+      },
+    });
+  };
+
+  const handleMentorAssign = async () => {
+    if (!mentorMapping.studentId || !mentorMapping.mentorName) {
+      toast.error("Please map both Student ID and Mentor Name columns");
+      return;
+    }
+    setMentorSubmitting(true);
+    let updated = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const row of mentorData) {
+      const studentId = row[mentorMapping.studentId]?.trim();
+      const mentorName = row[mentorMapping.mentorName]?.trim();
+      if (!studentId || !mentorName) { skipped++; continue; }
+      try {
+        await updateDoc(doc(db, "students", studentId), { academicMentor: mentorName });
+        updated++;
+      } catch {
+        errors.push(`${studentId} — student not found`);
+        skipped++;
+      }
+    }
+
+    setMentorResult({ updated, skipped, errors });
+    setMentorSubmitting(false);
+  };
 
   return (
     <div className="space-y-6">
@@ -249,10 +371,16 @@ export default function AdminStudentsPage() {
             Manage student accounts
           </p>
         </div>
-        <Button className="gap-2" onClick={openAddDialog}>
-          <UserPlus className="h-4 w-4" />
-          Add Student
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setBulkImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <UserPlus className="h-4 w-4" />
+            Add Student
+          </Button>
+        </div>
       </div>
 
       {/* Statistics */}
@@ -539,6 +667,122 @@ export default function AdminStudentsPage() {
             <Button size="sm" disabled={isEditSaving} onClick={handleSaveEdit}>
               {isEditSaving ? "Saving…" : "Save"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Modal */}
+      <BulkImportModal
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+        role="student"
+        onImport={handleBulkImport}
+      />
+
+      {/* Mentor Assignment Dialog */}
+      <Dialog open={mentorAssignOpen} onOpenChange={(open) => { if (!open) { setMentorData([]); setMentorHeaders([]); setMentorMapping({ studentId: '', mentorName: '' }); setMentorResult(null); } setMentorAssignOpen(open); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Assign Academic Mentors</DialogTitle>
+            <DialogDescription>
+              Upload a CSV with Student IDs and Mentor Names to bulk-assign mentors.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {mentorData.length === 0 ? (
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="h-7 w-7 text-gray-400" />
+                  <p className="text-sm text-gray-600">Click to upload CSV</p>
+                  <p className="text-xs text-gray-400">Must contain Student ID and Mentor Name columns</p>
+                </div>
+                <input type="file" accept=".csv" className="hidden" onChange={handleMentorFileChange} />
+              </label>
+            ) : mentorResult ? (
+              <div className={`rounded-xl p-5 border text-center ${mentorResult.skipped === 0 && mentorResult.errors.length === 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                <p className="font-medium text-base mb-1">
+                  {mentorResult.updated} student{mentorResult.updated !== 1 ? 's' : ''} updated
+                </p>
+                {mentorResult.skipped > 0 && (
+                  <p className="text-sm text-amber-700">{mentorResult.skipped} rows skipped</p>
+                )}
+                {mentorResult.errors.length > 0 && (
+                  <div className="text-left mt-3 space-y-1 max-h-28 overflow-y-auto">
+                    {mentorResult.errors.map((e, i) => (
+                      <p key={i} className="text-xs text-red-700">• {e}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-xs text-blue-700">
+                    CSV loaded: <strong>{mentorData.length} rows</strong>, {mentorHeaders.length} columns.
+                    Map the columns below.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4 p-3 border rounded-xl">
+                    <div className="w-36 flex-shrink-0">
+                      <p className="text-sm font-medium">Student ID</p>
+                      <span className="text-[10px] text-red-500 font-medium">Required</span>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                    <Select value={mentorMapping.studentId} onValueChange={(v) => setMentorMapping((p) => ({ ...p, studentId: v }))}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select column..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mentorHeaders.map((h) => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-4 p-3 border rounded-xl">
+                    <div className="w-36 flex-shrink-0">
+                      <p className="text-sm font-medium">Mentor Name</p>
+                      <span className="text-[10px] text-red-500 font-medium">Required</span>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                    <Select value={mentorMapping.mentorName} onValueChange={(v) => setMentorMapping((p) => ({ ...p, mentorName: v }))}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select column..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mentorHeaders.map((h) => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setMentorAssignOpen(false)}>
+              {mentorResult ? 'Close' : 'Cancel'}
+            </Button>
+            {mentorData.length > 0 && !mentorResult && (
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 gap-1.5"
+                disabled={mentorSubmitting || !mentorMapping.studentId || !mentorMapping.mentorName}
+                onClick={handleMentorAssign}
+              >
+                {mentorSubmitting ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating...</>
+                ) : (
+                  <>Assign {mentorData.length} Mentors</>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -40,7 +40,7 @@ const formatDate = (dateStr?: string) => {
   }
 };
 
-export default function AdminSRUPage() {
+export default function AdminCourseLeadersPage() {
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,7 +66,7 @@ export default function AdminSRUPage() {
   const [isEditSaving, setIsEditSaving] = useState(false);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'student_support_advisors'), (snap) => {
+    const unsub = onSnapshot(collection(db, 'course_leaders'), (snap) => {
       setStaff(
         snap.docs.map((d) => ({
           id: d.id,
@@ -106,16 +106,16 @@ export default function AdminSRUPage() {
     try {
       const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
       await secondaryAuth.signOut();
-      await addDoc(collection(db, 'student_support_advisors'), {
+      await addDoc(collection(db, 'course_leaders'), {
         uid: cred.user.uid,
         staffId: addStaffId.trim(),
         name: addName.trim(),
         email: addEmail.trim(),
-        role: 'sru',
+        role: 'course_leader',
         status: addStatus,
         createdAt: serverTimestamp(),
       });
-      toast.success('Student Support Advisor account created successfully');
+      toast.success('Course Leader account created successfully');
       setIsAddDialogOpen(false);
     } catch (err) {
       if (err instanceof FirebaseError) {
@@ -148,7 +148,7 @@ export default function AdminSRUPage() {
     }
     setIsEditSaving(true);
     try {
-      await updateDoc(doc(db, 'student_support_advisors', editingUser.id), {
+      await updateDoc(doc(db, 'course_leaders', editingUser.id), {
         staffId: editStaffId.trim(),
         name: editName.trim(),
         email: editEmail.trim(),
@@ -167,7 +167,7 @@ export default function AdminSRUPage() {
   const handleToggleStatus = async (user: StaffUser) => {
     const newStatus = user.status === 'active' ? 'inactive' : 'active';
     try {
-      await updateDoc(doc(db, 'student_support_advisors', user.id), { status: newStatus });
+      await updateDoc(doc(db, 'course_leaders', user.id), { status: newStatus });
       toast.success(`${user.name} set to ${newStatus}`);
     } catch {
       toast.error('Failed to update status.');
@@ -184,12 +184,12 @@ export default function AdminSRUPage() {
         }
         const tempPassword = `${row.StaffID.trim()}@DropGuard`;
         const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
-        await addDoc(collection(db, 'student_support_advisors'), {
+        await addDoc(collection(db, 'course_leaders'), {
           uid: cred.user.uid,
           staffId: row.StaffID.trim(),
           name: row.FullName.trim(),
           email: row.Email.trim(),
-          role: 'sru',
+          role: 'course_leader',
           status: 'active',
           mustChangePassword: true,
           createdAt: serverTimestamp(),
@@ -209,8 +209,8 @@ export default function AdminSRUPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Student Support Advisor Management</h1>
-          <p className="text-muted-foreground">Manage Student Support Advisor accounts</p>
+          <h1 className="text-3xl font-bold">Course Leader Management</h1>
+          <p className="text-muted-foreground">Manage Course Leader accounts</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setBulkImportOpen(true)}>
@@ -219,26 +219,25 @@ export default function AdminSRUPage() {
           </Button>
           <Button className="gap-2" onClick={openAddDialog}>
             <UserPlus className="h-4 w-4" />
-            Add Student Support Advisor
+            Add Course Leader
           </Button>
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Student Support Advisors</CardTitle>
-            <div className="h-9 w-9 rounded-full bg-teal-100 flex items-center justify-center">
-              <Users className="h-5 w-5 text-teal-600" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Course Leaders</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-purple-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-purple-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-teal-600">{total}</div>
+            <div className="text-4xl font-bold text-purple-600">{total}</div>
             <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
           </CardContent>
         </Card>
-
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
@@ -251,7 +250,6 @@ export default function AdminSRUPage() {
             <p className="text-xs text-muted-foreground mt-1">Active accounts</p>
           </CardContent>
         </Card>
-
         <Card className="border-l-4 border-l-gray-400">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
@@ -269,7 +267,7 @@ export default function AdminSRUPage() {
       {/* Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Student Support Advisor Accounts</CardTitle>
+          <CardTitle>Course Leader Accounts</CardTitle>
           <div className="mt-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -291,7 +289,7 @@ export default function AdminSRUPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No Student Support Advisor accounts found</p>
+              <p>No Course Leader accounts found</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -313,13 +311,7 @@ export default function AdminSRUPage() {
                       <td className="px-4 py-3 font-medium">{user.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                       <td className="px-4 py-3">
-                        <Badge
-                          className={
-                            user.status === 'active'
-                              ? 'bg-green-100 text-green-800 border-green-200 text-xs'
-                              : 'bg-gray-100 text-gray-600 border-gray-200 text-xs'
-                          }
-                        >
+                        <Badge className={user.status === 'active' ? 'bg-green-100 text-green-800 border-green-200 text-xs' : 'bg-gray-100 text-gray-600 border-gray-200 text-xs'}>
                           {user.status}
                         </Badge>
                       </td>
@@ -331,21 +323,11 @@ export default function AdminSRUPage() {
                             Edit
                           </Button>
                           {user.status === 'active' ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1 text-orange-600 hover:text-orange-600 hover:bg-orange-50"
-                              onClick={() => handleToggleStatus(user)}
-                            >
+                            <Button size="sm" variant="outline" className="gap-1 text-orange-600 hover:text-orange-600 hover:bg-orange-50" onClick={() => handleToggleStatus(user)}>
                               Deactivate
                             </Button>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1 text-green-600 hover:text-green-600 hover:bg-green-50"
-                              onClick={() => handleToggleStatus(user)}
-                            >
+                            <Button size="sm" variant="outline" className="gap-1 text-green-600 hover:text-green-600 hover:bg-green-50" onClick={() => handleToggleStatus(user)}>
                               Activate
                             </Button>
                           )}
@@ -364,8 +346,8 @@ export default function AdminSRUPage() {
       <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active'); } setIsAddDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Student Support Advisor Account</DialogTitle>
-            <DialogDescription>Create a new Student Support Advisor account</DialogDescription>
+            <DialogTitle>Add Course Leader Account</DialogTitle>
+            <DialogDescription>Create a new Course Leader account</DialogDescription>
           </DialogHeader>
           <div className="space-y-4" autoComplete="off">
             <input type="text" style={{ display: 'none' }} autoComplete="username" readOnly />
@@ -380,11 +362,11 @@ export default function AdminSRUPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
-              <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
+              <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input id="add-password" type="password" placeholder="Enter temporary password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
+              <Input id="add-password" type="password" placeholder="Enter temporary password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-status">Status</Label>
@@ -417,7 +399,7 @@ export default function AdminSRUPage() {
       <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Student Support Advisor Account</DialogTitle>
+            <DialogTitle>Edit Course Leader Account</DialogTitle>
             <DialogDescription>Update this staff member's information</DialogDescription>
           </DialogHeader>
           <div className="space-y-4" autoComplete="off">

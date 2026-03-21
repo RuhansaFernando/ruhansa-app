@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { toast } from "sonner";
-import { UserPlus, Search, Edit, UserX, Users } from "lucide-react";
+import { UserPlus, Upload, Search, Edit, UserX, Users } from "lucide-react";
 import {
   collection,
   onSnapshot,
@@ -40,6 +40,7 @@ import {
 import { db, secondaryAuth } from "../../firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
+import { BulkImportModal } from "../components/BulkImportModal";
 
 interface Tutor {
   id: string;
@@ -57,6 +58,8 @@ export default function AdminTutorsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Add / Edit dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -204,6 +207,37 @@ export default function AdminTutorsPage() {
   const activeTutors = tutors.filter((t) => t.status === "active").length;
   const inactiveTutors = tutors.filter((t) => t.status === "inactive").length;
 
+  const handleBulkImport = async (rows: any[]) => {
+    let success = 0; let failed = 0; const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        if (!row.StaffID || !row.FullName || !row.Email) {
+          errors.push(`Row skipped — missing fields: ${row.FullName || row.Email || 'unknown'}`);
+          failed++; continue;
+        }
+        const tempPassword = `${row.StaffID.trim()}@DropGuard`;
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
+        await addDoc(collection(db, "academic_mentors"), {
+          uid: cred.user.uid,
+          tutorId: row.StaffID.trim(),
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          department: row.Department?.trim() ?? '',
+          role: 'academic_mentor',
+          status: 'active',
+          mustChangePassword: true,
+          createdAt: serverTimestamp(),
+        });
+        await secondaryAuth.signOut();
+        success++;
+      } catch (err: any) {
+        errors.push(`${row.FullName || row.Email} — ${err.message}`);
+        failed++;
+      }
+    }
+    return { success, failed, errors };
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -214,10 +248,16 @@ export default function AdminTutorsPage() {
             Manage academic mentors assigned to students
           </p>
         </div>
-        <Button className="gap-2" onClick={openAddDialog}>
-          <UserPlus className="h-4 w-4" />
-          Add Academic Mentor
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setBulkImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <UserPlus className="h-4 w-4" />
+            Add Academic Mentor
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -399,6 +439,13 @@ export default function AdminTutorsPage() {
           )}
         </CardContent>
       </Card>
+
+      <BulkImportModal
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+        role="mentor"
+        onImport={handleBulkImport}
+      />
 
       {/* Add / Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setEditingTutor(null); setFormTutorId(''); setFormName(''); setFormEmail(''); setFormDepartment(''); setFormStatus('active'); setFormPassword(''); setFormConfirmPassword(''); } setIsDialogOpen(open); }}>

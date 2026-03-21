@@ -226,7 +226,7 @@ export default function RegistryStudentDetailsPage() {
         </Card>
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
-            <CardDescription>Tutor Assigned</CardDescription>
+            <CardDescription>Mentor Assigned</CardDescription>
             <CardTitle className="text-3xl text-green-600">
               {students.filter((s) => s.academicMentor !== "").length}
             </CardTitle>
@@ -237,7 +237,7 @@ export default function RegistryStudentDetailsPage() {
         </Card>
         <Card className="border-l-4 border-l-amber-500">
           <CardHeader className="pb-3">
-            <CardDescription>No Tutor</CardDescription>
+            <CardDescription>No Mentor</CardDescription>
             <CardTitle className="text-3xl text-amber-600">
               {students.filter((s) => s.academicMentor === "").length}
             </CardTitle>
@@ -293,12 +293,12 @@ export default function RegistryStudentDetailsPage() {
             </Select>
             <Select value={tutorFilter} onValueChange={setTutorFilter}>
               <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder="Tutor Status" />
+                <SelectValue placeholder="Mentor Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Students</SelectItem>
-                <SelectItem value="assigned">Tutor Assigned</SelectItem>
-                <SelectItem value="not_assigned">No Tutor</SelectItem>
+                <SelectItem value="assigned">Mentor Assigned</SelectItem>
+                <SelectItem value="not_assigned">No Mentor</SelectItem>
               </SelectContent>
             </Select>
           </div>

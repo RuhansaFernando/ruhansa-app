@@ -1,4 +1,4 @@
-export type UserRole = 'advisor' | 'student' | 'faculty' | 'counselor' | 'admin' | 'sru' | 'registry' | 'academic_admin' | 'academic_mentor' | 'student_counsellor';
+export type UserRole = 'advisor' | 'student' | 'faculty' | 'counselor' | 'admin' | 'sru' | 'registry' | 'academic_admin' | 'academic_mentor' | 'student_counsellor' | 'course_leader';
 
 export interface User {
   id: string;
@@ -9,6 +9,8 @@ export interface User {
   status?: 'active' | 'inactive';
   department?: string;
   createdAt?: string;
+  mustChangePassword?: boolean;
+  firestoreCollection?: string;
 }
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
