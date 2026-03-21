@@ -1,41 +1,55 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { useState, useEffect } from 'react';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Search, UserCog, Mail, Phone, Plus, Edit, Trash2, Download, Loader2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { db, secondaryAuth } from '../../firebase';
+import { Search, Edit, UserPlus, UserCheck, UserX, Users, Upload } from 'lucide-react';
 import {
   collection,
   onSnapshot,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
+import { db, secondaryAuth } from '../../firebase';
+import { BulkImportModal } from '../components/BulkImportModal';
 
 interface Advisor {
   id: string;
+  employeeId: string;
   name: string;
   email: string;
-  password: string;
-  employeeId: string;
   department: string;
-  phone: string;
+  specialization: string;
   status: 'active' | 'inactive';
-  studentsAssigned: number;
-  specialization: string[];
-  maxStudentCapacity: number;
-  joinedDate: string;
 }
 
-const allDepartments = [
+const DEPARTMENTS = [
   'Academic Services',
   'Student Services',
   'Computer Science',
@@ -46,96 +60,89 @@ const allDepartments = [
   'Natural Sciences',
 ];
 
+const SPECIALISATIONS = [
+  'First-Year Students',
+  'Career Planning',
+  'Academic Support',
+  'Study Skills',
+  'STEM Programs',
+  'Graduate Planning',
+  'Transfer Students',
+  'International Students',
+];
+
 export default function AdminAdvisorsPage() {
   const [advisorList, setAdvisorList] = useState<Advisor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+
+  // Add dialog
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addEmployeeId, setAddEmployeeId] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [addDepartment, setAddDepartment] = useState('');
+  const [addSpecialisation, setAddSpecialisation] = useState('');
+  const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Edit dialog
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingAdvisor, setEditingAdvisor] = useState<Advisor | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
-  const [editSpecialization, setEditSpecialization] = useState('');
-  const [editJoinedDate, setEditJoinedDate] = useState('');
-  const [editSaving, setEditSaving] = useState(false);
+  const [editSpecialisation, setEditSpecialisation] = useState('');
+  const [isEditSaving, setIsEditSaving] = useState(false);
 
-  // Add dialog
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [addName, setAddName] = useState('');
-  const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
-  const [addEmployeeId, setAddEmployeeId] = useState('');
-  const [addDepartment, setAddDepartment] = useState('');
-  const [addPhone, setAddPhone] = useState('');
-  const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
-  const [addSpecialization, setAddSpecialization] = useState('');
-  const [addMaxStudentCapacity, setAddMaxStudentCapacity] = useState('');
-  const [addSaving, setAddSaving] = useState(false);
-
-  // View dialog
-  const [viewingAdvisor, setViewingAdvisor] = useState<Advisor | null>(null);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-
-  // Delete dialog
-  const [deletingAdvisor, setDeletingAdvisor] = useState<Advisor | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  // Real-time listener for advisors from Firestore
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'advisors'), (snapshot) => {
-      const advisors: Advisor[] = snapshot.docs.map((docSnap) => {
-        const d = docSnap.data();
-        return {
-          id: docSnap.id,
-          name: d.name ?? '',
-          email: d.email ?? '',
-          password: d.password ?? '',
-          employeeId: d.employeeId ?? '',
-          department: d.department ?? '',
-          phone: d.phone ?? '',
-          status: d.status ?? 'active',
-          studentsAssigned: d.studentsAssigned ?? 0,
-          specialization: d.specialization ?? [],
-          maxStudentCapacity: d.maxStudentCapacity ?? 0,
-          joinedDate: d.joinedDate ?? '',
-        };
-      });
-      setAdvisorList(advisors);
+    const unsub = onSnapshot(collection(db, 'advisors'), (snapshot) => {
+      setAdvisorList(
+        snapshot.docs.map((d) => ({
+          id: d.id,
+          employeeId: d.data().employeeId ?? '',
+          name: d.data().name ?? '',
+          email: d.data().email ?? '',
+          department: d.data().department ?? '',
+          specialization: Array.isArray(d.data().specialization)
+            ? d.data().specialization[0] ?? ''
+            : d.data().specialization ?? '',
+          status: d.data().status ?? 'active',
+        }))
+      );
       setLoading(false);
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
-
-  const filteredAdvisors = advisorList.filter((advisor) => {
-    const matchesSearch =
-      advisor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      advisor.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      advisor.department.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDepartment = departmentFilter === 'all' || advisor.department === departmentFilter;
-    const matchesStatus = statusFilter === 'all' || advisor.status === statusFilter;
-    return matchesSearch && matchesDepartment && matchesStatus;
-  });
 
   const stats = {
     total: advisorList.length,
     active: advisorList.filter((a) => a.status === 'active').length,
-    totalStudents: advisorList.reduce((sum, a) => sum + a.studentsAssigned, 0),
-    avgStudentsPerAdvisor:
-      advisorList.length > 0
-        ? Math.round(advisorList.reduce((sum, a) => sum + a.studentsAssigned, 0) / advisorList.length)
-        : 0,
+    inactive: advisorList.filter((a) => a.status === 'inactive').length,
   };
 
-  // ── Add Advisor ──────────────────────────────────────────────────────────────
+  const filtered = advisorList.filter((a) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      a.name.toLowerCase().includes(q) ||
+      a.email.toLowerCase().includes(q) ||
+      a.employeeId.toLowerCase().includes(q) ||
+      a.department.toLowerCase().includes(q);
+    const matchesStatus = statusFilter === 'all' || a.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const openAddDialog = () => {
+    setAddName(''); setAddEmployeeId(''); setAddEmail(''); setAddPassword('');
+    setAddDepartment(''); setAddSpecialisation(''); setAddStatus('active');
+    setIsAddOpen(true);
+  };
+
   const handleAddAdvisor = async () => {
-    if (!addName || !addEmployeeId || !addEmail || !addPassword || !addPhone || !addDepartment || !addSpecialization || !addMaxStudentCapacity) {
+    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addPassword.trim() || !addDepartment) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -143,150 +150,125 @@ export default function AdminAdvisorsPage() {
       toast.error('Password must be at least 6 characters');
       return;
     }
-
-    setAddSaving(true);
+    setIsSaving(true);
     try {
-      // 1. Create Firebase Auth account (uses secondaryAuth so admin stays signed in)
-      await createUserWithEmailAndPassword(secondaryAuth, addEmail, addPassword);
-
-      // 2. Save to Firestore advisors collection
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      await secondaryAuth.signOut();
       await addDoc(collection(db, 'advisors'), {
-        name: addName,
-        email: addEmail,
-        password: addPassword,
-        employeeId: addEmployeeId,
+        employeeId: addEmployeeId.trim(),
+        name: addName.trim(),
+        email: addEmail.trim(),
         department: addDepartment,
-        phone: addPhone,
+        specialization: addSpecialisation ? [addSpecialisation] : [],
         status: addStatus,
-        studentsAssigned: 0,
-        specialization: [addSpecialization],
-        maxStudentCapacity: parseInt(addMaxStudentCapacity),
-        joinedDate: new Date().toISOString().split('T')[0],
         role: 'advisor',
+        uid: cred.user.uid,
+        studentsAssigned: 0,
+        maxStudentCapacity: 40,
+        joinedDate: new Date().toISOString().split('T')[0],
         createdAt: serverTimestamp(),
       });
-
-      toast.success('Advisor added successfully');
-      setIsAddDialogOpen(false);
-      resetAddForm();
-    } catch (error: unknown) {
-      const err = error as { code?: string; message?: string };
-      if (err.code === 'auth/email-already-in-use') {
-        toast.error('An account with this email already exists');
+      toast.success('Advisor account created successfully');
+      setIsAddOpen(false);
+    } catch (err) {
+      if (err instanceof FirebaseError) {
+        if (err.code === 'auth/email-already-in-use') {
+          toast.error('An account with this email already exists.');
+        } else {
+          toast.error(`Failed to create account: ${err.message}`);
+        }
       } else {
-        toast.error(err.message ?? 'Failed to add advisor');
+        toast.error('An unexpected error occurred. Please try again.');
       }
     } finally {
-      setAddSaving(false);
+      setIsSaving(false);
     }
   };
 
-  const resetAddForm = () => {
-    setAddName('');
-    setAddEmployeeId('');
-    setAddEmail('');
-    setAddPassword('');
-    setAddPhone('');
-    setAddDepartment('');
-    setAddSpecialization('');
-    setAddMaxStudentCapacity('');
-    setAddStatus('active');
-  };
-
-  // ── Edit Advisor ─────────────────────────────────────────────────────────────
-  const handleEditClick = (advisor: Advisor) => {
+  const openEditDialog = (advisor: Advisor) => {
     setEditingAdvisor(advisor);
     setEditName(advisor.name);
     setEditEmail(advisor.email);
     setEditDepartment(advisor.department);
-    setEditPhone(advisor.phone);
-    setEditStatus(advisor.status);
-    setEditSpecialization(advisor.specialization.join(', '));
-    setEditJoinedDate(advisor.joinedDate);
-    setIsEditDialogOpen(true);
+    setEditSpecialisation(advisor.specialization);
+    setIsEditOpen(true);
   };
 
   const handleSaveEdit = async () => {
-    if (!editName || !editEmail || !editDepartment || !editPhone) {
+    if (!editingAdvisor || !editName.trim() || !editEmail.trim() || !editDepartment) {
       toast.error('Please fill in all required fields');
       return;
     }
-    if (!editingAdvisor) return;
-
-    setEditSaving(true);
+    setIsEditSaving(true);
     try {
-      const specializationArray = editSpecialization
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
       await updateDoc(doc(db, 'advisors', editingAdvisor.id), {
-        name: editName,
-        email: editEmail,
+        name: editName.trim(),
+        email: editEmail.trim(),
         department: editDepartment,
-        phone: editPhone,
-        status: editStatus,
-        specialization: specializationArray,
-        joinedDate: editJoinedDate,
+        specialization: editSpecialisation ? [editSpecialisation] : [],
       });
-
       toast.success('Advisor updated successfully');
-      setIsEditDialogOpen(false);
+      setIsEditOpen(false);
       setEditingAdvisor(null);
-    } catch (error: unknown) {
-      const err = error as { message?: string };
-      toast.error(err.message ?? 'Failed to update advisor');
+    } catch {
+      toast.error('Failed to update advisor. Please try again.');
     } finally {
-      setEditSaving(false);
+      setIsEditSaving(false);
     }
   };
 
-  // ── Delete Advisor ───────────────────────────────────────────────────────────
-  const handleDeleteClick = (advisor: Advisor) => {
-    setDeletingAdvisor(advisor);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const handleDeleteAdvisor = async () => {
-    if (!deletingAdvisor) return;
-
-    setDeleteLoading(true);
+  const handleToggleStatus = async (advisor: Advisor) => {
+    const newStatus = advisor.status === 'active' ? 'inactive' : 'active';
     try {
-      await deleteDoc(doc(db, 'advisors', deletingAdvisor.id));
-      toast.success('Advisor deleted successfully');
-      setIsDeleteDialogOpen(false);
-      setDeletingAdvisor(null);
-    } catch (error: unknown) {
-      const err = error as { message?: string };
-      toast.error(err.message ?? 'Failed to delete advisor');
-    } finally {
-      setDeleteLoading(false);
+      await updateDoc(doc(db, 'advisors', advisor.id), { status: newStatus });
+      toast.success(newStatus === 'active' ? 'Advisor activated' : 'Advisor deactivated');
+    } catch {
+      toast.error('Failed to update status. Please try again.');
     }
   };
 
-  // ── Export ───────────────────────────────────────────────────────────────────
-  const handleExport = () => {
-    const headers = ['Name', 'Email', 'Employee ID', 'Department', 'Phone', 'Status', 'Students Assigned', 'Max Capacity', 'Specialization', 'Joined Date'];
-    const csvData = filteredAdvisors.map((a) => [
-      a.name, a.email, a.employeeId, a.department, a.phone, a.status,
-      a.studentsAssigned, a.maxStudentCapacity, a.specialization.join('; '), a.joinedDate,
-    ]);
-    const csvContent = [
-      headers.join(','),
-      ...csvData.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `advisors_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Advisor data exported successfully');
+  const handleBulkImport = async (rows: any[]) => {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    for (const row of rows) {
+      if (!row.StaffID?.trim() || !row.FullName?.trim() || !row.Email?.trim()) {
+        failed++;
+        errors.push(`Row skipped — missing required fields (StaffID, FullName, or Email)`);
+        continue;
+      }
+      const tempPassword = `${row.StaffID.trim()}@DropGuard`;
+      try {
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
+        await secondaryAuth.signOut();
+        await addDoc(collection(db, 'advisors'), {
+          employeeId: row.StaffID.trim(),
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          department: row.Department?.trim() ?? '',
+          specialization: row.Specialisation?.trim() ? [row.Specialisation.trim()] : [],
+          status: 'active',
+          role: 'advisor',
+          uid: cred.user.uid,
+          studentsAssigned: 0,
+          maxStudentCapacity: 40,
+          joinedDate: new Date().toISOString().split('T')[0],
+          mustChangePassword: true,
+          createdAt: serverTimestamp(),
+        });
+        success++;
+      } catch (err: any) {
+        if (err.code === 'auth/email-already-in-use') {
+          errors.push(`${row.Email.trim()} — email already in use`);
+        } else {
+          errors.push(`${row.StaffID} — ${err.message}`);
+        }
+        failed++;
+      }
+    }
+    return { success, failed, errors };
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -294,102 +276,81 @@ export default function AdminAdvisorsPage() {
           <h1 className="text-3xl font-bold">Advisor Management</h1>
           <p className="text-muted-foreground">Manage academic advisors and their assignments</p>
         </div>
-        <Button variant="outline" className="gap-2" onClick={handleExport}>
-          <Download className="h-4 w-4" />
-          Export
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setBulkImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <UserPlus className="h-4 w-4" />
+            Add Advisor
+          </Button>
+        </div>
       </div>
 
       {/* Statistics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total Advisors</CardDescription>
-            <CardTitle className="text-3xl">{stats.total}</CardTitle>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Advisors</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">All departments</p>
+            <div className="text-4xl font-bold text-blue-600">{stats.total}</div>
+            <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Active Advisors</CardDescription>
-            <CardTitle className="text-3xl text-green-600">{stats.active}</CardTitle>
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Currently advising</p>
+            <div className="text-4xl font-bold text-green-600">{stats.active}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active accounts</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Students Assigned</CardDescription>
-            <CardTitle className="text-3xl text-blue-600">{stats.totalStudents}</CardTitle>
+        <Card className="border-l-4 border-l-red-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
+              <UserX className="h-5 w-5 text-red-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Total across all advisors</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Avg per Advisor</CardDescription>
-            <CardTitle className="text-3xl">{stats.avgStudentsPerAdvisor}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Students assigned</p>
+            <div className="text-4xl font-bold text-red-600">{stats.inactive}</div>
+            <p className="text-xs text-muted-foreground mt-1">Inactive accounts</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Advisor List */}
+      {/* Advisor Directory */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Advisor Directory</CardTitle>
-            <CardDescription>All academic advisors in the system</CardDescription>
-          </div>
-          <Button
-            className="gap-2"
-            onClick={() => {
-              resetAddForm();
-              setIsAddDialogOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Advisor
-          </Button>
+        <CardHeader>
+          <CardTitle>Advisor Directory</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, or department..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
+                autoComplete="off"
               />
             </div>
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by department">
-                  {departmentFilter === 'all' ? 'All Departments' : departmentFilter}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
-                {allDepartments.map((dept) => (
-                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by status">
-                  {statusFilter === 'all' ? 'All Statuses' : statusFilter}
-                </SelectValue>
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
@@ -397,160 +358,137 @@ export default function AdminAdvisorsPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="text-center py-12 text-muted-foreground">
+              Loading advisors…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No advisors found matching your criteria</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredAdvisors.map((advisor) => (
-                <div
-                  key={advisor.id}
-                  className="p-4 border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <UserCog className="h-6 w-6 text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-semibold">{advisor.name}</h3>
-                          <Badge
-                            className={
-                              advisor.status === 'active'
-                                ? 'bg-green-100 text-green-800 border-green-200'
-                                : 'bg-gray-100 text-gray-800 border-gray-200'
-                            }
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Employee ID</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Full Name</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Department</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                    <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((advisor) => (
+                    <tr
+                      key={advisor.id}
+                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{advisor.employeeId || '—'}</td>
+                      <td className="px-4 py-3 font-medium">{advisor.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{advisor.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{advisor.department || '—'}</td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          className={
+                            advisor.status === 'active'
+                              ? 'bg-green-100 text-green-800 border-green-200'
+                              : 'bg-gray-100 text-gray-600 border-gray-200'
+                          }
+                        >
+                          {advisor.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => openEditDialog(advisor)}
                           >
-                            {advisor.status}
-                          </Badge>
+                            <Edit className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          {advisor.status === 'active' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:text-red-600 hover:bg-red-50 border-red-200"
+                              onClick={() => handleToggleStatus(advisor)}
+                            >
+                              Deactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-green-600 hover:text-green-600 hover:bg-green-50 border-green-200"
+                              onClick={() => handleToggleStatus(advisor)}
+                            >
+                              Activate
+                            </Button>
+                          )}
                         </div>
-                        <div className="space-y-1 text-sm text-muted-foreground mb-3">
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4" />
-                            <span>{advisor.email}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4" />
-                            <span>{advisor.phone}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-sm">
-                          <div>
-                            <span className="font-medium">Department:</span>{' '}
-                            <span className="text-muted-foreground">{advisor.department}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Students:</span>{' '}
-                            <span className="text-muted-foreground">{advisor.studentsAssigned}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Capacity:</span>{' '}
-                            <span className="text-muted-foreground">{advisor.maxStudentCapacity}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Specialization:</span>{' '}
-                            <span className="text-muted-foreground">{advisor.specialization.join(', ')}</span>
-                          </div>
-                        </div>
-                        {advisor.joinedDate && (
-                          <div className="text-sm text-muted-foreground mt-2">
-                            Joined {new Date(advisor.joinedDate).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleEditClick(advisor)}>
-                        <Edit className="h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setViewingAdvisor(advisor); setIsViewDialogOpen(true); }}>
-                        View Details
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleDeleteClick(advisor)}>
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {filteredAdvisors.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No advisors found matching your search</p>
-                </div>
-              )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(''); setAddEmployeeId(''); setAddEmail(''); setAddPassword(''); setAddDepartment(''); setAddSpecialisation(''); setAddStatus('active'); } setIsAddOpen(open); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Academic Advisor</DialogTitle>
-            <DialogDescription>Add a new academic advisor to the system</DialogDescription>
+            <DialogTitle>Add Advisor</DialogTitle>
+            <DialogDescription>Create a new academic advisor account</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4" autoComplete="off">
+            <input type="text" style={{ display: 'none' }} autoComplete="username" readOnly />
+            <input type="password" style={{ display: 'none' }} autoComplete="current-password" readOnly />
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name <span className="text-red-500">*</span></Label>
-              <Input id="fullName" placeholder="e.g. Dr. Sarah Johnson" value={addName} onChange={(e) => setAddName(e.target.value)} />
+              <Label htmlFor="add-empid">Employee ID <span className="text-red-500">*</span></Label>
+              <Input id="add-empid" placeholder="e.g. EMP2024001" value={addEmployeeId} onChange={(e) => setAddEmployeeId(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="employeeId">Employee ID <span className="text-red-500">*</span></Label>
-              <Input id="employeeId" placeholder="e.g. EMP2023045" value={addEmployeeId} onChange={(e) => setAddEmployeeId(e.target.value)} />
+              <Label htmlFor="add-name">Full Name <span className="text-red-500">*</span></Label>
+              <Input id="add-name" placeholder="Enter full name" value={addName} onChange={(e) => setAddName(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="emailAddress">Email Address <span className="text-red-500">*</span></Label>
-              <Input id="emailAddress" type="email" placeholder="name@university.edu" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} />
+              <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
+              <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
-              <Input id="password" type="password" placeholder="Min. 6 characters" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} />
+              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
+              <Input id="add-password" type="password" placeholder="Min. 6 characters" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contactNumber">Contact Number <span className="text-red-500">*</span></Label>
-              <Input id="contactNumber" type="tel" placeholder="+1 (555) 000-0000" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="department">Department <span className="text-red-500">*</span></Label>
+              <Label htmlFor="add-department">Department <span className="text-red-500">*</span></Label>
               <Select value={addDepartment} onValueChange={setAddDepartment}>
-                <SelectTrigger><SelectValue placeholder="— Select —" /></SelectTrigger>
+                <SelectTrigger id="add-department"><SelectValue placeholder="— Select —" /></SelectTrigger>
                 <SelectContent>
-                  {allDepartments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                  ))}
+                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="specialisation">Specialisation <span className="text-red-500">*</span></Label>
-              <Select value={addSpecialization} onValueChange={setAddSpecialization}>
-                <SelectTrigger><SelectValue placeholder="— Select —" /></SelectTrigger>
+              <Label htmlFor="add-spec">Specialisation</Label>
+              <Select value={addSpecialisation} onValueChange={setAddSpecialisation}>
+                <SelectTrigger id="add-spec"><SelectValue placeholder="— Select —" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="First-Year Students">First-Year Students</SelectItem>
-                  <SelectItem value="Career Planning">Career Planning</SelectItem>
-                  <SelectItem value="Academic Support">Academic Support</SelectItem>
-                  <SelectItem value="Study Skills">Study Skills</SelectItem>
-                  <SelectItem value="STEM Programs">STEM Programs</SelectItem>
-                  <SelectItem value="Graduate Planning">Graduate Planning</SelectItem>
-                  <SelectItem value="Transfer Students">Transfer Students</SelectItem>
-                  <SelectItem value="International Students">International Students</SelectItem>
+                  {SPECIALISATIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="maxCapacity">Max Student Capacity <span className="text-red-500">*</span></Label>
-              <Input id="maxCapacity" type="number" placeholder="e.g. 40" value={addMaxStudentCapacity} onChange={(e) => setAddMaxStudentCapacity(e.target.value)} />
-            </div>
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={addStatus} onValueChange={(value: 'active' | 'inactive') => setAddStatus(value)}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <Label htmlFor="add-status">Status</Label>
+              <Select value={addStatus} onValueChange={(v) => setAddStatus(v as 'active' | 'inactive')}>
+                <SelectTrigger id="add-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
@@ -558,128 +496,66 @@ export default function AdminAdvisorsPage() {
               </Select>
             </div>
           </div>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={addSaving}>
-              Cancel
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+            <Button size="sm" disabled={isSaving} onClick={handleAddAdvisor}>
+              {isSaving ? 'Creating…' : 'Create Account'}
             </Button>
-            <Button size="sm" onClick={handleAddAdvisor} disabled={addSaving}>
-              {addSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</> : 'Add Advisor'}
-            </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+      <Dialog open={isEditOpen} onOpenChange={(open) => { if (!open) { setEditName(''); setEditEmail(''); setEditDepartment(''); setEditSpecialisation(''); setEditingAdvisor(null); } setIsEditOpen(open); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Advisor</DialogTitle>
-            <DialogDescription>Update the details of the advisor</DialogDescription>
+            <DialogDescription>Update the advisor's information</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4" autoComplete="off">
             <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Enter name" />
+              <Label htmlFor="edit-name">Full Name <span className="text-red-500">*</span></Label>
+              <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
-              <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Enter email" />
+              <Label htmlFor="edit-email">Email <span className="text-red-500">*</span></Label>
+              <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label>Department</Label>
+              <Label htmlFor="edit-department">Department <span className="text-red-500">*</span></Label>
               <Select value={editDepartment} onValueChange={setEditDepartment}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Select department" /></SelectTrigger>
+                <SelectTrigger id="edit-department"><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
-                  {allDepartments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                  ))}
+                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Phone</Label>
-              <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Enter phone number" />
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={editStatus} onValueChange={(value: 'active' | 'inactive') => setEditStatus(value)}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <Label htmlFor="edit-spec">Specialisation</Label>
+              <Select value={editSpecialisation} onValueChange={setEditSpecialisation}>
+                <SelectTrigger id="edit-spec"><SelectValue placeholder="— Select —" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  {SPECIALISATIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Specialization</Label>
-              <Input value={editSpecialization} onChange={(e) => setEditSpecialization(e.target.value)} placeholder="Comma-separated specializations" />
-            </div>
-            <div className="space-y-2">
-              <Label>Joined Date</Label>
-              <Input type="date" value={editJoinedDate} onChange={(e) => setEditJoinedDate(e.target.value)} />
-            </div>
           </div>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={editSaving}>
-              Cancel
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button size="sm" disabled={isEditSaving} onClick={handleSaveEdit}>
+              {isEditSaving ? 'Saving…' : 'Save Changes'}
             </Button>
-            <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>
-              {editSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Changes'}
-            </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Advisor Details</DialogTitle>
-            <DialogDescription>View the details of the advisor</DialogDescription>
-          </DialogHeader>
-          {viewingAdvisor && (
-            <div className="space-y-4">
-              <div className="space-y-2"><Label>Name</Label><Input value={viewingAdvisor.name} readOnly /></div>
-              <div className="space-y-2"><Label>Email</Label><Input value={viewingAdvisor.email} readOnly /></div>
-              <div className="space-y-2"><Label>Employee ID</Label><Input value={viewingAdvisor.employeeId} readOnly /></div>
-              <div className="space-y-2"><Label>Department</Label><Input value={viewingAdvisor.department} readOnly /></div>
-              <div className="space-y-2"><Label>Phone</Label><Input value={viewingAdvisor.phone} readOnly /></div>
-              <div className="space-y-2"><Label>Status</Label><Input value={viewingAdvisor.status} readOnly /></div>
-              <div className="space-y-2"><Label>Specialization</Label><Input value={viewingAdvisor.specialization.join(', ')} readOnly /></div>
-              <div className="space-y-2"><Label>Max Student Capacity</Label><Input value={viewingAdvisor.maxStudentCapacity} readOnly /></div>
-              <div className="space-y-2"><Label>Students Assigned</Label><Input value={viewingAdvisor.studentsAssigned} readOnly /></div>
-              <div className="space-y-2"><Label>Joined Date</Label><Input type="date" value={viewingAdvisor.joinedDate} readOnly /></div>
-            </div>
-          )}
-          <div className="mt-6 flex justify-end">
-            <Button size="sm" variant="outline" onClick={() => setIsViewDialogOpen(false)}>Close</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Advisor</DialogTitle>
-            <DialogDescription>Are you sure you want to delete this advisor? This action cannot be undone.</DialogDescription>
-          </DialogHeader>
-          {deletingAdvisor && (
-            <div className="space-y-4">
-              <div className="space-y-2"><Label>Name</Label><Input value={deletingAdvisor.name} readOnly /></div>
-              <div className="space-y-2"><Label>Email</Label><Input value={deletingAdvisor.email} readOnly /></div>
-            </div>
-          )}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={deleteLoading}>
-              Cancel
-            </Button>
-            <Button size="sm" variant="destructive" onClick={handleDeleteAdvisor} disabled={deleteLoading}>
-              {deleteLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting...</> : 'Delete'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Bulk Import */}
+      <BulkImportModal
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+        role="advisor"
+        onImport={handleBulkImport}
+      />
     </div>
   );
 }

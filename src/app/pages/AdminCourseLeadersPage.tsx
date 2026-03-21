@@ -44,6 +44,7 @@ export default function AdminCourseLeadersPage() {
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   // Add dialog
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -89,7 +90,9 @@ export default function AdminCourseLeadersPage() {
 
   const filtered = staff.filter((u) => {
     const q = searchQuery.toLowerCase();
-    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.staffId.toLowerCase().includes(q);
+    const matchesSearch = u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.staffId.toLowerCase().includes(q);
+    const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
 
   const openAddDialog = () => {
@@ -268,17 +271,27 @@ export default function AdminCourseLeadersPage() {
       <Card>
         <CardHeader>
           <CardTitle>Course Leader Accounts</CardTitle>
-          <div className="mt-3">
-            <div className="relative">
+          <div className="mt-3 flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 max-w-sm"
+                className="pl-9"
                 autoComplete="off"
               />
             </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>

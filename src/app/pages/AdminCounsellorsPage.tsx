@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
@@ -26,7 +25,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { toast } from "sonner";
-import { UserPlus, Search, Edit, UserX, Users } from "lucide-react";
+import { UserPlus, Search, Edit, UserCheck, UserX, Users, Upload } from "lucide-react";
 import {
   collection,
   onSnapshot,
@@ -38,6 +37,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import { CsvDataImportModal } from '../components/CsvDataImportModal';
 
 interface Counsellor {
   id: string;
@@ -51,11 +51,23 @@ interface Counsellor {
   registrationNumber?: string;
 }
 
+const CSV_FIELDS = [
+  { key: 'name', label: 'Full Name', required: true, sampleValue: 'Dr. Jane Smith' },
+  { key: 'specialisation', label: 'Specialisation', required: true, sampleValue: 'Mental Health & Wellbeing' },
+  { key: 'contactEmail', label: 'Contact Email', required: true, sampleValue: 'counsellor@example.com' },
+  { key: 'contactPhone', label: 'Contact Phone', required: false, sampleValue: '+44 7700 900000' },
+  { key: 'qualification', label: 'Qualification', required: true, sampleValue: 'MSc Clinical Psychology' },
+  { key: 'certificationBody', label: 'Certification Body', required: true, sampleValue: 'BACP' },
+  { key: 'registrationNumber', label: 'Registration Number', required: true, sampleValue: 'BACP-12345' },
+  { key: 'status', label: 'Status', required: false, sampleValue: 'active' },
+];
+
 export default function AdminCounsellorsPage() {
   const [counsellors, setCounsellors] = useState<Counsellor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   // Add / Edit dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -205,6 +217,38 @@ export default function AdminCounsellorsPage() {
     }
   };
 
+  const handleBulkImport = async (rows: Record<string, string>[]) => {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        if (!row.name?.trim() || !row.specialisation?.trim() || !row.contactEmail?.trim() || !row.qualification?.trim() || !row.certificationBody?.trim() || !row.registrationNumber?.trim()) {
+          errors.push(`Skipped — missing required fields: "${row.name || ''}"`);
+          failed++;
+          continue;
+        }
+        await addDoc(collection(db, 'student_counsellors'), {
+          name: row.name.trim(),
+          specialisation: row.specialisation.trim(),
+          contactEmail: row.contactEmail.trim(),
+          contactPhone: row.contactPhone?.trim() ?? '',
+          qualification: row.qualification.trim(),
+          certificationBody: row.certificationBody.trim(),
+          registrationNumber: row.registrationNumber.trim(),
+          status: row.status === 'inactive' ? 'inactive' : 'active',
+          verified: true,
+          createdAt: serverTimestamp(),
+        });
+        success++;
+      } catch (err: any) {
+        errors.push(`${row.name || 'Unknown'} — ${err.message}`);
+        failed++;
+      }
+    }
+    return { success, failed, errors };
+  };
+
   const filtered = counsellors.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -226,39 +270,54 @@ export default function AdminCounsellorsPage() {
             Manage external counsellor contacts. SSAs refer students to these professionals when mental health support is needed.
           </p>
         </div>
-        <Button className="gap-2" onClick={openAddDialog}>
-          <UserPlus className="h-4 w-4" />
-          Add External Counsellor
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setBulkOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <UserPlus className="h-4 w-4" />
+            Add External Counsellor
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="pb-3">
-            <CardDescription>Total Counsellors</CardDescription>
-            <CardTitle className="text-3xl">{counsellors.length}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Counsellors</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Registered contacts</p>
+            <div className="text-4xl font-bold text-blue-600">{counsellors.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Registered contacts</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="pb-3">
-            <CardDescription>Active</CardDescription>
-            <CardTitle className="text-3xl text-green-600">{activeCounsellors}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Active counsellors</p>
+            <div className="text-4xl font-bold text-green-600">{activeCounsellors}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active counsellors</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-red-500">
-          <CardHeader className="pb-3">
-            <CardDescription>Inactive</CardDescription>
-            <CardTitle className="text-3xl text-gray-500">{inactiveCounsellors}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
+              <UserX className="h-5 w-5 text-red-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Inactive counsellors</p>
+            <div className="text-4xl font-bold text-red-600">{inactiveCounsellors}</div>
+            <p className="text-xs text-muted-foreground mt-1">Inactive counsellors</p>
           </CardContent>
         </Card>
       </div>
@@ -553,6 +612,14 @@ export default function AdminCounsellorsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CsvDataImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Counsellors"
+        fields={CSV_FIELDS}
+        onImport={handleBulkImport}
+      />
     </div>
   );
 }

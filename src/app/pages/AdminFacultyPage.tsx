@@ -1,24 +1,14 @@
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import {
-  Search,
-  UserCog,
-  Mail,
-  Phone,
-  Plus,
-  Edit,
-  Trash2,
-  Download,
-} from "lucide-react";
-import { useState, useEffect } from "react";
+import { Label } from "../components/ui/label";
 import {
   Select,
   SelectContent,
@@ -30,261 +20,254 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Label } from "../components/ui/label";
 import { toast } from "sonner";
+import { Search, Edit, UserPlus, UserCheck, UserX, Users, Upload } from "lucide-react";
 import {
   collection,
   onSnapshot,
   doc,
   setDoc,
   updateDoc,
-  deleteDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { db, secondaryAuth } from "../../firebase";
+import { BulkImportModal } from "../components/BulkImportModal";
 
 interface FacultyMember {
   id: string;
   name: string;
   email: string;
   department: string;
-  phone: string;
   status: "active" | "inactive";
-  studentsAssigned: number;
-  courses: string[];
-  joinedDate: string;
-  designation?: string;
-  officeRoom?: string;
-  password?: string;
+  phone: string;
+  designation: string;
 }
 
+const DEPARTMENTS = [
+  "Computer Science",
+  "Mathematics",
+  "Engineering",
+  "Business Administration",
+  "Biology",
+  "Psychology",
+  "Chemistry",
+  "Physics",
+  "English Literature",
+  "History",
+  "Economics",
+  "Sociology",
+];
+
+const DESIGNATIONS = [
+  "Professor",
+  "Associate Professor",
+  "Assistant Professor",
+  "Senior Lecturer",
+  "Lecturer",
+  "Instructor",
+];
+
 export default function AdminFacultyPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
-  const [facultyLoading, setFacultyLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+
+  // Add dialog
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addEmployeeId, setAddEmployeeId] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addPassword, setAddPassword] = useState("");
+  const [addDepartment, setAddDepartment] = useState("");
+  const [addDesignation, setAddDesignation] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [addStatus, setAddStatus] = useState<"active" | "inactive">("active");
   const [isSaving, setIsSaving] = useState(false);
-  const [editingFaculty, setEditingFaculty] = useState<FacultyMember | null>(
-    null,
-  );
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
-  // Real-time Firestore listener
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "faculty"), (snapshot) => {
-      const data: FacultyMember[] = snapshot.docs.map((docSnap) => {
-        const d = docSnap.data();
-        return {
-          id: docSnap.id,
-          name: d.name ?? "",
-          email: d.email ?? "",
-          department: d.department ?? "",
-          phone: d.phone ?? "",
-          status: d.status ?? "active",
-          studentsAssigned: d.studentsAssigned ?? 0,
-          courses: Array.isArray(d.courses) ? d.courses : [],
-          joinedDate: d.joinedDate ?? "",
-          designation: d.designation ?? "",
-          officeRoom: d.officeRoom ?? "",
-          password: d.password ?? "",
-        };
-      });
-      setFacultyList(data);
-      setFacultyLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-  const [viewingFaculty, setViewingFaculty] = useState<FacultyMember | null>(
-    null,
-  );
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [deletingFaculty, setDeletingFaculty] = useState<FacultyMember | null>(
-    null,
-  );
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-
-  // Edit form state
+  // Edit dialog
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingFaculty, setEditingFaculty] = useState<FacultyMember | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
   const [editPhone, setEditPhone] = useState("");
-  const [editStatus, setEditStatus] = useState<"active" | "inactive">("active");
-  const [editCourses, setEditCourses] = useState("");
-  const [editJoinedDate, setEditJoinedDate] = useState("");
+  const [isEditSaving, setIsEditSaving] = useState(false);
 
-  // Add form state
-  const [addName, setAddName] = useState("");
-  const [addEmail, setAddEmail] = useState("");
-  const [addDepartment, setAddDepartment] = useState("");
-  const [addPhone, setAddPhone] = useState("");
-  const [addStatus, setAddStatus] = useState<"active" | "inactive">("active");
-  // Additional add form fields
-  const [addEmployeeId, setAddEmployeeId] = useState("");
-  const [addPassword, setAddPassword] = useState("");
-  const [addDesignation, setAddDesignation] = useState("");
-  const [addOfficeRoom, setAddOfficeRoom] = useState("");
-  const [addModulesTeaching, setAddModulesTeaching] = useState<string[]>([]);
-
-  // All available departments for dropdown
-  const allDepartments = [
-    "Computer Science",
-    "Mathematics",
-    "Engineering",
-    "Business Administration",
-    "Biology",
-    "Psychology",
-    "Chemistry",
-    "Physics",
-    "English Literature",
-    "History",
-    "Economics",
-    "Sociology",
-  ];
-
-  const filteredFaculty = facultyList.filter((faculty) => {
-    const matchesSearch =
-      faculty.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      faculty.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      faculty.department.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesDepartment =
-      departmentFilter === "all" || faculty.department === departmentFilter;
-    const matchesStatus =
-      statusFilter === "all" || faculty.status === statusFilter;
-
-    return matchesSearch && matchesDepartment && matchesStatus;
-  });
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "faculty"), (snapshot) => {
+      setFacultyList(
+        snapshot.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name ?? "",
+          email: d.data().email ?? "",
+          department: d.data().department ?? "",
+          status: d.data().status ?? "active",
+          phone: d.data().phone ?? "",
+          designation: d.data().designation ?? "",
+        }))
+      );
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
 
   const stats = {
     total: facultyList.length,
     active: facultyList.filter((f) => f.status === "active").length,
-    totalStudents: facultyList.reduce((sum, f) => sum + f.studentsAssigned, 0),
-    avgStudentsPerFaculty: facultyList.length
-      ? Math.round(
-          facultyList.reduce((sum, f) => sum + f.studentsAssigned, 0) /
-            facultyList.length,
-        )
-      : 0,
+    inactive: facultyList.filter((f) => f.status === "inactive").length,
   };
 
-  const handleEditClick = (faculty: FacultyMember) => {
+  const filtered = facultyList.filter((f) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      f.name.toLowerCase().includes(q) ||
+      f.email.toLowerCase().includes(q) ||
+      f.id.toLowerCase().includes(q) ||
+      f.department.toLowerCase().includes(q);
+    const matchesStatus = statusFilter === "all" || f.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const openAddDialog = () => {
+    setAddName(""); setAddEmployeeId(""); setAddEmail(""); setAddPassword("");
+    setAddDepartment(""); setAddDesignation(""); setAddPhone(""); setAddStatus("active");
+    setIsAddOpen(true);
+  };
+
+  const handleAddFaculty = async () => {
+    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addPassword.trim() || !addDepartment) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    if (addPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      await secondaryAuth.signOut();
+      await setDoc(doc(db, "faculty", addEmployeeId.trim()), {
+        name: addName.trim(),
+        email: addEmail.trim(),
+        department: addDepartment,
+        designation: addDesignation,
+        phone: addPhone.trim(),
+        status: addStatus,
+        role: "faculty",
+        uid: cred.user.uid,
+        studentsAssigned: 0,
+        courses: [],
+        joinedDate: new Date().toISOString().split("T")[0],
+        createdAt: serverTimestamp(),
+      });
+      toast.success("Faculty account created successfully");
+      setIsAddOpen(false);
+    } catch (err) {
+      if (err instanceof FirebaseError) {
+        if (err.code === "auth/email-already-in-use") {
+          toast.error("An account with this email already exists.");
+        } else {
+          toast.error(`Failed to create account: ${err.message}`);
+        }
+      } else {
+        toast.error("An unexpected error occurred. Please try again.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openEditDialog = (faculty: FacultyMember) => {
     setEditingFaculty(faculty);
     setEditName(faculty.name);
     setEditEmail(faculty.email);
     setEditDepartment(faculty.department);
     setEditPhone(faculty.phone);
-    setEditStatus(faculty.status);
-    setEditCourses(faculty.courses.join(", "));
-    setEditJoinedDate(faculty.joinedDate);
-    setIsEditDialogOpen(true);
+    setIsEditOpen(true);
   };
 
   const handleSaveEdit = async () => {
-    if (!editName || !editEmail || !editDepartment || !editPhone) {
+    if (!editingFaculty || !editName.trim() || !editEmail.trim() || !editDepartment) {
       toast.error("Please fill in all required fields");
       return;
     }
-    if (!editingFaculty) return;
-    setIsSaving(true);
+    setIsEditSaving(true);
     try {
-      const coursesArray = editCourses
-        .split(",")
-        .map((c) => c.trim())
-        .filter((c) => c.length > 0);
-
       await updateDoc(doc(db, "faculty", editingFaculty.id), {
-        name: editName,
-        email: editEmail,
+        name: editName.trim(),
+        email: editEmail.trim(),
         department: editDepartment,
-        phone: editPhone,
-        status: editStatus,
-        courses: coursesArray,
-        joinedDate: editJoinedDate,
+        phone: editPhone.trim(),
       });
-
       toast.success("Faculty member updated successfully");
-      setIsEditDialogOpen(false);
+      setIsEditOpen(false);
       setEditingFaculty(null);
-    } catch (err) {
+    } catch {
       toast.error("Failed to update faculty member. Please try again.");
     } finally {
-      setIsSaving(false);
+      setIsEditSaving(false);
     }
   };
 
-  const handleViewClick = (faculty: FacultyMember) => {
-    setViewingFaculty(faculty);
-    setIsViewDialogOpen(true);
-  };
-
-  const handleDeleteClick = (faculty: FacultyMember) => {
-    setDeletingFaculty(faculty);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const handleDeleteFaculty = async () => {
-    if (!deletingFaculty) return;
-    setIsSaving(true);
+  const handleToggleStatus = async (faculty: FacultyMember) => {
+    const newStatus = faculty.status === "active" ? "inactive" : "active";
     try {
-      await deleteDoc(doc(db, "faculty", deletingFaculty.id));
-      toast.success("Faculty member deleted successfully");
-      setIsDeleteDialogOpen(false);
-      setDeletingFaculty(null);
-    } catch (err) {
-      toast.error("Failed to delete faculty member. Please try again.");
-    } finally {
-      setIsSaving(false);
+      await updateDoc(doc(db, "faculty", faculty.id), { status: newStatus });
+      toast.success(newStatus === "active" ? "Faculty member activated" : "Faculty member deactivated");
+    } catch {
+      toast.error("Failed to update status. Please try again.");
     }
   };
 
-  const handleExport = () => {
-    // Convert faculty data to CSV
-    const headers = [
-      "Name",
-      "Email",
-      "Department",
-      "Phone",
-      "Status",
-      "Students Assigned",
-      "Courses",
-      "Joined Date",
-    ];
-    const csvData = filteredFaculty.map((f) => [
-      f.name,
-      f.email,
-      f.department,
-      f.phone,
-      f.status,
-      f.studentsAssigned,
-      f.courses.join("; "),
-      f.joinedDate,
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...csvData.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `faculty_export_${new Date().toISOString().split("T")[0]}.csv`,
-    );
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast.success("Faculty data exported successfully");
+  const handleBulkImport = async (rows: any[]) => {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    for (const row of rows) {
+      if (!row.StaffID?.trim() || !row.FullName?.trim() || !row.Email?.trim()) {
+        failed++;
+        errors.push(`Row skipped — missing required fields (StaffID, FullName, or Email)`);
+        continue;
+      }
+      const tempPassword = `${row.StaffID.trim()}@DropGuard`;
+      try {
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
+        await secondaryAuth.signOut();
+        await setDoc(doc(db, "faculty", row.StaffID.trim()), {
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          department: row.Department?.trim() ?? "",
+          designation: row.Designation?.trim() ?? "",
+          phone: row.Phone?.trim() ?? "",
+          status: "active",
+          role: "faculty",
+          uid: cred.user.uid,
+          studentsAssigned: 0,
+          courses: [],
+          joinedDate: new Date().toISOString().split("T")[0],
+          mustChangePassword: true,
+          createdAt: serverTimestamp(),
+        });
+        success++;
+      } catch (err: any) {
+        if (err.code === "auth/email-already-in-use") {
+          errors.push(`${row.Email.trim()} — email already in use`);
+        } else {
+          errors.push(`${row.StaffID} — ${err.message}`);
+        }
+        failed++;
+      }
+    }
+    return { success, failed, errors };
   };
 
   return (
@@ -292,796 +275,287 @@ export default function AdminFacultyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Faculty Management</h1>
-          <p className="text-muted-foreground">
-            Manage faculty members and their assignments
-          </p>
+          <p className="text-muted-foreground">Manage faculty member accounts</p>
         </div>
-        <Button variant="outline" className="gap-2" onClick={handleExport}>
-          <Download className="h-4 w-4" />
-          Export
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setBulkImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Import CSV
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <UserPlus className="h-4 w-4" />
+            Add Faculty
+          </Button>
+        </div>
       </div>
 
       {/* Statistics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total Faculty</CardDescription>
-            <CardTitle className="text-3xl">{stats.total}</CardTitle>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Faculty</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">All departments</p>
+            <div className="text-4xl font-bold text-blue-600">{stats.total}</div>
+            <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Active Faculty</CardDescription>
-            <CardTitle className="text-3xl text-green-600">
-              {stats.active}
-            </CardTitle>
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Currently teaching</p>
+            <div className="text-4xl font-bold text-green-600">{stats.active}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active accounts</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Students Assigned</CardDescription>
-            <CardTitle className="text-3xl text-blue-600">
-              {stats.totalStudents}
-            </CardTitle>
+        <Card className="border-l-4 border-l-red-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
+              <UserX className="h-5 w-5 text-red-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
-              Total across all faculty
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Avg per Faculty</CardDescription>
-            <CardTitle className="text-3xl">
-              {stats.avgStudentsPerFaculty}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Students assigned</p>
+            <div className="text-4xl font-bold text-red-600">{stats.inactive}</div>
+            <p className="text-xs text-muted-foreground mt-1">Inactive accounts</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Faculty List */}
+      {/* Faculty Directory */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Faculty Directory</CardTitle>
-            <CardDescription>All faculty members in the system</CardDescription>
-          </div>
-          <Button
-            className="gap-2"
-            onClick={() => {
-              setAddName("");
-              setAddEmail("");
-              setAddDepartment("");
-              setAddPhone("");
-              setAddStatus("active");
-              setIsAddDialogOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Faculty
-          </Button>
+        <CardHeader>
+          <CardTitle>Faculty Directory</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, or department..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
+                autoComplete="off"
               />
             </div>
-            <div className="relative">
-              <Select
-                value={departmentFilter}
-                onValueChange={(value) => setDepartmentFilter(value)}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Filter by department">
-                    {departmentFilter === "all"
-                      ? "All Departments"
-                      : departmentFilter}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Departments</SelectItem>
-                  {allDepartments.map((department) => (
-                    <SelectItem key={department} value={department}>
-                      {department}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="relative">
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value)}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Filter by status">
-                    {statusFilter === "all" ? "All Statuses" : statusFilter}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="space-y-4">
-            {facultyLoading ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <p>Loading faculty members…</p>
-              </div>
-            ) : (
-              filteredFaculty.map((faculty) => (
-                <div
-                  key={faculty.id}
-                  className="p-4 border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center">
-                        <UserCog className="h-6 w-6 text-purple-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-semibold">{faculty.name}</h3>
-                          <Badge
-                            className={
-                              faculty.status === "active"
-                                ? "bg-green-100 text-green-800 border-green-200"
-                                : "bg-gray-100 text-gray-800 border-gray-200"
-                            }
-                          >
-                            {faculty.status}
-                          </Badge>
-                        </div>
-                        <div className="space-y-1 text-sm text-muted-foreground mb-3">
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4" />
-                            <span>{faculty.email}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4" />
-                            <span>{faculty.phone}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-sm">
-                          <div>
-                            <span className="font-medium">Department:</span>{" "}
-                            <span className="text-muted-foreground">
-                              {faculty.department}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Students:</span>{" "}
-                            <span className="text-muted-foreground">
-                              {faculty.studentsAssigned}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Courses:</span>{" "}
-                            <span className="text-muted-foreground">
-                              {faculty.courses.join(", ")}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-2">
-                          Joined{" "}
-                          {new Date(faculty.joinedDate).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => handleEditClick(faculty)}
-                      >
-                        <Edit className="h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleViewClick(faculty)}
-                      >
-                        View Details
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => handleDeleteClick(faculty)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {!facultyLoading && filteredFaculty.length === 0 && (
+          {loading ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Loading faculty…
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No faculty members found matching your search</p>
+              <p>No faculty members found matching your criteria</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Employee ID</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Full Name</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Department</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                    <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((faculty) => (
+                    <tr
+                      key={faculty.id}
+                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{faculty.id}</td>
+                      <td className="px-4 py-3 font-medium">{faculty.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{faculty.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{faculty.department || "—"}</td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          className={
+                            faculty.status === "active"
+                              ? "bg-green-100 text-green-800 border-green-200"
+                              : "bg-gray-100 text-gray-600 border-gray-200"
+                          }
+                        >
+                          {faculty.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => openEditDialog(faculty)}
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          {faculty.status === "active" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:text-red-600 hover:bg-red-50 border-red-200"
+                              onClick={() => handleToggleStatus(faculty)}
+                            >
+                              Deactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-green-600 hover:text-green-600 hover:bg-green-50 border-green-200"
+                              onClick={() => handleToggleStatus(faculty)}
+                            >
+                              Activate
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+      {/* Add Dialog */}
+      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(""); setAddEmployeeId(""); setAddEmail(""); setAddPassword(""); setAddDepartment(""); setAddDesignation(""); setAddPhone(""); setAddStatus("active"); } setIsAddOpen(open); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Faculty Member</DialogTitle>
-            <DialogDescription>
-              Update the details of the faculty member
-            </DialogDescription>
+            <DialogTitle>Add Faculty</DialogTitle>
+            <DialogDescription>Create a new faculty account</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <input type="text" style={{ display: "none" }} autoComplete="username" readOnly />
+            <input type="password" style={{ display: "none" }} autoComplete="current-password" readOnly />
+            <div className="space-y-2">
+              <Label htmlFor="add-empid">Employee ID <span className="text-red-500">*</span></Label>
+              <Input id="add-empid" placeholder="e.g. EMP2024001" value={addEmployeeId} onChange={(e) => setAddEmployeeId(e.target.value)} autoComplete="off" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-name">Full Name <span className="text-red-500">*</span></Label>
+              <Input id="add-name" placeholder="Enter full name" value={addName} onChange={(e) => setAddName(e.target.value)} autoComplete="off" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
+              <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
+              <Input id="add-password" type="password" placeholder="Min. 6 characters" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-department">Department <span className="text-red-500">*</span></Label>
+              <Select value={addDepartment} onValueChange={setAddDepartment}>
+                <SelectTrigger id="add-department"><SelectValue placeholder="— Select —" /></SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-designation">Designation</Label>
+              <Select value={addDesignation} onValueChange={setAddDesignation}>
+                <SelectTrigger id="add-designation"><SelectValue placeholder="— Select —" /></SelectTrigger>
+                <SelectContent>
+                  {DESIGNATIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-phone">Phone</Label>
+              <Input id="add-phone" type="tel" placeholder="Enter phone number" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} autoComplete="off" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-status">Status</Label>
+              <Select value={addStatus} onValueChange={(v) => setAddStatus(v as "active" | "inactive")}>
+                <SelectTrigger id="add-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+            <Button size="sm" disabled={isSaving} onClick={handleAddFaculty}>
+              {isSaving ? "Creating…" : "Create Account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={(open) => { if (!open) { setEditName(""); setEditEmail(""); setEditDepartment(""); setEditPhone(""); setEditingFaculty(null); } setIsEditOpen(open); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Faculty</DialogTitle>
+            <DialogDescription>Update the faculty member's information</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Name</Label>
-              <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Enter name"
-              />
+              <Label htmlFor="edit-name">Full Name <span className="text-red-500">*</span></Label>
+              <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
-              <Input
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-                placeholder="Enter email"
-              />
+              <Label htmlFor="edit-email">Email <span className="text-red-500">*</span></Label>
+              <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label>Department</Label>
-              <Select
-                value={editDepartment}
-                onValueChange={(value) => setEditDepartment(value)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
+              <Label htmlFor="edit-department">Department <span className="text-red-500">*</span></Label>
+              <Select value={editDepartment} onValueChange={setEditDepartment}>
+                <SelectTrigger id="edit-department"><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
-                  {allDepartments.map((department) => (
-                    <SelectItem key={department} value={department}>
-                      {department}
-                    </SelectItem>
-                  ))}
+                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Phone</Label>
-              <Input
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                placeholder="Enter phone number"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select
-                value={editStatus}
-                onValueChange={(value: "active" | "inactive") =>
-                  setEditStatus(value)
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Courses</Label>
-              <Input
-                value={editCourses}
-                onChange={(e) => setEditCourses(e.target.value)}
-                placeholder="Enter courses separated by commas"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Joined Date</Label>
-              <Input
-                type="date"
-                value={editJoinedDate}
-                onChange={(e) => setEditJoinedDate(e.target.value)}
-                placeholder="Enter joined date"
-              />
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input id="edit-phone" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} autoComplete="off" />
             </div>
           </div>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsEditDialogOpen(false)}
-            >
-              Cancel
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button size="sm" disabled={isEditSaving} onClick={handleSaveEdit}>
+              {isEditSaving ? "Saving…" : "Save Changes"}
             </Button>
-            <Button size="sm" disabled={isSaving} onClick={handleSaveEdit}>
-              {isSaving ? "Saving…" : "Save Changes"}
-            </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Faculty Member Details</DialogTitle>
-            <DialogDescription>
-              View the details of the faculty member
-            </DialogDescription>
-          </DialogHeader>
-          {viewingFaculty && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={viewingFaculty.name}
-                  readOnly
-                  placeholder="Enter name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  value={viewingFaculty.email}
-                  readOnly
-                  placeholder="Enter email"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Input
-                  value={viewingFaculty.department}
-                  readOnly
-                  placeholder="Enter department"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input
-                  value={viewingFaculty.phone}
-                  readOnly
-                  placeholder="Enter phone number"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Input value={viewingFaculty.status} readOnly />
-              </div>
-              <div className="space-y-2">
-                <Label>Courses</Label>
-                <Input
-                  value={viewingFaculty.courses.join(", ")}
-                  readOnly
-                  placeholder="Enter courses separated by commas"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Joined Date</Label>
-                <Input
-                  type="date"
-                  value={viewingFaculty.joinedDate}
-                  readOnly
-                  placeholder="Enter joined date"
-                />
-              </div>
-            </div>
-          )}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsViewDialogOpen(false)}
-            >
-              Close
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Faculty</DialogTitle>
-            <DialogDescription>
-              Add a new faculty member to the system
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            {/* Full Name */}
-            <div className="space-y-2">
-              <Label htmlFor="fullName">
-                Full Name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="fullName"
-                placeholder="e.g. Dr. Michael Chen"
-                value={addName}
-                onChange={(e) => setAddName(e.target.value)}
-              />
-            </div>
-
-            {/* Employee ID */}
-            <div className="space-y-2">
-              <Label htmlFor="employeeId">
-                Employee ID <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="employeeId"
-                placeholder="e.g. EMP2022010"
-                value={addEmployeeId}
-                onChange={(e) => setAddEmployeeId(e.target.value)}
-              />
-            </div>
-
-            {/* Email Address */}
-            <div className="space-y-2">
-              <Label htmlFor="emailAddress">
-                Email Address <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="emailAddress"
-                type="email"
-                placeholder="name@university.edu"
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-              />
-            </div>
-
-            {/* Password */}
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                Password <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Set password"
-                value={addPassword}
-                onChange={(e) => setAddPassword(e.target.value)}
-              />
-            </div>
-
-            {/* Contact Number */}
-            <div className="space-y-2">
-              <Label htmlFor="contactNumber">
-                Contact Number <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="contactNumber"
-                type="tel"
-                placeholder="+1 (555) 000-0000"
-                value={addPhone}
-                onChange={(e) => setAddPhone(e.target.value)}
-              />
-            </div>
-
-            {/* Department */}
-            <div className="space-y-2">
-              <Label htmlFor="department">
-                Department <span className="text-red-500">*</span>
-              </Label>
-              <Select value={addDepartment} onValueChange={setAddDepartment}>
-                <SelectTrigger>
-                  <SelectValue placeholder="— Select —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allDepartments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Designation */}
-            <div className="space-y-2">
-              <Label htmlFor="designation">
-                Designation <span className="text-red-500">*</span>
-              </Label>
-              <Select value={addDesignation} onValueChange={setAddDesignation}>
-                <SelectTrigger>
-                  <SelectValue placeholder="— Select —" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="professor">Professor</SelectItem>
-                  <SelectItem value="associate-professor">
-                    Associate Professor
-                  </SelectItem>
-                  <SelectItem value="assistant-professor">
-                    Assistant Professor
-                  </SelectItem>
-                  <SelectItem value="lecturer">Lecturer</SelectItem>
-                  <SelectItem value="senior-lecturer">
-                    Senior Lecturer
-                  </SelectItem>
-                  <SelectItem value="instructor">Instructor</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Office / Room No. */}
-            <div className="space-y-2">
-              <Label htmlFor="officeRoom">Office / Room No.</Label>
-              <Input
-                id="officeRoom"
-                placeholder="e.g. Room B204"
-                value={addOfficeRoom}
-                onChange={(e) => setAddOfficeRoom(e.target.value)}
-              />
-            </div>
-
-            {/* Modules Teaching */}
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="modulesTeaching">Modules Teaching</Label>
-              <div className="space-y-2">
-                <Input
-                  id="modulesTeaching"
-                  placeholder="Type and press Enter to add modules"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const input = e.currentTarget;
-                      const value = input.value.trim();
-                      if (value && !addModulesTeaching.includes(value)) {
-                        setAddModulesTeaching([...addModulesTeaching, value]);
-                        input.value = "";
-                      }
-                    }
-                  }}
-                />
-                <div className="flex flex-wrap gap-2">
-                  {addModulesTeaching.map((module, index) => (
-                    <Badge
-                      key={index}
-                      variant="secondary"
-                      className="px-3 py-1 text-sm cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => {
-                        setAddModulesTeaching(
-                          addModulesTeaching.filter((_, i) => i !== index),
-                        );
-                      }}
-                    >
-                      {module} ×
-                    </Badge>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Examples: BIS3041 – Business Intelligence, BIS2031 – Systems
-                  Analysis
-                </p>
-              </div>
-            </div>
-
-            {/* Status */}
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={addStatus}
-                onValueChange={(value: "active" | "inactive") =>
-                  setAddStatus(value)
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsAddDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              disabled={isSaving}
-              onClick={async () => {
-                if (
-                  !addName ||
-                  !addEmployeeId ||
-                  !addEmail ||
-                  !addPassword ||
-                  !addPhone ||
-                  !addDepartment ||
-                  !addDesignation
-                ) {
-                  toast.error("Please fill in all required fields");
-                  return;
-                }
-                setIsSaving(true);
-                try {
-                  // Create Firebase Auth account via secondary app
-                  await createUserWithEmailAndPassword(
-                    secondaryAuth,
-                    addEmail,
-                    addPassword,
-                  );
-                  await secondaryAuth.signOut();
-
-                  // Save full record to Firestore
-                  await setDoc(doc(db, "faculty", addEmployeeId), {
-                    name: addName,
-                    email: addEmail,
-                    password: addPassword,
-                    phone: addPhone,
-                    department: addDepartment,
-                    designation: addDesignation,
-                    officeRoom: addOfficeRoom,
-                    courses: addModulesTeaching,
-                    status: addStatus,
-                    studentsAssigned: 0,
-                    joinedDate: new Date().toISOString().split("T")[0],
-                    role: "faculty",
-                    createdAt: new Date().toISOString(),
-                  });
-
-                  toast.success("Faculty member added successfully");
-                  setIsAddDialogOpen(false);
-
-                  // Reset form
-                  setAddName("");
-                  setAddEmployeeId("");
-                  setAddEmail("");
-                  setAddPassword("");
-                  setAddPhone("");
-                  setAddDepartment("");
-                  setAddDesignation("");
-                  setAddOfficeRoom("");
-                  setAddModulesTeaching([]);
-                  setAddStatus("active");
-                } catch (err) {
-                  if (err instanceof FirebaseError) {
-                    if (err.code === "auth/email-already-in-use") {
-                      toast.error(
-                        "A faculty account with this email already exists.",
-                      );
-                    } else {
-                      toast.error(`Failed to add faculty: ${err.message}`);
-                    }
-                  } else {
-                    toast.error(
-                      "An unexpected error occurred. Please try again.",
-                    );
-                  }
-                } finally {
-                  setIsSaving(false);
-                }
-              }}
-            >
-              {isSaving ? "Saving…" : "Add Faculty"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Faculty Member</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this faculty member?
-            </DialogDescription>
-          </DialogHeader>
-          {deletingFaculty && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={deletingFaculty.name}
-                  readOnly
-                  placeholder="Enter name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  value={deletingFaculty.email}
-                  readOnly
-                  placeholder="Enter email"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Input
-                  value={deletingFaculty.department}
-                  readOnly
-                  placeholder="Enter department"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input
-                  value={deletingFaculty.phone}
-                  readOnly
-                  placeholder="Enter phone number"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Input value={deletingFaculty.status} readOnly />
-              </div>
-              <div className="space-y-2">
-                <Label>Courses</Label>
-                <Input
-                  value={deletingFaculty.courses.join(", ")}
-                  readOnly
-                  placeholder="Enter courses separated by commas"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Joined Date</Label>
-                <Input
-                  type="date"
-                  value={deletingFaculty.joinedDate}
-                  readOnly
-                  placeholder="Enter joined date"
-                />
-              </div>
-            </div>
-          )}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={isSaving}
-              onClick={handleDeleteFaculty}
-            >
-              {isSaving ? "Deleting…" : "Delete Faculty"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Bulk Import */}
+      <BulkImportModal
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+        role="faculty"
+        onImport={handleBulkImport}
+      />
     </div>
   );
 }

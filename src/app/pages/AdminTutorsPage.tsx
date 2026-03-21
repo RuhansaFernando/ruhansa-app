@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
@@ -26,7 +25,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { toast } from "sonner";
-import { UserPlus, Upload, Search, Edit, UserX, Users } from "lucide-react";
+import { UserPlus, Upload, Search, Edit, UserCheck, UserX, Users } from "lucide-react";
 import {
   collection,
   onSnapshot,
@@ -263,34 +262,39 @@ export default function AdminTutorsPage() {
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="pb-3">
-            <CardDescription>Total Academic Mentors</CardDescription>
-            <CardTitle className="text-3xl">{tutors.length}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Academic Mentors</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Registered accounts</p>
+            <div className="text-4xl font-bold text-blue-600">{tutors.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="pb-3">
-            <CardDescription>Active</CardDescription>
-            <CardTitle className="text-3xl text-green-600">
-              {activeTutors}
-            </CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Active accounts</p>
+            <div className="text-4xl font-bold text-green-600">{activeTutors}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active accounts</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-red-500">
-          <CardHeader className="pb-3">
-            <CardDescription>Inactive</CardDescription>
-            <CardTitle className="text-3xl text-gray-500">
-              {inactiveTutors}
-            </CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
+            <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
+              <UserX className="h-5 w-5 text-red-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">Inactive accounts</p>
+            <div className="text-4xl font-bold text-red-600">{inactiveTutors}</div>
+            <p className="text-xs text-muted-foreground mt-1">Inactive accounts</p>
           </CardContent>
         </Card>
       </div>
