@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
 import { Checkbox } from '../components/ui/checkbox';
-import { db, secondaryAuth } from '../../firebase';
+import { db } from '../../firebase';
 import {
   collection,
   onSnapshot,
@@ -19,13 +19,11 @@ import {
   doc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 interface Counselor {
   id: string;
   name: string;
   email: string;
-  password: string;
   employeeId: string;
   department: string;
   phone: string;
@@ -68,7 +66,6 @@ export default function AdminCounselorsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
   const [addEmployeeId, setAddEmployeeId] = useState('');
   const [addDepartment, setAddDepartment] = useState('');
   const [addPhone, setAddPhone] = useState('');
@@ -97,7 +94,6 @@ export default function AdminCounselorsPage() {
           id: docSnap.id,
           name: d.name ?? '',
           email: d.email ?? '',
-          password: d.password ?? '',
           employeeId: d.employeeId ?? '',
           department: d.department ?? '',
           phone: d.phone ?? '',
@@ -137,7 +133,7 @@ export default function AdminCounselorsPage() {
 
   // ── Add Counselor ─────────────────────────────────────────────────────────────
   const handleAddCounselor = async () => {
-    if (!addName || !addEmployeeId || !addEmail || !addPassword || !addPhone || !addDepartment || !addSpecialization || !addMaxCaseLoad) {
+    if (!addName || !addEmployeeId || !addEmail || !addPhone || !addDepartment || !addSpecialization || !addMaxCaseLoad) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -149,21 +145,11 @@ export default function AdminCounselorsPage() {
       toast.error('Please acknowledge the confidentiality agreement');
       return;
     }
-    if (addPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-
     setAddSaving(true);
     try {
-      // 1. Create Firebase Auth account (secondaryAuth keeps admin signed in)
-      await createUserWithEmailAndPassword(secondaryAuth, addEmail, addPassword);
-
-      // 2. Save to Firestore counselors collection
       await addDoc(collection(db, 'counselors'), {
         name: addName,
         email: addEmail,
-        password: addPassword,
         employeeId: addEmployeeId,
         department: addDepartment,
         phone: addPhone,
@@ -196,7 +182,6 @@ export default function AdminCounselorsPage() {
     setAddName('');
     setAddEmployeeId('');
     setAddEmail('');
-    setAddPassword('');
     setAddPhone('');
     setAddDepartment('');
     setAddSpecialization('');
@@ -534,10 +519,6 @@ export default function AdminCounselorsPage() {
               <div className="space-y-2">
                 <Label htmlFor="emailAddress">Email Address <span className="text-red-500">*</span></Label>
                 <Input id="emailAddress" type="email" placeholder="name@university.edu" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
-                <Input id="password" type="password" placeholder="Min. 6 characters" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="contactNumber">Contact Number <span className="text-red-500">*</span></Label>

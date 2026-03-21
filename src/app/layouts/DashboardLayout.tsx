@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, Heart, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, Upload } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -86,7 +86,6 @@ export default function DashboardLayout() {
         { label: 'Student Support Advisors', icon: ClipboardCheck, path: '/admin/sru-staff' },
         { label: 'Faculty Administrators', icon: GraduationCap, path: '/admin/academic-staff' },
         { label: 'Academic Mentors', icon: BookUser, path: '/admin/tutors' },
-        { label: 'External Counsellors', icon: Heart, path: '/admin/counsellors' },
         { label: 'Course Leaders', icon: GraduationCap, path: '/admin/course-leaders' },
         { section: 'Academic Management' } as any,
         { label: 'Faculties', icon: Landmark, path: '/admin/faculties' },
@@ -96,6 +95,9 @@ export default function DashboardLayout() {
     } else if (user.role === 'registry') {
       return [
         ...baseItems,
+        { section: 'Enrollment' } as any,
+        { label: 'Student Enrollment', icon: Upload, path: '/registry/enrollment' },
+        { section: 'Students' } as any,
         { label: 'Student Details', icon: Users, path: '/registry/students' },
         { label: 'Modules', icon: GraduationCap, path: '/registry/modules' },
         { label: 'Academic Records', icon: FileText, path: '/registry/grades' },

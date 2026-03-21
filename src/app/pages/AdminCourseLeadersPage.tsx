@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import emailjs from '@emailjs/browser';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -15,6 +16,7 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
+  getDocs,
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../../firebase';
@@ -51,11 +53,13 @@ export default function AdminCourseLeadersPage() {
   const [addStaffId, setAddStaffId] = useState('');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
   const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
   const [isSaving, setIsSaving] = useState(false);
 
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [programmes, setProgrammes] = useState<{ id: string; name: string }[]>([]);
+  const [formProgramme, setFormProgramme] = useState('');
+  const [formLevel, setFormLevel] = useState('');
 
   // Edit dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -84,6 +88,12 @@ export default function AdminCourseLeadersPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    getDocs(collection(db, 'programmes')).then((snap) => {
+      setProgrammes(snap.docs.map((d) => ({ id: d.id, name: d.data().programmeName ?? '' })).filter((p) => p.name));
+    });
+  }, []);
+
   const total = staff.length;
   const activeCount = staff.filter((u) => u.status === 'active').length;
   const inactiveCount = staff.filter((u) => u.status === 'inactive').length;
@@ -96,18 +106,20 @@ export default function AdminCourseLeadersPage() {
   });
 
   const openAddDialog = () => {
-    setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active');
+    setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active');
+    setFormProgramme(''); setFormLevel('');
     setIsAddDialogOpen(true);
   };
 
   const handleAddStaff = async () => {
-    if (!addStaffId.trim() || !addName.trim() || !addEmail.trim() || !addPassword.trim()) {
+    if (!addStaffId.trim() || !addName.trim() || !addEmail.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
+    const tempPassword = `${addStaffId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), tempPassword);
       await secondaryAuth.signOut();
       await addDoc(collection(db, 'course_leaders'), {
         uid: cred.user.uid,
@@ -116,8 +128,29 @@ export default function AdminCourseLeadersPage() {
         email: addEmail.trim(),
         role: 'course_leader',
         status: addStatus,
+        programme: formProgramme,
+        level: formLevel,
         createdAt: serverTimestamp(),
       });
+      await addDoc(collection(db, 'users'), {
+        uid: cred.user.uid,
+        name: addName.trim(),
+        email: addEmail.trim(),
+        role: ['course_leader'],
+        status: addStatus,
+        createdAt: serverTimestamp(),
+      });
+      try {
+        await emailjs.send('service_y8aewpn', 'template_welcome', {
+          to_name: addName.trim(),
+          to_email: addEmail.trim(),
+          user_id: addStaffId.trim(),
+          temp_password: tempPassword,
+          login_url: 'http://localhost:5173',
+        }, 'pqfkLZ1zbahk5O2Vi');
+      } catch (emailErr) {
+        console.warn('Welcome email failed:', emailErr);
+      }
       toast.success('Course Leader account created successfully');
       setIsAddDialogOpen(false);
     } catch (err) {
@@ -194,10 +227,31 @@ export default function AdminCourseLeadersPage() {
           email: row.Email.trim(),
           role: 'course_leader',
           status: 'active',
+          programme: row.Programme?.trim() ?? '',
+          level: row.Level?.trim() ?? '',
           mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
+        await addDoc(collection(db, 'users'), {
+          uid: cred.user.uid,
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          role: ['course_leader'],
+          status: 'active',
+          createdAt: serverTimestamp(),
+        });
         await secondaryAuth.signOut();
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: row.FullName.trim(),
+            to_email: row.Email.trim(),
+            user_id: row.StaffID.trim(),
+            temp_password: tempPassword,
+            login_url: 'http://localhost:5173',
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
         success++;
       } catch (err: any) {
         errors.push(`${row.FullName || row.Email} — ${err.message}`);
@@ -356,7 +410,7 @@ export default function AdminCourseLeadersPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active'); } setIsAddDialogOpen(open); }}>
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active'); setFormProgramme(''); setFormLevel(''); } setIsAddDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Course Leader Account</DialogTitle>
@@ -378,8 +432,27 @@ export default function AdminCourseLeadersPage() {
               <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input id="add-password" type="password" placeholder="Enter temporary password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" />
+              <Label htmlFor="add-programme">Programme</Label>
+              <Select value={formProgramme} onValueChange={setFormProgramme}>
+                <SelectTrigger id="add-programme"><SelectValue placeholder="— Select programme —" /></SelectTrigger>
+                <SelectContent>
+                  {programmes.length > 0 ? programmes.map((p) => (
+                    <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                  )) : <SelectItem value="__none__" disabled>No programmes found</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-level">Level</Label>
+              <Select value={formLevel} onValueChange={setFormLevel}>
+                <SelectTrigger id="add-level"><SelectValue placeholder="— Select level —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Year 1">Year 1</SelectItem>
+                  <SelectItem value="Year 2">Year 2</SelectItem>
+                  <SelectItem value="Year 3">Year 3</SelectItem>
+                  <SelectItem value="Year 4">Year 4</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-status">Status</Label>
@@ -404,7 +477,7 @@ export default function AdminCourseLeadersPage() {
       <BulkImportModal
         open={bulkImportOpen}
         onOpenChange={setBulkImportOpen}
-        role="ssa"
+        role="course_leader"
         onImport={handleBulkImport}
       />
 

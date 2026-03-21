@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import emailjs from '@emailjs/browser';
 import {
   Card,
   CardContent,
@@ -33,6 +34,7 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
+  getDocs,
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -49,16 +51,6 @@ interface Advisor {
   status: 'active' | 'inactive';
 }
 
-const DEPARTMENTS = [
-  'Academic Services',
-  'Student Services',
-  'Computer Science',
-  'Mathematics',
-  'Engineering',
-  'Business Administration',
-  'Liberal Arts',
-  'Natural Sciences',
-];
 
 const SPECIALISATIONS = [
   'First-Year Students',
@@ -77,13 +69,13 @@ export default function AdminAdvisorsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   // Add dialog
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [addEmployeeId, setAddEmployeeId] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
   const [addDepartment, setAddDepartment] = useState('');
   const [addSpecialisation, setAddSpecialisation] = useState('');
   const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
@@ -118,6 +110,12 @@ export default function AdminAdvisorsPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    getDocs(collection(db, 'faculties')).then((snap) => {
+      setDepartments(snap.docs.map((d) => d.data().facultyName ?? '').filter(Boolean).sort());
+    });
+  }, []);
+
   const stats = {
     total: advisorList.length,
     active: advisorList.filter((a) => a.status === 'active').length,
@@ -136,23 +134,20 @@ export default function AdminAdvisorsPage() {
   });
 
   const openAddDialog = () => {
-    setAddName(''); setAddEmployeeId(''); setAddEmail(''); setAddPassword('');
+    setAddName(''); setAddEmployeeId(''); setAddEmail('');
     setAddDepartment(''); setAddSpecialisation(''); setAddStatus('active');
     setIsAddOpen(true);
   };
 
   const handleAddAdvisor = async () => {
-    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addPassword.trim() || !addDepartment) {
+    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addDepartment) {
       toast.error('Please fill in all required fields');
       return;
     }
-    if (addPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
+    const tempPassword = `${addEmployeeId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), tempPassword);
       await secondaryAuth.signOut();
       await addDoc(collection(db, 'advisors'), {
         employeeId: addEmployeeId.trim(),
@@ -168,6 +163,25 @@ export default function AdminAdvisorsPage() {
         joinedDate: new Date().toISOString().split('T')[0],
         createdAt: serverTimestamp(),
       });
+      await addDoc(collection(db, 'users'), {
+        uid: cred.user.uid,
+        name: addName.trim(),
+        email: addEmail.trim(),
+        role: ['advisor'],
+        status: addStatus,
+        createdAt: serverTimestamp(),
+      });
+      try {
+        await emailjs.send('service_y8aewpn', 'template_welcome', {
+          to_name: addName.trim(),
+          to_email: addEmail.trim(),
+          user_id: addEmployeeId.trim(),
+          temp_password: tempPassword,
+          login_url: 'http://localhost:5173',
+        }, 'pqfkLZ1zbahk5O2Vi');
+      } catch (emailErr) {
+        console.warn('Welcome email failed:', emailErr);
+      }
       toast.success('Advisor account created successfully');
       setIsAddOpen(false);
     } catch (err) {
@@ -254,6 +268,14 @@ export default function AdminAdvisorsPage() {
           maxStudentCapacity: 40,
           joinedDate: new Date().toISOString().split('T')[0],
           mustChangePassword: true,
+          createdAt: serverTimestamp(),
+        });
+        await addDoc(collection(db, 'users'), {
+          uid: cred.user.uid,
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          role: ['advisor'],
+          status: 'active',
           createdAt: serverTimestamp(),
         });
         success++;
@@ -442,7 +464,7 @@ export default function AdminAdvisorsPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(''); setAddEmployeeId(''); setAddEmail(''); setAddPassword(''); setAddDepartment(''); setAddSpecialisation(''); setAddStatus('active'); } setIsAddOpen(open); }}>
+      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(''); setAddEmployeeId(''); setAddEmail(''); setAddDepartment(''); setAddSpecialisation(''); setAddStatus('active'); } setIsAddOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Advisor</DialogTitle>
@@ -464,15 +486,11 @@ export default function AdminAdvisorsPage() {
               <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input id="add-password" type="password" placeholder="Min. 6 characters" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="add-department">Department <span className="text-red-500">*</span></Label>
               <Select value={addDepartment} onValueChange={setAddDepartment}>
                 <SelectTrigger id="add-department"><SelectValue placeholder="— Select —" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -526,7 +544,7 @@ export default function AdminAdvisorsPage() {
               <Select value={editDepartment} onValueChange={setEditDepartment}>
                 <SelectTrigger id="edit-department"><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

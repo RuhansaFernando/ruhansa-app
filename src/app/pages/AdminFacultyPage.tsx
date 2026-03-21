@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import emailjs from '@emailjs/browser';
 import {
   Card,
   CardContent,
@@ -29,10 +30,12 @@ import { Search, Edit, UserPlus, UserCheck, UserX, Users, Upload } from "lucide-
 import {
   collection,
   onSnapshot,
+  addDoc,
   doc,
   setDoc,
   updateDoc,
   serverTimestamp,
+  getDocs,
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
@@ -49,29 +52,7 @@ interface FacultyMember {
   designation: string;
 }
 
-const DEPARTMENTS = [
-  "Computer Science",
-  "Mathematics",
-  "Engineering",
-  "Business Administration",
-  "Biology",
-  "Psychology",
-  "Chemistry",
-  "Physics",
-  "English Literature",
-  "History",
-  "Economics",
-  "Sociology",
-];
 
-const DESIGNATIONS = [
-  "Professor",
-  "Associate Professor",
-  "Assistant Professor",
-  "Senior Lecturer",
-  "Lecturer",
-  "Instructor",
-];
 
 export default function AdminFacultyPage() {
   const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
@@ -79,16 +60,14 @@ export default function AdminFacultyPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   // Add dialog
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addEmployeeId, setAddEmployeeId] = useState("");
   const [addEmail, setAddEmail] = useState("");
-  const [addPassword, setAddPassword] = useState("");
   const [addDepartment, setAddDepartment] = useState("");
-  const [addDesignation, setAddDesignation] = useState("");
-  const [addPhone, setAddPhone] = useState("");
   const [addStatus, setAddStatus] = useState<"active" | "inactive">("active");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -119,6 +98,12 @@ export default function AdminFacultyPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    getDocs(collection(db, 'faculties')).then((snap) => {
+      setDepartments(snap.docs.map((d) => d.data().facultyName ?? '').filter(Boolean).sort());
+    });
+  }, []);
+
   const stats = {
     total: facultyList.length,
     active: facultyList.filter((f) => f.status === "active").length,
@@ -137,30 +122,25 @@ export default function AdminFacultyPage() {
   });
 
   const openAddDialog = () => {
-    setAddName(""); setAddEmployeeId(""); setAddEmail(""); setAddPassword("");
-    setAddDepartment(""); setAddDesignation(""); setAddPhone(""); setAddStatus("active");
+    setAddName(""); setAddEmployeeId(""); setAddEmail("");
+    setAddDepartment(""); setAddStatus("active");
     setIsAddOpen(true);
   };
 
   const handleAddFaculty = async () => {
-    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addPassword.trim() || !addDepartment) {
+    if (!addName.trim() || !addEmployeeId.trim() || !addEmail.trim() || !addDepartment) {
       toast.error("Please fill in all required fields");
       return;
     }
-    if (addPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
+    const tempPassword = `${addEmployeeId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), tempPassword);
       await secondaryAuth.signOut();
       await setDoc(doc(db, "faculty", addEmployeeId.trim()), {
         name: addName.trim(),
         email: addEmail.trim(),
         department: addDepartment,
-        designation: addDesignation,
-        phone: addPhone.trim(),
         status: addStatus,
         role: "faculty",
         uid: cred.user.uid,
@@ -169,6 +149,25 @@ export default function AdminFacultyPage() {
         joinedDate: new Date().toISOString().split("T")[0],
         createdAt: serverTimestamp(),
       });
+      await addDoc(collection(db, "users"), {
+        uid: cred.user.uid,
+        name: addName.trim(),
+        email: addEmail.trim(),
+        role: ["faculty"],
+        status: addStatus,
+        createdAt: serverTimestamp(),
+      });
+      try {
+        await emailjs.send('service_y8aewpn', 'template_welcome', {
+          to_name: addName.trim(),
+          to_email: addEmail.trim(),
+          user_id: addEmployeeId.trim(),
+          temp_password: tempPassword,
+          login_url: 'http://localhost:5173',
+        }, 'pqfkLZ1zbahk5O2Vi');
+      } catch (emailErr) {
+        console.warn('Welcome email failed:', emailErr);
+      }
       toast.success("Faculty account created successfully");
       setIsAddOpen(false);
     } catch (err) {
@@ -243,11 +242,10 @@ export default function AdminFacultyPage() {
         const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
         await secondaryAuth.signOut();
         await setDoc(doc(db, "faculty", row.StaffID.trim()), {
+          staffId: row.StaffID?.trim() ?? "",
           name: row.FullName.trim(),
           email: row.Email.trim(),
           department: row.Department?.trim() ?? "",
-          designation: row.Designation?.trim() ?? "",
-          phone: row.Phone?.trim() ?? "",
           status: "active",
           role: "faculty",
           uid: cred.user.uid,
@@ -257,6 +255,25 @@ export default function AdminFacultyPage() {
           mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
+        await addDoc(collection(db, "users"), {
+          uid: cred.user.uid,
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          role: ["faculty"],
+          status: "active",
+          createdAt: serverTimestamp(),
+        });
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: row.FullName.trim(),
+            to_email: row.Email.trim(),
+            user_id: row.StaffID.trim(),
+            temp_password: tempPassword,
+            login_url: 'http://localhost:5173',
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
         success++;
       } catch (err: any) {
         if (err.code === "auth/email-already-in-use") {
@@ -443,7 +460,7 @@ export default function AdminFacultyPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(""); setAddEmployeeId(""); setAddEmail(""); setAddPassword(""); setAddDepartment(""); setAddDesignation(""); setAddPhone(""); setAddStatus("active"); } setIsAddOpen(open); }}>
+      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddName(""); setAddEmployeeId(""); setAddEmail(""); setAddDepartment(""); setAddStatus("active"); } setIsAddOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Faculty</DialogTitle>
@@ -465,30 +482,13 @@ export default function AdminFacultyPage() {
               <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input id="add-password" type="password" placeholder="Min. 6 characters" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="add-department">Department <span className="text-red-500">*</span></Label>
               <Select value={addDepartment} onValueChange={setAddDepartment}>
                 <SelectTrigger id="add-department"><SelectValue placeholder="— Select —" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-designation">Designation</Label>
-              <Select value={addDesignation} onValueChange={setAddDesignation}>
-                <SelectTrigger id="add-designation"><SelectValue placeholder="— Select —" /></SelectTrigger>
-                <SelectContent>
-                  {DESIGNATIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-phone">Phone</Label>
-              <Input id="add-phone" type="tel" placeholder="Enter phone number" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} autoComplete="off" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-status">Status</Label>
@@ -531,7 +531,7 @@ export default function AdminFacultyPage() {
               <Select value={editDepartment} onValueChange={setEditDepartment}>
                 <SelectTrigger id="edit-department"><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

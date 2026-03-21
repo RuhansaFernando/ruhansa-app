@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Users, UserCheck, UserX, Shield } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Users, UserCheck, UserX, Shield, AlertTriangle, UserPlus, BarChart2, BookOpen } from 'lucide-react';
 import { db } from '../../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface RoleStats {
@@ -18,6 +20,8 @@ interface AllStats {
   faculty: RoleStats;
   mentors: RoleStats;
   counsellors: RoleStats;
+  courseLeaders: RoleStats;
+  advisors: RoleStats;
 }
 
 const ROLE_CONFIG = [
@@ -75,6 +79,24 @@ const ROLE_CONFIG = [
     borderClass: 'border-l-pink-500',
     dotClass: 'bg-pink-500',
   },
+  {
+    key: 'courseLeaders',
+    label: 'Course Leaders',
+    color: '#6366f1',
+    bgClass: 'bg-indigo-50',
+    textClass: 'text-indigo-700',
+    borderClass: 'border-l-indigo-500',
+    dotClass: 'bg-indigo-500',
+  },
+  {
+    key: 'advisors',
+    label: 'Academic Advisors',
+    color: '#f59e0b',
+    bgClass: 'bg-amber-50',
+    textClass: 'text-amber-700',
+    borderClass: 'border-l-amber-500',
+    dotClass: 'bg-amber-500',
+  },
 ] as const;
 
 const emptyStats = (): RoleStats => ({ total: 0, active: 0, inactive: 0 });
@@ -91,7 +113,18 @@ async function fetchCollectionStats(collectionName: string): Promise<RoleStats> 
   return { total: snap.size, active, inactive };
 }
 
+const STAFF_COLLECTIONS = [
+  'student_support_advisors',
+  'registry',
+  'faculty',
+  'academic_mentors',
+  'student_counsellors',
+  'course_leaders',
+  'advisors',
+];
+
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<AllStats>({
     students: emptyStats(),
     sru: emptyStats(),
@@ -99,23 +132,55 @@ export default function AdminDashboard() {
     faculty: emptyStats(),
     mentors: emptyStats(),
     counsellors: emptyStats(),
+    courseLeaders: emptyStats(),
+    advisors: emptyStats(),
   });
-  const [loading, setLoading] = useState(true);
+  const [pendingPasswordChanges, setPendingPasswordChanges] = useState(0);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
 
+  // Real-time listener for students — also counts student mustChangePassword
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'students'), (snap) => {
+      let active = 0;
+      let inactive = 0;
+      let pendingStudents = 0;
+      snap.forEach((d) => {
+        const data = d.data();
+        const status = data.status;
+        if (status === 'active') active++;
+        else if (status === 'inactive') inactive++;
+        if (data.mustChangePassword === true) pendingStudents++;
+      });
+      setStats((prev) => ({ ...prev, students: { total: snap.size, active, inactive } }));
+      setPendingPasswordChanges((prev) => prev + pendingStudents);
+      setStudentsLoaded(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // One-time fetch for all staff collections + staff mustChangePassword count
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [students, sru, registry, faculty, mentors, counsellors] = await Promise.all([
-          fetchCollectionStats('students'),
+        const [sru, registry, faculty, mentors, counsellors, courseLeaders, advisors] = await Promise.all([
           fetchCollectionStats('student_support_advisors'),
           fetchCollectionStats('registry'),
-          fetchCollectionStats('faculty_administrators'),
+          fetchCollectionStats('faculty'),
           fetchCollectionStats('academic_mentors'),
           fetchCollectionStats('student_counsellors'),
+          fetchCollectionStats('course_leaders'),
+          fetchCollectionStats('advisors'),
         ]);
-        setStats({ students, sru, registry, faculty, mentors, counsellors });
+        setStats((prev) => ({ ...prev, sru, registry, faculty, mentors, counsellors, courseLeaders, advisors }));
+
+        // Count pending password changes across staff collections only (students handled by onSnapshot)
+        const snaps = await Promise.all(STAFF_COLLECTIONS.map((c) => getDocs(collection(db, c))));
+        let pendingStaff = 0;
+        snaps.forEach((snap) => snap.forEach((d) => { if (d.data().mustChangePassword === true) pendingStaff++; }));
+        setPendingPasswordChanges((prev) => prev + pendingStaff);
       } finally {
-        setLoading(false);
+        setStaffLoading(false);
       }
     };
     fetchAll();
@@ -128,16 +193,22 @@ export default function AdminDashboard() {
     faculty: stats.faculty,
     mentors: stats.mentors,
     counsellors: stats.counsellors,
+    courseLeaders: stats.courseLeaders,
+    advisors: stats.advisors,
   };
 
   const totalStudents = stats.students.total;
-  const totalStaff = stats.sru.total + stats.registry.total + stats.faculty.total + stats.mentors.total + stats.counsellors.total;
+  const totalStaff =
+    stats.sru.total + stats.registry.total + stats.faculty.total +
+    stats.mentors.total + stats.counsellors.total + stats.courseLeaders.total + stats.advisors.total;
   const totalActive =
     stats.students.active + stats.sru.active + stats.registry.active +
-    stats.faculty.active + stats.mentors.active + stats.counsellors.active;
+    stats.faculty.active + stats.mentors.active + stats.counsellors.active +
+    stats.courseLeaders.active + stats.advisors.active;
   const totalInactive =
     stats.students.inactive + stats.sru.inactive + stats.registry.inactive +
-    stats.faculty.inactive + stats.mentors.inactive + stats.counsellors.inactive;
+    stats.faculty.inactive + stats.mentors.inactive + stats.counsellors.inactive +
+    stats.courseLeaders.inactive + stats.advisors.inactive;
 
   const donutData = ROLE_CONFIG.map((r) => ({
     name: r.label,
@@ -167,6 +238,16 @@ export default function AdminDashboard() {
         </p>
       </div>
 
+      {/* Pending password warning */}
+      {pendingPasswordChanges > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-900 font-medium">
+            {pendingPasswordChanges} users have not changed their temporary password yet.
+          </p>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-blue-500">
@@ -175,7 +256,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Students</p>
                 <p className="text-3xl font-bold mt-1">
-                  {loading ? '—' : totalStudents}
+                  {studentsLoaded ? totalStudents : '—'}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
               </div>
@@ -192,7 +273,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Staff</p>
                 <p className="text-3xl font-bold mt-1">
-                  {loading ? '—' : totalStaff}
+                  {staffLoading ? '—' :totalStaff}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
               </div>
@@ -209,7 +290,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Active</p>
                 <p className="text-3xl font-bold mt-1">
-                  {loading ? '—' : totalActive}
+                  {staffLoading ? '—' :totalActive}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Active accounts</p>
               </div>
@@ -226,7 +307,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Inactive</p>
                 <p className="text-3xl font-bold mt-1">
-                  {loading ? '—' : totalInactive}
+                  {staffLoading ? '—' :totalInactive}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Inactive accounts</p>
               </div>
@@ -246,7 +327,7 @@ export default function AdminDashboard() {
             <CardTitle className="text-base">User Distribution</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {staffLoading ? (
               <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
                 Loading...
               </div>
@@ -305,10 +386,10 @@ export default function AdminDashboard() {
                           {role.label}
                         </p>
                         <p className="text-2xl font-bold mt-0.5">
-                          {loading ? '—' : s.total}
+                          {staffLoading ? '—' :s.total}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Active: {loading ? '—' : s.active}
+                          Active: {staffLoading ? '—' :s.active}
                         </p>
                       </div>
                       <div className={`h-2 w-2 rounded-full mt-1 ${role.dotClass} flex-shrink-0`} />
@@ -320,6 +401,33 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Quick Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/students')}>
+              <UserPlus className="h-4 w-4" />
+              Add Student
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/registry')}>
+              <Shield className="h-4 w-4" />
+              Add Staff
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/analytics')}>
+              <BarChart2 className="h-4 w-4" />
+              View Reports
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/modules')}>
+              <BookOpen className="h-4 w-4" />
+              Manage Modules
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

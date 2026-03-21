@@ -34,7 +34,6 @@ import AdminCounselorsPage from './pages/AdminCounselorsPage';
 import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
 import AdminAlertsPage from './pages/AdminAlertsPage';
 import AdminTutorsPage from './pages/AdminTutorsPage';
-import AdminCounsellorsPage from './pages/AdminCounsellorsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminSRUPage from './pages/AdminSRUPage';
 import AdminRegistryPage from './pages/AdminRegistryPage';
@@ -45,6 +44,7 @@ import RegistryModulesPage from './pages/RegistryModulesPage';
 import RegistryGradesPage from './pages/RegistryGradesPage';
 import RegistryReportsPage from './pages/RegistryReportsPage';
 import RegistryStudentDetailsPage from './pages/RegistryStudentDetailsPage';
+import RegistryEnrollmentPage from './pages/RegistryEnrollmentPage';
 import AcademicUploadPage from './pages/AcademicUploadPage';
 import StudentMarksPage from './pages/StudentMarksPage';
 import StudentAttendancePage from './pages/StudentAttendancePage';
@@ -299,10 +299,6 @@ export const router = createBrowserRouter([
         Component: AdminAcademicPage,
       },
       {
-        path: 'counsellors',
-        Component: AdminCounsellorsPage,
-      },
-      {
         path: 'course-leaders',
         Component: AdminCourseLeadersPage,
       },
@@ -343,6 +339,10 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         Component: AdminRegistryManagementPage,
+      },
+      {
+        path: 'enrollment',
+        Component: RegistryEnrollmentPage,
       },
       {
         path: 'students',

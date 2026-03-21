@@ -2,21 +2,21 @@ import { User, Student, RiskFactor, AttendanceRecord, GradeRecord, EngagementMet
 
 // Mock Users
 export const mockUsers: User[] = [
-  { id: 'adv1', name: 'Dr. Sarah Johnson', email: 'sarah.johnson@university.edu', role: 'advisor', password: 'advisor123', status: 'active', department: 'Academic Services', createdAt: '2024-02-01' },
-  { id: 'adv2', name: 'Prof. Michael Chen', email: 'michael.chen@university.edu', role: 'advisor', password: 'advisor123', status: 'active', department: 'Academic Services', createdAt: '2024-01-15' },
-  { id: 'fac1', name: 'Dr. Emily Roberts', email: 'emily.roberts@university.edu', role: 'faculty', password: 'faculty123', status: 'active', department: 'Computer Science', createdAt: '2024-01-20' },
-  { id: 'fac2', name: 'Prof. David Martinez', email: 'david.martinez@university.edu', role: 'faculty', password: 'faculty123', status: 'active', department: 'Mathematics', createdAt: '2024-01-18' },
-  { id: 'cou1', name: 'Dr. Lisa Anderson', email: 'lisa.anderson@university.edu', role: 'counselor', password: 'counselor123', status: 'active', department: 'Student Services', createdAt: '2024-02-10' },
-  { id: 'cou2', name: 'Dr. James Wilson', email: 'james.wilson@university.edu', role: 'counselor', password: 'counselor123', status: 'active', department: 'Student Services', createdAt: '2024-02-05' },
-  { id: 'adm1', name: 'Admin User', email: 'admin@university.edu', role: 'admin', password: 'admin123', status: 'active', createdAt: '2024-01-01' },
-  { id: 'stu1', name: 'John Smith', email: 'john.smith@student.edu', role: 'student', password: 'student123', status: 'active', createdAt: '2024-09-01' },
-  { id: 'stu2', name: 'Emma Davis', email: 'emma.davis@student.edu', role: 'student', password: 'student123', status: 'active', createdAt: '2024-09-01' },
-  { id: 'stu3', name: 'Michael Brown', email: 'michael.brown@student.edu', role: 'student', password: 'student123', status: 'inactive', createdAt: '2024-09-01' },
-  { id: 'stu4', name: 'Sarah Williams', email: 'sarah.williams@student.edu', role: 'student', password: 'student123', status: 'active', createdAt: '2024-09-01' },
-  { id: 'stu5', name: 'David Lee', email: 'david.lee@student.edu', role: 'student', password: 'student123', status: 'inactive', createdAt: '2024-09-01' },
-  { id: 'stu6', name: 'Jessica Martinez', email: 'jessica.martinez@student.edu', role: 'student', password: 'student123', status: 'active', createdAt: '2024-09-01' },
-  { id: 'stu7', name: 'Ryan Taylor', email: 'ryan.taylor@student.edu', role: 'student', password: 'student123', status: 'inactive', createdAt: '2024-09-01' },
-  { id: 'stu8', name: 'Olivia Johnson', email: 'olivia.johnson@student.edu', role: 'student', password: 'student123', status: 'active', createdAt: '2024-09-01' },
+  { id: 'adv1', name: 'Dr. Sarah Johnson', email: 'sarah.johnson@university.edu', role: 'advisor', status: 'active', department: 'Academic Services', createdAt: '2024-02-01' },
+  { id: 'adv2', name: 'Prof. Michael Chen', email: 'michael.chen@university.edu', role: 'advisor', status: 'active', department: 'Academic Services', createdAt: '2024-01-15' },
+  { id: 'fac1', name: 'Dr. Emily Roberts', email: 'emily.roberts@university.edu', role: 'faculty', status: 'active', department: 'Computer Science', createdAt: '2024-01-20' },
+  { id: 'fac2', name: 'Prof. David Martinez', email: 'david.martinez@university.edu', role: 'faculty', status: 'active', department: 'Mathematics', createdAt: '2024-01-18' },
+  { id: 'cou1', name: 'Dr. Lisa Anderson', email: 'lisa.anderson@university.edu', role: 'counselor', status: 'active', department: 'Student Services', createdAt: '2024-02-10' },
+  { id: 'cou2', name: 'Dr. James Wilson', email: 'james.wilson@university.edu', role: 'counselor', status: 'active', department: 'Student Services', createdAt: '2024-02-05' },
+  { id: 'adm1', name: 'Admin User', email: 'admin@university.edu', role: 'admin', status: 'active', createdAt: '2024-01-01' },
+  { id: 'stu1', name: 'John Smith', email: 'john.smith@student.edu', role: 'student', status: 'active', createdAt: '2024-09-01' },
+  { id: 'stu2', name: 'Emma Davis', email: 'emma.davis@student.edu', role: 'student', status: 'active', createdAt: '2024-09-01' },
+  { id: 'stu3', name: 'Michael Brown', email: 'michael.brown@student.edu', role: 'student', status: 'inactive', createdAt: '2024-09-01' },
+  { id: 'stu4', name: 'Sarah Williams', email: 'sarah.williams@student.edu', role: 'student', status: 'active', createdAt: '2024-09-01' },
+  { id: 'stu5', name: 'David Lee', email: 'david.lee@student.edu', role: 'student', status: 'inactive', createdAt: '2024-09-01' },
+  { id: 'stu6', name: 'Jessica Martinez', email: 'jessica.martinez@student.edu', role: 'student', status: 'active', createdAt: '2024-09-01' },
+  { id: 'stu7', name: 'Ryan Taylor', email: 'ryan.taylor@student.edu', role: 'student', status: 'inactive', createdAt: '2024-09-01' },
+  { id: 'stu8', name: 'Olivia Johnson', email: 'olivia.johnson@student.edu', role: 'student', status: 'active', createdAt: '2024-09-01' },
 ];
 
 // Mock Students

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import emailjs from '@emailjs/browser';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -51,7 +52,6 @@ export default function AdminSRUPage() {
   const [addStaffId, setAddStaffId] = useState('');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
   const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -96,28 +96,49 @@ export default function AdminSRUPage() {
   });
 
   const openAddDialog = () => {
-    setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active');
+    setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active');
     setIsAddDialogOpen(true);
   };
 
   const handleAddStaff = async () => {
-    if (!addStaffId.trim() || !addName.trim() || !addEmail.trim() || !addPassword.trim()) {
+    if (!addStaffId.trim() || !addName.trim() || !addEmail.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
+    const tempPassword = `${addStaffId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword.trim());
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), tempPassword);
       await secondaryAuth.signOut();
       await addDoc(collection(db, 'student_support_advisors'), {
         uid: cred.user.uid,
         staffId: addStaffId.trim(),
         name: addName.trim(),
         email: addEmail.trim(),
-        role: 'sru',
+        role: 'ssa',
         status: addStatus,
         createdAt: serverTimestamp(),
       });
+
+      await addDoc(collection(db, 'users'), {
+        uid: cred.user.uid,
+        name: addName.trim(),
+        email: addEmail.trim(),
+        role: ['ssa'],
+        status: addStatus,
+        createdAt: serverTimestamp(),
+      });
+      try {
+        await emailjs.send('service_y8aewpn', 'template_welcome', {
+          to_name: addName.trim(),
+          to_email: addEmail.trim(),
+          user_id: addStaffId.trim(),
+          temp_password: tempPassword,
+          login_url: 'http://localhost:5173',
+        }, 'pqfkLZ1zbahk5O2Vi');
+      } catch (emailErr) {
+        console.warn('Welcome email failed:', emailErr);
+      }
       toast.success('Student Support Advisor account created successfully');
       setIsAddDialogOpen(false);
     } catch (err) {
@@ -192,12 +213,31 @@ export default function AdminSRUPage() {
           staffId: row.StaffID.trim(),
           name: row.FullName.trim(),
           email: row.Email.trim(),
-          role: 'sru',
+          role: 'ssa',
           status: 'active',
           mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
+        await addDoc(collection(db, 'users'), {
+          uid: cred.user.uid,
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          role: ['ssa'],
+          status: 'active',
+          createdAt: serverTimestamp(),
+        });
         await secondaryAuth.signOut();
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: row.FullName.trim(),
+            to_email: row.Email.trim(),
+            user_id: row.StaffID.trim(),
+            temp_password: tempPassword,
+            login_url: 'http://localhost:5173',
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
         success++;
       } catch (err: any) {
         errors.push(`${row.FullName || row.Email} — ${err.message}`);
@@ -374,7 +414,7 @@ export default function AdminSRUPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddStatus('active'); } setIsAddDialogOpen(open); }}>
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active'); } setIsAddDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Student Support Advisor Account</DialogTitle>
@@ -394,10 +434,6 @@ export default function AdminSRUPage() {
             <div className="space-y-2">
               <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
               <Input id="add-email" type="email" placeholder="Enter email address" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input id="add-password" type="password" placeholder="Enter temporary password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-status">Status</Label>

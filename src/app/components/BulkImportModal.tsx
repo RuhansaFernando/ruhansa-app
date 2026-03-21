@@ -13,7 +13,7 @@ import { Upload, CheckCircle, XCircle, Loader2, ArrowRight } from 'lucide-react'
 interface BulkImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  role: 'ssa' | 'mentor' | 'registry' | 'faculty' | 'student';
+  role: 'ssa' | 'mentor' | 'registry' | 'faculty' | 'student' | 'course_leader' | 'advisor';
   onImport: (rows: any[]) => Promise<{ success: number; failed: number; errors: string[] }>;
 }
 
@@ -23,6 +23,8 @@ const ROLE_LABELS: Record<string, string> = {
   registry: 'Registry Staff',
   faculty: 'Faculty Administrators',
   student: 'Students',
+  course_leader: 'Course Leaders',
+  advisor: 'Academic Advisors',
 };
 
 const ROLE_ID_KEY: Record<string, string> = {
@@ -31,6 +33,8 @@ const ROLE_ID_KEY: Record<string, string> = {
   registry: 'StaffID',
   faculty: 'StaffID',
   student: 'StudentID',
+  course_leader: 'StaffID',
+  advisor: 'StaffID',
 };
 
 const REQUIRED_FIELDS: Record<string, { key: string; label: string; required: boolean }[]> = {
@@ -54,6 +58,21 @@ const REQUIRED_FIELDS: Record<string, { key: string; label: string; required: bo
     { key: 'StaffID', label: 'Staff ID', required: true },
     { key: 'FullName', label: 'Full Name', required: true },
     { key: 'Email', label: 'Email', required: true },
+    { key: 'Department', label: 'Department', required: false },
+  ],
+  course_leader: [
+    { key: 'StaffID', label: 'Staff ID', required: true },
+    { key: 'FullName', label: 'Full Name', required: true },
+    { key: 'Email', label: 'Email', required: true },
+    { key: 'Programme', label: 'Programme', required: false },
+    { key: 'Level', label: 'Level', required: false },
+  ],
+  advisor: [
+    { key: 'StaffID', label: 'Staff ID', required: true },
+    { key: 'FullName', label: 'Full Name', required: true },
+    { key: 'Email', label: 'Email', required: true },
+    { key: 'Department', label: 'Department', required: false },
+    { key: 'Specialisation', label: 'Specialisation', required: false },
   ],
   student: [
     { key: 'StudentID', label: 'Student ID', required: true },
@@ -71,6 +90,16 @@ const REQUIRED_FIELDS: Record<string, { key: string; label: string; required: bo
 
 type Step = 'upload' | 'mapping' | 'filter' | 'preview' | 'result';
 
+const PASSWORD_MESSAGES: Record<string, { id: string; noun: string }> = {
+  student: { id: 'StudentID', noun: 'Students' },
+  registry: { id: 'StaffID', noun: 'Registry staff' },
+  ssa: { id: 'StaffID', noun: 'Student Support Advisors' },
+  mentor: { id: 'StaffID', noun: 'Academic Mentors' },
+  faculty: { id: 'StaffID', noun: 'Faculty Administrators' },
+  course_leader: { id: 'StaffID', noun: 'Course Leaders' },
+  advisor: { id: 'StaffID', noun: 'Advisors' },
+};
+
 export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImportModalProps) {
   const [step, setStep] = useState<Step>('upload');
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
@@ -83,6 +112,10 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
   const [result, setResult] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
 
   const fields = REQUIRED_FIELDS[role];
+  const isStudent = role === 'student';
+  const steps: Step[] = isStudent
+    ? ['upload', 'mapping', 'filter', 'preview', 'result']
+    : ['upload', 'mapping', 'preview', 'result'];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -159,7 +192,7 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl w-[90vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Bulk Import {ROLE_LABELS[role]}</DialogTitle>
           <p className="text-sm text-muted-foreground">
@@ -168,19 +201,19 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
         </DialogHeader>
 
         {/* Step indicators */}
-        <div className="flex items-center gap-2 py-2">
-          {(['upload', 'mapping', 'filter', 'preview', 'result'] as Step[]).map((s, i) => (
+        <div className="flex flex-wrap items-center gap-2 py-2">
+          {steps.map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full ${
+              <div className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${
                 step === s ? 'bg-blue-100 text-blue-700' :
-                ['upload', 'mapping', 'filter', 'preview', 'result'].indexOf(step) > i
+                steps.indexOf(step) > i
                   ? 'bg-green-100 text-green-700'
                   : 'bg-gray-100 text-gray-400'
               }`}>
                 <span>{i + 1}</span>
-                <span className="capitalize">{s}</span>
+                <span className="capitalize">{s === 'mapping' ? 'Map' : s}</span>
               </div>
-              {i < 4 && <ArrowRight className="h-3 w-3 text-gray-300" />}
+              {i < steps.length - 1 && <ArrowRight className="h-3 w-3 text-gray-300 flex-shrink-0" />}
             </div>
           ))}
         </div>
@@ -198,10 +231,16 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
               <p className="text-xs font-medium text-amber-900 mb-1">🔐 Temporary Password</p>
-              <p className="text-xs text-amber-700">
-                Each account will be created with the temporary password: <strong>{ROLE_ID_KEY[role]}@DropGuard</strong>.
-                {role === 'student' ? ' Students' : ' Staff'} must change it on first login.
-              </p>
+              {(() => {
+                const pwMsg = PASSWORD_MESSAGES[role] ?? { id: 'StaffID', noun: 'Staff' };
+                return (
+                  <p className="text-sm text-amber-800">
+                    Each account will be created with the temporary password:{' '}
+                    <span className="font-bold">{pwMsg.id}@DropGuard</span>.{' '}
+                    {pwMsg.noun} must change it on first login.
+                  </p>
+                );
+              })()}
             </div>
 
             <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
@@ -226,46 +265,31 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
               </p>
             </div>
 
-            <div className="space-y-3">
+            <div>
               {fields.map((field) => (
-                <div key={field.key} className="flex items-center gap-4 p-3 border rounded-xl">
-                  <div className="w-40 flex-shrink-0">
-                    <p className="text-sm font-medium text-gray-900">{field.label}</p>
-                    {field.required && (
-                      <span className="text-[10px] text-red-500 font-medium">Required</span>
-                    )}
-                    {!field.required && (
-                      <span className="text-[10px] text-gray-400">Optional</span>
-                    )}
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                <div key={field.key} className="mb-3">
+                  <label className="text-sm font-medium text-gray-900">
+                    {field.label} {field.required && <span className="text-red-500">*</span>}
+                  </label>
+                  <p className="text-xs text-gray-400 mb-1">{field.required ? 'Required' : 'Optional'}</p>
                   <Select
                     value={mapping[field.key] ?? ''}
                     onValueChange={(val) => setMapping((prev) => ({ ...prev, [field.key]: val }))}
                   >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select HR column..." />
+                    <SelectTrigger className="w-full h-9 text-sm">
+                      <SelectValue placeholder="Select CSV column..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__ignore__">— Ignore this field —</SelectItem>
+                      <SelectItem value="__ignore__">Skip this field</SelectItem>
                       {csvHeaders.map((h) => (
-                        <SelectItem key={h} value={h}>
-                          {h}
-                          {csvData[0]?.[h] && (
-                            <span className="text-gray-400 ml-2">
-                              (e.g. {String(csvData[0][h]).slice(0, 20)})
-                            </span>
-                          )}
-                        </SelectItem>
+                        <SelectItem key={h} value={h}>{h}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {mapping[field.key] && mapping[field.key] !== '__ignore__' ? (
-                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                  ) : field.required ? (
-                    <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
-                  ) : (
-                    <div className="w-4 flex-shrink-0" />
+                  {mapping[field.key] && mapping[field.key] !== '__ignore__' && csvData[0]?.[mapping[field.key]] && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✓ Sample: {String(csvData[0][mapping[field.key]]).slice(0, 40)}
+                    </p>
                   )}
                 </div>
               ))}
@@ -279,22 +303,22 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
           </div>
         )}
 
-        {/* STEP 3: Filter */}
+        {/* STEP 3: Filter (students only) */}
         {step === 'filter' && (
           <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
               <p className="text-sm font-medium text-blue-900 mb-1">
-                Filter by role (optional)
+                Filter by student (optional)
               </p>
               <p className="text-xs text-blue-700 leading-relaxed">
-                If HR's CSV contains all staff roles in one file, select the column that identifies the role and enter the value for this role. For example: Column "Role" = "Student Support Advisor". If the CSV already contains only this role's staff, click Skip.
+                Your CSV should contain only student records. If your CSV contains mixed data, you can filter by a specific column value below. Otherwise click Skip.
               </p>
             </div>
 
             <div className="space-y-3">
               <div>
                 <p className="text-xs font-medium text-gray-600 mb-2">
-                  Which column contains the staff role?
+                  Which column identifies students?
                 </p>
                 <Select value={roleColumn} onValueChange={setRoleColumn}>
                   <SelectTrigger>
@@ -318,7 +342,7 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
               {roleColumn && (
                 <div>
                   <p className="text-xs font-medium text-gray-600 mb-2">
-                    What value identifies {ROLE_LABELS[role]}?
+                    What value identifies students?
                   </p>
                   <Select value={roleValue} onValueChange={setRoleValue}>
                     <SelectTrigger>
@@ -439,9 +463,16 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
               size="sm"
               className="bg-blue-600 hover:bg-blue-700 gap-1.5"
               disabled={!requiredMapped}
-              onClick={() => setStep('filter')}
+              onClick={() => {
+                if (isStudent) {
+                  setStep('filter');
+                } else {
+                  setSkipRoleFilter(true);
+                  setStep('preview');
+                }
+              }}
             >
-              Next: Filter by Role →
+              {isStudent ? 'Next: Filter by Role →' : 'Preview Data →'}
             </Button>
           )}
 
@@ -463,7 +494,7 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
 
           {step === 'preview' && (
             <>
-              <Button variant="outline" size="sm" onClick={() => setStep('filter')}>
+              <Button variant="outline" size="sm" onClick={() => setStep(isStudent ? 'filter' : 'mapping')}>
                 ← Back
               </Button>
               <Button

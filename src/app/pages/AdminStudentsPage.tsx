@@ -47,8 +47,11 @@ import {
   query,
   orderBy,
   setDoc,
+  getDocs,
+  where,
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
+import emailjs from '@emailjs/browser';
 import { db, secondaryAuth } from "../../firebase";
 import { FirebaseError } from "firebase/app";
 import { BulkImportModal } from "../components/BulkImportModal";
@@ -75,12 +78,16 @@ export default function AdminStudentsPage() {
 
   // Add dialog
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [addName, setAddName] = useState("");
-  const [addStudentId, setAddStudentId] = useState("");
-  const [addEmail, setAddEmail] = useState("");
-  const [addPassword, setAddPassword] = useState("");
-  const [addConfirmPassword, setAddConfirmPassword] = useState("");
-  const [addStatus, setAddStatus] = useState<"active" | "inactive">("active");
+  const [formStudentId, setFormStudentId] = useState("");
+  const [formName, setFormName] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formFaculty, setFormFaculty] = useState("");
+  const [formProgramme, setFormProgramme] = useState("");
+  const [formLevel, setFormLevel] = useState("");
+  const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
+  const [autoFilled, setAutoFilled] = useState(false);
+  const [studentNotFound, setStudentNotFound] = useState(false);
+  const [foundStudentDocId, setFoundStudentDocId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // Edit dialog
@@ -127,6 +134,32 @@ export default function AdminStudentsPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!formStudentId || formStudentId.length < 3) {
+      setAutoFilled(false);
+      setStudentNotFound(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const snap = await getDocs(query(collection(db, "students"), where("studentId", "==", formStudentId.trim())));
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        setFoundStudentDocId(snap.docs[0].id);
+        setFormName(data.name ?? "");
+        setFormEmail(data.email ?? "");
+        setFormFaculty(data.faculty ?? "");
+        setFormProgramme(data.programme ?? "");
+        setFormLevel(data.level ?? "");
+        setAutoFilled(true);
+        setStudentNotFound(false);
+      } else {
+        setAutoFilled(false);
+        setStudentNotFound(true);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [formStudentId]);
+
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       const q = searchQuery.toLowerCase();
@@ -155,55 +188,51 @@ export default function AdminStudentsPage() {
     }
   };
 
+  const resetAddDialog = () => {
+    setFormStudentId(""); setFormName(""); setFormEmail("");
+    setFormFaculty(""); setFormProgramme(""); setFormLevel("");
+    setFormStatus("active");
+    setAutoFilled(false); setStudentNotFound(false); setFoundStudentDocId("");
+  };
+
   const openAddDialog = () => {
-    setAddName(""); setAddStudentId(""); setAddEmail("");
-    setAddPassword(""); setAddConfirmPassword(""); setAddStatus("active");
+    resetAddDialog();
     setIsAddOpen(true);
   };
 
   const handleAddStudent = async () => {
-    if (!addName.trim() || !addStudentId.trim() || !addEmail.trim() || !addPassword) {
-      toast.error("Please fill in all required fields");
+    if (!autoFilled || !foundStudentDocId) {
+      toast.error("Search for a valid Student ID first");
       return;
     }
-    if (addPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
+    const tempPassword = `${formStudentId.trim()}@DropGuard`;
     setIsSaving(true);
     try {
-      const cred = await createUserWithEmailAndPassword(secondaryAuth, addEmail.trim(), addPassword);
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, formEmail, tempPassword);
       await secondaryAuth.signOut();
-      await setDoc(doc(db, "students", addStudentId.trim()), {
-        name: addName.trim(),
-        studentId: addStudentId.trim(),
-        email: addEmail.trim(),
+      await updateDoc(doc(db, "students", foundStudentDocId), {
         uid: cred.user.uid,
-        status: addStatus,
-        role: "student",
-        faculty: "",
-        programme: "",
-        level: "",
-        intake: "",
-        academicMentor: "",
-        gpa: 0,
-        attendancePercentage: 0,
-        consecutiveAbsences: 0,
-        riskLevel: "low",
-        riskScore: 0,
-        flagged: false,
-        gender: "",
-        dateOfBirth: "",
-        contactNumber: "",
-        enrollmentDate: "",
-        createdAt: serverTimestamp(),
+        status: formStatus,
+        mustChangePassword: true,
       });
-      toast.success("Student account created successfully");
+      await emailjs.send(
+        'service_y8aewpn',
+        'template_welcome',
+        {
+          to_name: formName,
+          to_email: formEmail,
+          user_id: formStudentId.trim(),
+          temp_password: tempPassword,
+          login_url: 'http://localhost:5173',
+        },
+        'pqfkLZ1zbahk5O2Vi'
+      );
+      toast.success(`Account created for ${formName}. Login details sent to ${formEmail}`);
       setIsAddOpen(false);
     } catch (err) {
       if (err instanceof FirebaseError) {
         if (err.code === "auth/email-already-in-use") {
-          toast.error("An account with this email already exists.");
+          toast.error("A login account for this email already exists.");
         } else {
           toast.error(`Failed to create account: ${err.message}`);
         }
@@ -277,7 +306,6 @@ export default function AdminStudentsPage() {
           email: row.Email.trim(),
           uid: cred.user.uid,
           status: "active",
-          role: "student",
           faculty: row.Faculty?.trim() ?? "",
           programme: row.Programme?.trim() ?? "",
           level: row.Level?.trim() ?? "",
@@ -552,73 +580,84 @@ export default function AdminStudentsPage() {
       </Card>
 
       {/* Add Student Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) { setAddStudentId(''); setAddName(''); setAddEmail(''); setAddPassword(''); setAddConfirmPassword(''); setAddStatus('active'); } setIsAddOpen(open); }}>
+      <Dialog open={isAddOpen} onOpenChange={(open) => { if (!open) resetAddDialog(); setIsAddOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Student</DialogTitle>
-            <DialogDescription>Create a new student account</DialogDescription>
+            <DialogTitle>Activate Student Account</DialogTitle>
+            <DialogDescription>Enter a Student ID to look up their details.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4" autoComplete="off">
-            <input type="text" style={{display:'none'}} autoComplete="username" readOnly />
-            <input type="password" style={{display:'none'}} autoComplete="current-password" readOnly />
+          <div className="space-y-4">
+            {/* Step 1 — always visible */}
             <div className="space-y-2">
-              <Label htmlFor="add-studentId">Student ID <span className="text-red-500">*</span></Label>
+              <Label htmlFor="form-studentId">Student ID <span className="text-red-500">*</span></Label>
               <Input
-                id="add-studentId"
+                id="form-studentId"
                 autoComplete="off"
-                placeholder="Enter ID"
-                value={addStudentId}
-                onChange={(e) => setAddStudentId(e.target.value)}
+                placeholder="e.g. STU2024001"
+                value={formStudentId}
+                onChange={(e) => {
+                  setFormStudentId(e.target.value);
+                  setAutoFilled(false);
+                  setStudentNotFound(false);
+                }}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-name">Full Name <span className="text-red-500">*</span></Label>
-              <Input
-                id="add-name"
-                autoComplete="off"
-                placeholder="Enter full name"
-                value={addName}
-                onChange={(e) => setAddName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
-              <Input
-                id="add-email"
-                type="email"
-                autoComplete="off"
-                placeholder="Enter email address"
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-password">Temporary Password <span className="text-red-500">*</span></Label>
-              <Input
-                id="add-password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="Enter temporary password"
-                value={addPassword}
-                onChange={(e) => setAddPassword(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-status">Status</Label>
-              <Select value={addStatus} onValueChange={(v) => setAddStatus(v as "active" | "inactive")}>
-                <SelectTrigger id="add-status"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
+            {/* Step 3 — not found */}
+            {studentNotFound && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                ✗ Student ID not found in the system
+              </div>
+            )}
+
+            {/* Step 2 — found */}
+            {autoFilled && (
+              <>
+                <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700 font-medium">
+                  ✓ Student found — details auto-filled
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    { label: "Full Name", value: formName, id: "form-name" },
+                    { label: "Email", value: formEmail, id: "form-email" },
+                    { label: "Faculty", value: formFaculty, id: "form-faculty" },
+                    { label: "Programme", value: formProgramme, id: "form-programme" },
+                    { label: "Level / Year", value: formLevel, id: "form-level" },
+                  ].map(({ label, value, id }) => (
+                    <div key={id} className="space-y-1">
+                      <Label htmlFor={id} className="text-sm">{label}</Label>
+                      <Input
+                        id={id}
+                        value={value}
+                        readOnly
+                        placeholder="—"
+                        className="bg-gray-50 text-muted-foreground cursor-default"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="form-status">Status</Label>
+                  <Select value={formStatus} onValueChange={(v) => setFormStatus(v as "active" | "inactive")}>
+                    <SelectTrigger id="form-status"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button size="sm" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-            <Button size="sm" disabled={isSaving} onClick={handleAddStudent}>
-              {isSaving ? "Creating…" : "Create Account"}
-            </Button>
+            {autoFilled && (
+              <Button size="sm" disabled={isSaving} onClick={handleAddStudent}>
+                {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating…</> : "Create Account & Send Email"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

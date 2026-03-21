@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import emailjs from '@emailjs/browser';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
@@ -35,6 +37,7 @@ import {
   serverTimestamp,
   query,
   orderBy,
+  getDocs,
 } from "firebase/firestore";
 import { db, secondaryAuth } from "../../firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -59,6 +62,7 @@ export default function AdminTutorsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   // Add / Edit dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -71,8 +75,6 @@ export default function AdminTutorsPage() {
   const [formEmail, setFormEmail] = useState("");
   const [formDepartment, setFormDepartment] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
-  const [formPassword, setFormPassword] = useState("");
-  const [formConfirmPassword, setFormConfirmPassword] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "academic_mentors"), orderBy("name"));
@@ -93,6 +95,12 @@ export default function AdminTutorsPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    getDocs(collection(db, 'faculties')).then((snap) => {
+      setDepartments(snap.docs.map((d) => d.data().facultyName ?? '').filter(Boolean).sort());
+    });
+  }, []);
+
   const openAddDialog = () => {
     setEditingTutor(null);
     setFormTutorId("");
@@ -100,8 +108,6 @@ export default function AdminTutorsPage() {
     setFormEmail("");
     setFormDepartment("");
     setFormStatus("active");
-    setFormPassword("");
-    setFormConfirmPassword("");
     setIsDialogOpen(true);
   };
 
@@ -120,17 +126,6 @@ export default function AdminTutorsPage() {
       toast.error("Please fill in all required fields");
       return;
     }
-    if (!editingTutor) {
-      if (!formPassword.trim()) {
-        toast.error("Please enter a password");
-        return;
-      }
-      if (formPassword.length < 6) {
-        toast.error("Password must be at least 6 characters");
-        return;
-      }
-    }
-
     setIsSaving(true);
     try {
       if (editingTutor) {
@@ -143,7 +138,8 @@ export default function AdminTutorsPage() {
         });
         toast.success("Academic Mentor updated successfully");
       } else {
-        const cred = await createUserWithEmailAndPassword(secondaryAuth, formEmail.trim(), formPassword.trim());
+        const tempPassword = `${formTutorId.trim()}@DropGuard`;
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, formEmail.trim(), tempPassword);
         await secondaryAuth.signOut();
         await addDoc(collection(db, "academic_mentors"), {
           uid: cred.user.uid,
@@ -155,6 +151,25 @@ export default function AdminTutorsPage() {
           role: "academic_mentor",
           createdAt: serverTimestamp(),
         });
+        await addDoc(collection(db, "users"), {
+          uid: cred.user.uid,
+          name: formName.trim(),
+          email: formEmail.trim(),
+          role: ["academic_mentor"],
+          status: formStatus,
+          createdAt: serverTimestamp(),
+        });
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: formName.trim(),
+            to_email: formEmail.trim(),
+            user_id: formTutorId.trim(),
+            temp_password: tempPassword,
+            login_url: 'http://localhost:5173',
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
         toast.success("Academic Mentor account created successfully");
       }
       setIsDialogOpen(false);
@@ -218,7 +233,7 @@ export default function AdminTutorsPage() {
         const cred = await createUserWithEmailAndPassword(secondaryAuth, row.Email.trim(), tempPassword);
         await addDoc(collection(db, "academic_mentors"), {
           uid: cred.user.uid,
-          tutorId: row.StaffID.trim(),
+          staffId: row.StaffID.trim(),
           name: row.FullName.trim(),
           email: row.Email.trim(),
           department: row.Department?.trim() ?? '',
@@ -227,7 +242,26 @@ export default function AdminTutorsPage() {
           mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
+        await addDoc(collection(db, "users"), {
+          uid: cred.user.uid,
+          name: row.FullName.trim(),
+          email: row.Email.trim(),
+          role: ['academic_mentor'],
+          status: 'active',
+          createdAt: serverTimestamp(),
+        });
         await secondaryAuth.signOut();
+        try {
+          await emailjs.send('service_y8aewpn', 'template_welcome', {
+            to_name: row.FullName.trim(),
+            to_email: row.Email.trim(),
+            user_id: row.StaffID.trim(),
+            temp_password: tempPassword,
+            login_url: 'http://localhost:5173',
+          }, 'pqfkLZ1zbahk5O2Vi');
+        } catch (emailErr) {
+          console.warn('Welcome email failed:', emailErr);
+        }
         success++;
       } catch (err: any) {
         errors.push(`${row.FullName || row.Email} — ${err.message}`);
@@ -324,10 +358,9 @@ export default function AdminTutorsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                <SelectItem value="Business School">Business School</SelectItem>
-                <SelectItem value="School of Computing">
-                  School of Computing
-                </SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -452,7 +485,7 @@ export default function AdminTutorsPage() {
       />
 
       {/* Add / Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setEditingTutor(null); setFormTutorId(''); setFormName(''); setFormEmail(''); setFormDepartment(''); setFormStatus('active'); setFormPassword(''); setFormConfirmPassword(''); } setIsDialogOpen(open); }}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setEditingTutor(null); setFormTutorId(''); setFormName(''); setFormEmail(''); setFormDepartment(''); setFormStatus('active'); } setIsDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -508,24 +541,6 @@ export default function AdminTutorsPage() {
               />
             </div>
 
-            {!editingTutor && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="tutorPassword">
-                    Temporary Password <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="tutorPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Enter temporary password"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="tutorDepartment">
                 Department <span className="text-red-500">*</span>
@@ -535,10 +550,9 @@ export default function AdminTutorsPage() {
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Business School">Business School</SelectItem>
-                  <SelectItem value="School of Computing">
-                    School of Computing
-                  </SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

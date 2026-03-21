@@ -15,7 +15,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-  const [showDesktop, setShowDesktop] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -54,7 +53,6 @@ export default function LoginPage() {
           name: adminData.name,
           role: "admin",
           email: firebaseEmail,
-          password: "",
         });
         navigate("/admin/dashboard");
       } else {
@@ -68,7 +66,6 @@ export default function LoginPage() {
             name: sruDoc.data().name ?? firebaseEmail,
             role: "sru",
             email: firebaseEmail,
-            password: "",
             mustChangePassword: sruDoc.data().mustChangePassword ?? false,
             firestoreCollection: "student_support_advisors",
           });
@@ -84,7 +81,6 @@ export default function LoginPage() {
             name: regDoc.data().name ?? firebaseEmail,
             role: "registry",
             email: firebaseEmail,
-            password: "",
             mustChangePassword: regDoc.data().mustChangePassword ?? false,
             firestoreCollection: "registry",
           });
@@ -100,7 +96,6 @@ export default function LoginPage() {
             name: acaDoc.data().name ?? firebaseEmail,
             role: "academic_admin",
             email: firebaseEmail,
-            password: "",
             mustChangePassword: acaDoc.data().mustChangePassword ?? false,
             firestoreCollection: "faculty_administrators",
           });
@@ -116,7 +111,6 @@ export default function LoginPage() {
             name: mentorDoc.data().name ?? firebaseEmail,
             role: "academic_mentor",
             email: firebaseEmail,
-            password: "",
             mustChangePassword: mentorDoc.data().mustChangePassword ?? false,
             firestoreCollection: "academic_mentors",
           });
@@ -132,7 +126,6 @@ export default function LoginPage() {
             name: clDoc.data().name ?? firebaseEmail,
             role: "course_leader",
             email: firebaseEmail,
-            password: "",
             mustChangePassword: clDoc.data().mustChangePassword ?? false,
             firestoreCollection: "course_leaders",
           });
@@ -152,7 +145,6 @@ export default function LoginPage() {
             name: data.name ?? firebaseEmail,
             role: "student",
             email: firebaseEmail,
-            password: "",
           });
           navigate("/student/dashboard");
         } else {
@@ -170,7 +162,6 @@ export default function LoginPage() {
               name: fData.name ?? firebaseEmail,
               role: "faculty",
               email: firebaseEmail,
-              password: "",
             });
             navigate("/faculty/dashboard");
           } else {
@@ -188,7 +179,6 @@ export default function LoginPage() {
                 name: aData.name ?? firebaseEmail,
                 role: "advisor",
                 email: firebaseEmail,
-                password: "",
               });
               navigate("/advisor/dashboard");
             } else {
@@ -206,7 +196,6 @@ export default function LoginPage() {
                   name: cData.name ?? firebaseEmail,
                   role: "counselor",
                   email: firebaseEmail,
-                  password: "",
                 });
                 navigate("/counselor/dashboard");
               } else {
@@ -253,123 +242,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
-  const handleQuickLogin = (userEmail: string) => {
-    const user = mockUsers.find((u) => u.email === userEmail);
-    if (user) {
-      setEmail(user.email);
-      setPassword(user.password);
-    }
-  };
-
-  if (showDesktop) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg p-8">
-          <div className="text-center mb-6">
-            <div className="flex justify-center mb-4">
-              <div className="p-3 bg-blue-600 rounded-full">
-                <GraduationCap className="h-8 w-8 text-white" />
-              </div>
-            </div>
-            <h1 className="text-2xl font-bold">
-              Student Risk Management System
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Demo Accounts - Quick Login
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-auto flex-col items-start p-4"
-              onClick={() => {
-                handleQuickLogin("sarah.johnson@university.edu");
-                setShowDesktop(false);
-              }}
-            >
-              <span className="font-semibold">Academic Advisor</span>
-              <span className="text-xs text-muted-foreground mt-1">
-                sarah.johnson@university.edu
-              </span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-auto flex-col items-start p-4"
-              onClick={() => {
-                handleQuickLogin("john.smith@student.edu");
-                setShowDesktop(false);
-              }}
-            >
-              <span className="font-semibold">Student (High Risk)</span>
-              <span className="text-xs text-muted-foreground mt-1">
-                john.smith@student.edu
-              </span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-auto flex-col items-start p-4"
-              onClick={() => {
-                handleQuickLogin("emily.roberts@university.edu");
-                setShowDesktop(false);
-              }}
-            >
-              <span className="font-semibold">Faculty Member</span>
-              <span className="text-xs text-muted-foreground mt-1">
-                emily.roberts@university.edu
-              </span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-auto flex-col items-start p-4"
-              onClick={() => {
-                handleQuickLogin("lisa.anderson@university.edu");
-                setShowDesktop(false);
-              }}
-            >
-              <span className="font-semibold">Counselor</span>
-              <span className="text-xs text-muted-foreground mt-1">
-                lisa.anderson@university.edu
-              </span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-auto flex-col items-start p-4 md:col-span-2"
-              onClick={() => {
-                handleQuickLogin("admin@university.edu");
-                setShowDesktop(false);
-              }}
-            >
-              <span className="font-semibold">Administrator</span>
-              <span className="text-xs text-muted-foreground mt-1">
-                admin@university.edu
-              </span>
-            </Button>
-          </div>
-
-          <div className="mt-6 text-center">
-            <Button
-              variant="ghost"
-              onClick={() => setShowDesktop(false)}
-              className="text-blue-600"
-            >
-              ← Back to Login
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -485,14 +357,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Show Desktop Link */}
-      <button
-        type="button"
-        onClick={() => setShowDesktop(true)}
-        className="absolute bottom-6 right-6 text-white text-sm hover:underline z-10"
-      >
-        Show desktop
-      </button>
     </div>
   );
 }
