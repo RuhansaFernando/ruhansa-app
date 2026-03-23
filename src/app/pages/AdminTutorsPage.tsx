@@ -46,7 +46,7 @@ import { BulkImportModal } from "../components/BulkImportModal";
 
 interface Tutor {
   id: string;
-  tutorId: string;
+  staffId: string;
   name: string;
   email: string;
   department: string;
@@ -82,7 +82,7 @@ export default function AdminTutorsPage() {
       setTutors(
         snapshot.docs.map((d) => ({
           id: d.id,
-          tutorId: d.data().tutorId ?? "",
+          staffId: d.data().staffId ?? d.data().tutorId ?? "",
           name: d.data().name ?? "",
           email: d.data().email ?? "",
           department: d.data().department ?? "",
@@ -113,7 +113,7 @@ export default function AdminTutorsPage() {
 
   const openEditDialog = (tutor: Tutor) => {
     setEditingTutor(tutor);
-    setFormTutorId(tutor.tutorId);
+    setFormTutorId(tutor.staffId);
     setFormName(tutor.name);
     setFormEmail(tutor.email);
     setFormDepartment(tutor.department);
@@ -130,7 +130,7 @@ export default function AdminTutorsPage() {
     try {
       if (editingTutor) {
         await updateDoc(doc(db, "academic_mentors", editingTutor.id), {
-          tutorId: formTutorId.trim(),
+          staffId: formTutorId.trim(),
           name: formName.trim(),
           email: formEmail.trim(),
           department: formDepartment,
@@ -143,7 +143,7 @@ export default function AdminTutorsPage() {
         await secondaryAuth.signOut();
         await addDoc(collection(db, "academic_mentors"), {
           uid: cred.user.uid,
-          tutorId: formTutorId.trim(),
+          staffId: formTutorId.trim(),
           name: formName.trim(),
           email: formEmail.trim(),
           department: formDepartment,
@@ -202,7 +202,7 @@ export default function AdminTutorsPage() {
     const matchesSearch =
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.tutorId.toLowerCase().includes(searchQuery.toLowerCase());
+      t.staffId.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDept =
       departmentFilter === "all" || t.department === departmentFilter;
     const matchesStatus =
@@ -400,7 +400,7 @@ export default function AdminTutorsPage() {
                       key={tutor.id}
                       className="border-b last:border-0 hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{tutor.tutorId || '—'}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{tutor.staffId || '—'}</td>
                       <td className="px-4 py-3 font-medium">{tutor.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {tutor.email}

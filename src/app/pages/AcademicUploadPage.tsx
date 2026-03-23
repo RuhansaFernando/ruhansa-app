@@ -1,32 +1,43 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import {
-  collection,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { Label } from '../components/ui/label';
+import { Input } from '../components/ui/input';
+import {
+  addDoc,
   getDocs,
   updateDoc,
+  deleteDoc,
   doc,
-  addDoc,
+  collection,
   serverTimestamp,
-  onSnapshot,
-  orderBy,
   query,
+  where,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { toast } from 'sonner';
+import { useAuth } from '../AuthContext';
 import {
   Upload,
-  FileText,
-  CheckCircle,
-  XCircle,
   Download,
   Loader2,
+  Users,
   Clock,
+  BookOpen,
+  CheckCircle,
 } from 'lucide-react';
-import { useAuth } from '../AuthContext';
 
-// ─── Risk calculation (same as RegistryGradesPage) ─────────────────────────
+// ─── Risk calculation ─────────────────────────────────────────────────────────
 function calculateRisk(gpa: number, attendance: number, absences: number) {
   let score = 0;
   if (gpa < 1.5) score += 40;
@@ -44,421 +55,819 @@ function calculateRisk(gpa: number, attendance: number, absences: number) {
   else if (absences >= 3) score += 10;
   else if (absences >= 2) score += 5;
 
-  const riskLevel = score >= 50 ? 'high' : score >= 25 ? 'medium' : 'low';
-  return { riskLevel, riskScore: score };
+  return {
+    riskLevel: score >= 50 ? 'high' : score >= 25 ? 'medium' : 'low',
+    riskScore: score,
+  };
 }
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-interface ParsedRow {
-  student_id: string;
-  attendance_percentage: number;
-  consecutive_absences: number;
-  academic_year: string;
-  semester: string;
-}
-
-interface UploadResult {
-  total: number;
-  processed: number;
-  failed: string[];
-  flagged: number;
-}
-
-interface UploadHistory {
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Module {
   id: string;
-  uploadedBy: string;
-  fileName: string;
-  total: number;
-  processed: number;
-  failed: number;
-  flagged: number;
-  createdAt: string;
+  moduleCode: string;
+  moduleName: string;
+  faculty: string;
 }
 
-const EXPECTED_HEADERS = ['student_id', 'attendance_percentage', 'consecutive_absences', 'academic_year', 'semester'];
-
-const TEMPLATE_CSV =
-  'student_id,attendance_percentage,consecutive_absences,academic_year,semester\n' +
-  'STU001,85,1,2024/2025,Semester 1\n' +
-  'STU002,72,3,2024/2025,Semester 1\n';
-
-function downloadTemplate() {
-  const blob = new Blob([TEMPLATE_CSV], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'attendance_template.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+interface EnrolledStudent {
+  studentDocId: string;
+  studentId: string;
+  name: string;
+  programme: string;
+  gpa: number;
 }
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '—';
+type AttendanceStatus = 'present' | 'absent' | 'late';
+
+interface SessionSummary {
+  key: string;
+  date: string;
+  moduleCode: string;
+  moduleName: string;
+  sessionType: string;
+  present: number;
+  absent: number;
+  late: number;
+  recordedBy: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const todayStr = () => new Date().toISOString().split('T')[0];
+
+const SESSION_TYPES = ['Lecture', 'Tutorial', 'Lab', 'Seminar'];
+
+const formatDate = (d: string) => {
+  if (!d) return '—';
   try {
-    return new Date(dateStr).toLocaleDateString('en-GB', {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {
       day: 'numeric', month: 'short', year: 'numeric',
-    }) + ' ' + new Date(dateStr).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    });
   } catch {
-    return dateStr;
+    return d;
   }
 };
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function AcademicUploadPage() {
   const { user } = useAuth();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState<UploadResult | null>(null);
-  const [history, setHistory] = useState<UploadHistory[]>([]);
+
+  // Section 1 — module & session
+  const [modules, setModules] = useState<Module[]>([]);
+  const [loadingModules, setLoadingModules] = useState(true);
+  const [selectedModuleId, setSelectedModuleId] = useState('');
+  const [sessionDate, setSessionDate] = useState(todayStr());
+  const [sessionType, setSessionType] = useState('Lecture');
+
+  // Section 2 — attendance table
+  const [enrolledStudents, setEnrolledStudents] = useState<EnrolledStudent[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<Map<string, AttendanceStatus>>(new Map());
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
+  const [entryMode, setEntryMode] = useState<'manual' | 'csv'>('manual');
+  const [csvProcessing, setCsvProcessing] = useState(false);
+
+  // Section 3 — save
+  const [saving, setSaving] = useState(false);
+  const [overwriteConfirmPending, setOverwriteConfirmPending] = useState(false);
+
+  // Section 4 — history
+  const [history, setHistory] = useState<SessionSummary[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyFilterModuleId, setHistoryFilterModuleId] = useState('all');
+  const [historyFilterDate, setHistoryFilterDate] = useState('');
+
+  // Faculty admin profile
+  const [adminFaculty, setAdminFaculty] = useState('');
+  const [loadingAdmin, setLoadingAdmin] = useState(true);
+
+  // ── Load faculty admin profile ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.email) { setLoadingAdmin(false); return; }
+    getDocs(
+      query(collection(db, 'faculty_administrators'), where('email', '==', user.email))
+    )
+      .then((snap) => {
+        if (!snap.empty) {
+          const data = snap.docs[0].data();
+          setAdminFaculty(data.faculty ?? data.department ?? '');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAdmin(false));
+  }, [user?.email]);
+
+  // ── Load modules ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (loadingAdmin) return;
+    getDocs(collection(db, 'modules'))
+      .then((snap) => {
+        const mods = snap.docs
+          .map((d) => ({
+            id: d.id,
+            moduleCode: d.data().moduleCode ?? '',
+            moduleName: d.data().moduleName ?? d.data().name ?? '',
+            faculty: d.data().faculty ?? '',
+          }))
+          .filter((m) => !adminFaculty || m.faculty === adminFaculty)
+          .sort((a, b) => a.moduleCode.localeCompare(b.moduleCode));
+        setModules(mods);
+      })
+      .catch(() => toast.error('Failed to load modules'))
+      .finally(() => setLoadingModules(false));
+  }, [loadingAdmin, adminFaculty]);
+
+  // ── Load history ────────────────────────────────────────────────────────────
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      let snap;
+      // Use Firestore filter where possible; apply secondary filter client-side
+      const activeModuleFilter = historyFilterModuleId && historyFilterModuleId !== 'all'
+        ? historyFilterModuleId
+        : null;
+      if (activeModuleFilter) {
+        snap = await getDocs(
+          query(collection(db, 'attendance'), where('moduleId', '==', activeModuleFilter))
+        );
+      } else if (historyFilterDate) {
+        snap = await getDocs(
+          query(collection(db, 'attendance'), where('date', '==', historyFilterDate))
+        );
+      } else {
+        snap = await getDocs(query(collection(db, 'attendance'), orderBy('createdAt', 'desc'), limit(50)));
+      }
+
+      const myModuleIds = new Set(modules.map((m) => m.id));
+
+      const groupMap = new Map<string, SessionSummary>();
+      snap.forEach((d) => {
+        const data = d.data();
+        // Only show records belonging to this admin's faculty modules
+        if (!myModuleIds.has(data.moduleId)) return;
+        // Client-side secondary date filter when module filter is also active
+        if (activeModuleFilter && historyFilterDate && data.date !== historyFilterDate) return;
+        const key = `${data.date}|${data.moduleId}|${data.sessionType}`;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, {
+            key,
+            date: data.date ?? '',
+            moduleCode: data.moduleCode ?? '',
+            moduleName: data.moduleName ?? '',
+            sessionType: data.sessionType ?? '',
+            present: 0,
+            absent: 0,
+            late: 0,
+            recordedBy: data.recordedBy ?? '',
+          });
+        }
+        const entry = groupMap.get(key)!;
+        if (data.status === 'present') entry.present++;
+        else if (data.status === 'absent') entry.absent++;
+        else if (data.status === 'late') entry.late++;
+      });
+
+      setHistory(
+        Array.from(groupMap.values()).sort((a, b) => b.date.localeCompare(a.date))
+      );
+    } catch {
+      toast.error('Failed to load attendance history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [historyFilterModuleId, historyFilterDate, modules]);
 
   useEffect(() => {
-    const q = query(collection(db, 'attendance_uploads'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snap) => {
-      setHistory(
-        snap.docs.map((d) => ({
-          id: d.id,
-          uploadedBy: d.data().uploadedBy ?? 'Unknown',
-          fileName: d.data().fileName ?? '—',
-          total: d.data().total ?? 0,
-          processed: d.data().processed ?? 0,
-          failed: d.data().failed ?? 0,
-          flagged: d.data().flagged ?? 0,
-          createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? '',
-        })),
-      );
-      setLoadingHistory(false);
-    });
-    return () => unsub();
-  }, []);
+    loadHistory();
+  }, [loadHistory]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) validateAndSetFile(file);
-  }, []);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => setIsDragging(false);
-
-  const validateAndSetFile = (file: File) => {
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'csv' && ext !== 'xlsx') {
-      toast.error('Only .csv and .xlsx files are accepted');
+  // ── Load enrolled students ──────────────────────────────────────────────────
+  const handleLoadStudents = async () => {
+    if (!selectedModuleId) {
+      toast.error('Please select a module first');
       return;
     }
-    setSelectedFile(file);
-    setResult(null);
+    setLoadingStudents(true);
+    setStudentsLoaded(false);
+    setEnrolledStudents([]);
+    setAttendanceMap(new Map());
+
+    try {
+      const [enrollSnap, studentsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'moduleEnrollments'), where('moduleId', '==', selectedModuleId))),
+        getDocs(collection(db, 'students')),
+      ]);
+
+      if (enrollSnap.empty) {
+        toast.warning('No students enrolled in this module');
+        setStudentsLoaded(true);
+        return;
+      }
+
+      const enrolledIds = new Set<string>(
+        enrollSnap.docs
+          .map((d) => String(d.data().studentId ?? '').trim())
+          .filter(Boolean)
+      );
+
+      const studentMap = new Map<string, { docId: string; name: string; programme: string; gpa: number }>();
+      studentsSnap.forEach((d) => {
+        const sid = String(d.data().studentId ?? '').trim();
+        if (sid) {
+          studentMap.set(sid, {
+            docId: d.id,
+            name: d.data().name ?? '',
+            programme: d.data().programme ?? '',
+            gpa: d.data().gpa ?? 0,
+          });
+        }
+      });
+
+      const students: EnrolledStudent[] = [];
+      enrolledIds.forEach((sid) => {
+        const s = studentMap.get(sid);
+        if (s) {
+          students.push({
+            studentDocId: s.docId,
+            studentId: sid,
+            name: s.name,
+            programme: s.programme,
+            gpa: s.gpa,
+          });
+        }
+      });
+      students.sort((a, b) => a.studentId.localeCompare(b.studentId));
+
+      setEnrolledStudents(students);
+      const map = new Map<string, AttendanceStatus>();
+      students.forEach((s) => map.set(s.studentId, 'present'));
+      setAttendanceMap(map);
+      setStudentsLoaded(true);
+
+      if (students.length === 0) {
+        toast.warning('Enrolled student IDs did not match any students in the system');
+      } else {
+        toast.success(`Loaded ${students.length} students`);
+      }
+    } catch {
+      toast.error('Failed to load students');
+    } finally {
+      setLoadingStudents(false);
+    }
   };
 
-  const parseFile = async (file: File): Promise<ParsedRow[]> => {
-    const ext = file.name.split('.').pop()?.toLowerCase();
+  // ── Mark all ────────────────────────────────────────────────────────────────
+  const markAll = (status: AttendanceStatus) => {
+    setAttendanceMap((prev) => {
+      const next = new Map(prev);
+      enrolledStudents.forEach((s) => next.set(s.studentId, status));
+      return next;
+    });
+  };
 
-    if (ext === 'csv') {
+  // ── Status summary ──────────────────────────────────────────────────────────
+  const counts = enrolledStudents.reduce(
+    (acc, s) => {
+      acc[attendanceMap.get(s.studentId) ?? 'present']++;
+      return acc;
+    },
+    { present: 0, absent: 0, late: 0 }
+  );
+
+  // ── Download pre-filled CSV template ───────────────────────────────────────
+  const downloadCsvTemplate = () => {
+    const rows = [
+      'StudentID,StudentName,Status',
+      ...enrolledStudents.map((s) => `${s.studentId},"${s.name}",present`),
+    ];
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const mod = modules.find((m) => m.id === selectedModuleId);
+    a.download = `attendance_${mod?.moduleCode ?? selectedModuleId}_${sessionDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Handle CSV upload ───────────────────────────────────────────────────────
+  const handleCsvFile = async (file: File) => {
+    setCsvProcessing(true);
+    try {
       const Papa = (await import('papaparse')).default;
-      return new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         Papa.parse(file, {
           header: true,
           skipEmptyLines: true,
           complete: (res) => {
             const rows = res.data as Record<string, string>[];
-            const parsed: ParsedRow[] = rows.map((r) => ({
-              student_id: (r['student_id'] ?? '').trim(),
-              attendance_percentage: parseFloat(r['attendance_percentage'] ?? '0'),
-              consecutive_absences: parseInt(r['consecutive_absences'] ?? '0', 10),
-              academic_year: (r['academic_year'] ?? '').trim(),
-              semester: (r['semester'] ?? '').trim(),
-            }));
-            resolve(parsed);
+            const newMap = new Map(attendanceMap);
+            let updated = 0;
+            rows.forEach((row) => {
+              const sid = (row['StudentID'] ?? row['studentId'] ?? '').trim();
+              const raw = (row['Status'] ?? row['status'] ?? '').trim().toLowerCase();
+              const status: AttendanceStatus =
+                raw === 'absent' ? 'absent' : raw === 'late' ? 'late' : 'present';
+              if (newMap.has(sid)) {
+                newMap.set(sid, status);
+                updated++;
+              }
+            });
+            setAttendanceMap(newMap);
+            toast.success(`Applied CSV: ${updated} students updated`);
+            resolve();
           },
           error: reject,
         });
       });
-    } else {
-      const XLSX = await import('xlsx');
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
-      return rows.map((r) => ({
-        student_id: String(r['student_id'] ?? '').trim(),
-        attendance_percentage: parseFloat(String(r['attendance_percentage'] ?? '0')),
-        consecutive_absences: parseInt(String(r['consecutive_absences'] ?? '0'), 10),
-        academic_year: String(r['academic_year'] ?? '').trim(),
-        semester: String(r['semester'] ?? '').trim(),
-      }));
-    }
-  };
-
-  const handleProcess = async () => {
-    if (!selectedFile) return;
-    setProcessing(true);
-    setResult(null);
-
-    try {
-      const rows = await parseFile(selectedFile);
-
-      // Load all students
-      const studentsSnap = await getDocs(collection(db, 'students'));
-      const studentMap = new Map<string, { id: string; gpa: number }>();
-      studentsSnap.forEach((d) => {
-        const sid = (d.data().studentId ?? '').toString().trim();
-        if (sid) studentMap.set(sid.toUpperCase(), { id: d.id, gpa: d.data().gpa ?? 0 });
-      });
-
-      let processed = 0;
-      let flagged = 0;
-      const failed: string[] = [];
-
-      for (const row of rows) {
-        if (!row.student_id || isNaN(row.attendance_percentage) || isNaN(row.consecutive_absences)) {
-          failed.push(row.student_id || '(empty)');
-          continue;
-        }
-
-        const key = row.student_id.toUpperCase();
-        const studentEntry = studentMap.get(key);
-        if (!studentEntry) {
-          failed.push(row.student_id);
-          continue;
-        }
-
-        const { id: docId, gpa } = studentEntry;
-        const { riskLevel, riskScore } = calculateRisk(
-          gpa,
-          row.attendance_percentage,
-          row.consecutive_absences,
-        );
-
-        const isAtRisk = row.attendance_percentage < 80 || row.consecutive_absences >= 3;
-        if (isAtRisk) flagged++;
-
-        await updateDoc(doc(db, 'students', docId), {
-          attendancePercentage: row.attendance_percentage,
-          consecutiveAbsences: row.consecutive_absences,
-          riskLevel,
-          riskScore,
-          attendanceYear: row.academic_year,
-          attendanceSemester: row.semester,
-        });
-
-        processed++;
-      }
-
-      const uploadResult: UploadResult = { total: rows.length, processed, failed, flagged };
-      setResult(uploadResult);
-
-      await addDoc(collection(db, 'attendance_uploads'), {
-        uploadedBy: user?.name ?? 'Faculty Administrator',
-        fileName: selectedFile.name,
-        total: rows.length,
-        processed,
-        failed: failed.length,
-        flagged,
-        failedIds: failed,
-        createdAt: serverTimestamp(),
-      });
-
-      if (failed.length > 0) {
-        toast.warning(`Upload complete. ${processed} processed, ${failed.length} failed.`);
-      } else {
-        toast.success(`Upload complete. ${processed} students updated.`);
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to process file. Please check the format and try again.');
+    } catch {
+      toast.error('Failed to parse CSV');
     } finally {
-      setProcessing(false);
+      setCsvProcessing(false);
     }
   };
 
+  // ── Save attendance ─────────────────────────────────────────────────────────
+  const handleSave = async (overwrite = false) => {
+    if (!studentsLoaded || enrolledStudents.length === 0) return;
+    const selectedModule = modules.find((m) => m.id === selectedModuleId);
+    if (!selectedModule) return;
+
+    // Duplicate session guard
+    if (!overwrite) {
+      const dupSnap = await getDocs(
+        query(
+          collection(db, 'attendance'),
+          where('moduleId', '==', selectedModuleId),
+          where('date', '==', sessionDate),
+          where('sessionType', '==', sessionType),
+          limit(1)
+        )
+      );
+      if (!dupSnap.empty) {
+        setOverwriteConfirmPending(true);
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      // 0. Delete old records when overwriting
+      if (overwrite) {
+        const existingSnap = await getDocs(
+          query(
+            collection(db, 'attendance'),
+            where('moduleId', '==', selectedModuleId),
+            where('date', '==', sessionDate),
+            where('sessionType', '==', sessionType)
+          )
+        );
+        await Promise.all(existingSnap.docs.map((d) => deleteDoc(doc(db, 'attendance', d.id))));
+      }
+
+      // 1. Write one attendance record per student
+      await Promise.all(
+        enrolledStudents.map((student) =>
+          addDoc(collection(db, 'attendance'), {
+            moduleId: selectedModuleId,
+            moduleCode: selectedModule.moduleCode,
+            moduleName: selectedModule.moduleName,
+            studentId: student.studentId,
+            studentName: student.name,
+            date: sessionDate,
+            sessionType,
+            status: attendanceMap.get(student.studentId) ?? 'present',
+            recordedBy: user?.name ?? 'Faculty Administrator',
+            createdAt: serverTimestamp(),
+          })
+        )
+      );
+
+      // 2. Recalculate attendance % and risk for each student
+      await Promise.all(
+        enrolledStudents.map(async (student) => {
+          try {
+            const attSnap = await getDocs(
+              query(collection(db, 'attendance'), where('studentId', '==', student.studentId))
+            );
+
+            const records: { date: string; status: string }[] = [];
+            attSnap.forEach((d) =>
+              records.push({ date: d.data().date ?? '', status: d.data().status ?? '' })
+            );
+
+            const total = records.length;
+            const presentOrLate = records.filter(
+              (r) => r.status === 'present' || r.status === 'late'
+            ).length;
+            const attendancePct = total > 0 ? Math.round((presentOrLate / total) * 100) : 0;
+
+            // Consecutive absences: most recent unbroken absent streak
+            const sorted = [...records].sort((a, b) => b.date.localeCompare(a.date));
+            let consecutiveAbsences = 0;
+            for (const r of sorted) {
+              if (r.status === 'absent') consecutiveAbsences++;
+              else break;
+            }
+
+            const { riskLevel, riskScore } = calculateRisk(
+              student.gpa,
+              attendancePct,
+              consecutiveAbsences
+            );
+
+            await updateDoc(doc(db, 'students', student.studentDocId), {
+              attendancePercentage: attendancePct,
+              consecutiveAbsences,
+              riskLevel,
+              riskScore,
+            });
+          } catch (err) {
+            console.error(`Failed to update student ${student.studentId}:`, err);
+          }
+        })
+      );
+
+      toast.success(`Attendance saved for ${enrolledStudents.length} students`);
+
+      // Reset section 2
+      setStudentsLoaded(false);
+      setEnrolledStudents([]);
+      setAttendanceMap(new Map());
+      await loadHistory();
+    } catch {
+      toast.error('Failed to save attendance');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Upload Attendance</h1>
-        <p className="text-muted-foreground">Upload a CSV or Excel file to update student attendance records and recalculate risk.</p>
+        <h1 className="text-2xl font-bold tracking-tight">Attendance Management</h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          Record and manage student attendance per module and session
+        </p>
+        {!loadingAdmin && adminFaculty && (
+          <p className="text-sm font-medium text-primary mt-1">
+            Managing: {adminFaculty}
+          </p>
+        )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Upload Section */}
-        <div className="space-y-4">
-          {/* Expected Format */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Expected File Format</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                The file must contain the following columns (CSV or XLSX):
+      {/* ── Section 1: Select Module & Session ── */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Select Module & Session
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div className="space-y-1.5">
+              <Label>Module</Label>
+              <Select
+                value={selectedModuleId}
+                onValueChange={(v) => {
+                  setSelectedModuleId(v);
+                  setStudentsLoaded(false);
+                  setEnrolledStudents([]);
+                  setAttendanceMap(new Map());
+                }}
+                disabled={loadingModules || loadingAdmin}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingAdmin || loadingModules ? 'Loading modules…' : '— Select module —'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {modules.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.moduleCode} — {m.moduleName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Session Date</Label>
+              <Input
+                type="date"
+                value={sessionDate}
+                onChange={(e) => setSessionDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Session Type</Label>
+              <Select value={sessionType} onValueChange={setSessionType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SESSION_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              onClick={handleLoadStudents}
+              disabled={!selectedModuleId || loadingStudents}
+              className="gap-2"
+            >
+              {loadingStudents
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Loading…</>
+                : <><Users className="h-4 w-4" />Load Students</>
+              }
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Section 2: Mark Attendance ── */}
+      {studentsLoaded && (
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Mark Attendance
+                {enrolledStudents.length > 0 && (
+                  <span className="text-muted-foreground font-normal text-sm ml-1">
+                    — {enrolledStudents.length} students enrolled
+                  </span>
+                )}
+              </CardTitle>
+              {/* Manual / CSV tab */}
+              <div className="flex rounded-md border overflow-hidden text-sm">
+                <button
+                  onClick={() => setEntryMode('manual')}
+                  className={`px-3 py-1.5 transition-colors ${
+                    entryMode === 'manual'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-white text-muted-foreground hover:bg-gray-50'
+                  }`}
+                >
+                  Manual
+                </button>
+                <button
+                  onClick={() => setEntryMode('csv')}
+                  className={`px-3 py-1.5 border-l transition-colors ${
+                    entryMode === 'csv'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-white text-muted-foreground hover:bg-gray-50'
+                  }`}
+                >
+                  CSV Upload
+                </button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {enrolledStudents.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground text-sm">
+                No students found for this module
               </p>
-              <div className="bg-gray-50 rounded-md p-3 font-mono text-xs space-y-1">
-                {EXPECTED_HEADERS.map((h) => (
-                  <div key={h} className="flex items-center gap-2">
-                    <span className="text-blue-600 font-semibold">{h}</span>
-                    {h === 'student_id' && <span className="text-muted-foreground">— e.g. STU001</span>}
-                    {h === 'attendance_percentage' && <span className="text-muted-foreground">— numeric, 0–100</span>}
-                    {h === 'consecutive_absences' && <span className="text-muted-foreground">— integer</span>}
-                    {h === 'academic_year' && <span className="text-muted-foreground">— e.g. 2024/2025</span>}
-                    {h === 'semester' && <span className="text-muted-foreground">— e.g. Semester 1</span>}
-                  </div>
-                ))}
-              </div>
-              <Button size="sm" variant="outline" className="gap-2 w-full" onClick={downloadTemplate}>
-                <Download className="h-4 w-4" />
-                Download Template CSV
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Drop Zone */}
-          <Card>
-            <CardContent className="pt-6">
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                  isDragging
-                    ? 'border-blue-500 bg-blue-50'
-                    : selectedFile
-                    ? 'border-green-400 bg-green-50'
-                    : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) validateAndSetFile(f);
-                  }}
-                />
-                {selectedFile ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <CheckCircle className="h-10 w-10 text-green-500" />
-                    <p className="font-medium text-green-700">{selectedFile.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024).toFixed(1)} KB — Click to change file
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Upload className="h-10 w-10 text-muted-foreground" />
-                    <p className="font-medium">Drag & drop your file here</p>
-                    <p className="text-sm text-muted-foreground">or click to browse</p>
-                    <p className="text-xs text-muted-foreground mt-1">Accepts .csv and .xlsx</p>
-                  </div>
-                )}
-              </div>
-
-              <Button
-                className="w-full mt-4 gap-2"
-                disabled={!selectedFile || processing}
-                onClick={handleProcess}
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Processing…
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4" />
-                    Process File
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Results Section */}
-        <div className="space-y-4">
-          {result ? (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                  Upload Results
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-blue-600">{result.total}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Total Rows</p>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-green-600">{result.processed}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Updated</p>
-                  </div>
-                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-amber-600">{result.flagged}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Flagged At-Risk</p>
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-red-600">{result.failed.length}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Failed</p>
+            ) : entryMode === 'manual' ? (
+              <>
+                {/* Controls row */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-green-300 text-green-700 hover:bg-green-50"
+                    onClick={() => markAll('present')}
+                  >
+                    Mark All Present
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                    onClick={() => markAll('absent')}
+                  >
+                    Mark All Absent
+                  </Button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      {counts.present} Present
+                    </Badge>
+                    <Badge className="bg-red-100 text-red-800 border-red-200">
+                      {counts.absent} Absent
+                    </Badge>
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                      {counts.late} Late
+                    </Badge>
                   </div>
                 </div>
 
-                {result.failed.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-red-600 mb-2 flex items-center gap-1">
-                      <XCircle className="h-4 w-4" />
-                      Failed Student IDs
-                    </p>
-                    <div className="bg-red-50 rounded-md p-3 max-h-40 overflow-y-auto">
-                      <div className="flex flex-wrap gap-1.5">
-                        {result.failed.map((id, i) => (
-                          <Badge key={i} className="bg-red-100 text-red-800 border-red-200 text-xs">
-                            {id}
-                          </Badge>
-                        ))}
+                {/* Table */}
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
+                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+                        <th className="text-left font-medium text-muted-foreground px-4 py-3 hidden sm:table-cell">
+                          Programme
+                        </th>
+                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {enrolledStudents.map((student) => {
+                        const status = attendanceMap.get(student.studentId) ?? 'present';
+                        return (
+                          <tr key={student.studentId} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="px-4 py-3 font-mono text-xs">{student.studentId}</td>
+                            <td className="px-4 py-3 font-medium">{student.name}</td>
+                            <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                              {student.programme || '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-1">
+                                {(['present', 'late', 'absent'] as AttendanceStatus[]).map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={() =>
+                                      setAttendanceMap(
+                                        (prev) => new Map(prev).set(student.studentId, s)
+                                      )
+                                    }
+                                    className={`px-2.5 py-1 text-xs rounded capitalize font-medium border transition-colors ${
+                                      status === s
+                                        ? s === 'present'
+                                          ? 'bg-green-100 text-green-700 border-green-400'
+                                          : s === 'late'
+                                          ? 'bg-amber-100 text-amber-700 border-amber-400'
+                                          : 'bg-red-100 text-red-700 border-red-400'
+                                        : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
+                                    }`}
+                                  >
+                                    {s}
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              /* CSV Upload mode */
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button size="sm" variant="outline" className="gap-2" onClick={downloadCsvTemplate}>
+                    <Download className="h-4 w-4" />
+                    Download Pre-filled Template
+                  </Button>
+                  <p className="text-sm text-muted-foreground">
+                    Fill in the Status column (present / absent / late), then upload below
+                  </p>
+                </div>
+
+                <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    id="csv-attendance-upload"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleCsvFile(f);
+                      e.target.value = '';
+                    }}
+                  />
+                  <label htmlFor="csv-attendance-upload" className="cursor-pointer">
+                    {csvProcessing ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Processing…</p>
                       </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      These student IDs were not found in the system or had invalid data.
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="h-8 w-8 text-muted-foreground" />
+                        <p className="font-medium text-sm">Click to upload CSV</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Columns: StudentID, StudentName, Status
+                        </p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+                {attendanceMap.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      {counts.present} Present
+                    </Badge>
+                    <Badge className="bg-red-100 text-red-800 border-red-200">
+                      {counts.absent} Absent
+                    </Badge>
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                      {counts.late} Late
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Save button */}
+            {enrolledStudents.length > 0 && (
+              <div className="pt-3 border-t space-y-3">
+                <Button onClick={() => handleSave(false)} disabled={saving} className="gap-2">
+                  {saving ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
+                  ) : (
+                    <><CheckCircle className="h-4 w-4" />Save Attendance</>
+                  )}
+                </Button>
+
+                {/* Overwrite confirmation */}
+                {overwriteConfirmPending && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+                    <p className="text-sm font-medium text-amber-900">
+                      Attendance for this module, date and session type already exists. Do you want to overwrite it?
                     </p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setOverwriteConfirmPending(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white"
+                        onClick={() => { setOverwriteConfirmPending(false); handleSave(true); }}
+                      >
+                        Overwrite
+                      </Button>
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-                {result.flagged > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800">
-                    <strong>{result.flagged} students</strong> were flagged as at-risk
-                    (attendance &lt; 80% or consecutive absences ≥ 3). Their risk levels have been recalculated.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="flex flex-col items-center justify-center min-h-[200px] border-dashed">
-              <CardContent className="text-center pt-8">
-                <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-30" />
-                <p className="text-muted-foreground text-sm">Upload results will appear here</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Upload History */}
+      {/* ── Section 4: Attendance History ── */}
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2 pb-3">
-          <Clock className="h-5 w-5 text-muted-foreground" />
-          <CardTitle>Upload History</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Attendance History
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="flex-1 min-w-[200px] max-w-[300px]">
+              <Select
+                value={historyFilterModuleId}
+                onValueChange={setHistoryFilterModuleId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All modules" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All modules</SelectItem>
+                  {modules.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.moduleCode} — {m.moduleName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input
+              type="date"
+              value={historyFilterDate}
+              onChange={(e) => setHistoryFilterDate(e.target.value)}
+              className="w-[160px]"
+            />
+            {((historyFilterModuleId && historyFilterModuleId !== 'all') || historyFilterDate) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => { setHistoryFilterModuleId('all'); setHistoryFilterDate(''); }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+
           {loadingHistory ? (
             <div className="flex items-center justify-center h-24">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -466,42 +875,47 @@ export default function AcademicUploadPage() {
           ) : history.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <Clock className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No uploads yet</p>
+              <p className="text-sm">No attendance records found</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Date & Time</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">File Name</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Uploaded By</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Total</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Updated</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Flagged</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Failed</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Date</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Module</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Session Type</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Present</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Absent</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Late</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Recorded By</th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((h) => (
-                    <tr key={h.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-muted-foreground">{formatDate(h.createdAt)}</td>
-                      <td className="px-4 py-3 font-medium">{h.fileName}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{h.uploadedBy}</td>
-                      <td className="px-4 py-3 text-center">{h.total}</td>
+                    <tr key={h.key} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground">{formatDate(h.date)}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{h.moduleCode}</div>
+                        <div className="text-xs text-muted-foreground">{h.moduleName}</div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{h.sessionType}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className="text-green-600 font-semibold">{h.processed}</span>
+                        <span className="text-green-600 font-semibold">{h.present}</span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className="text-amber-600 font-semibold">{h.flagged}</span>
+                        {h.absent > 0
+                          ? <span className="text-red-600 font-semibold">{h.absent}</span>
+                          : <span className="text-muted-foreground">—</span>
+                        }
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {h.failed > 0 ? (
-                          <span className="text-red-600 font-semibold">{h.failed}</span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                        {h.late > 0
+                          ? <span className="text-amber-600 font-semibold">{h.late}</span>
+                          : <span className="text-muted-foreground">—</span>
+                        }
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{h.recordedBy}</td>
                     </tr>
                   ))}
                 </tbody>

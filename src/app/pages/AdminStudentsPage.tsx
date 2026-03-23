@@ -45,7 +45,6 @@ import {
   updateDoc,
   doc,
   query,
-  orderBy,
   getDocs,
   where,
 } from "firebase/firestore";
@@ -112,7 +111,7 @@ export default function AdminStudentsPage() {
 
   useEffect(() => {
     const unsub = onSnapshot(
-      query(collection(db, "students"), orderBy("name")),
+      collection(db, "students"),
       (snap) => {
         setStudents(
           snap.docs.map((d) => ({

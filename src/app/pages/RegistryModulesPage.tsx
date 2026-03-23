@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { toast } from "sonner";
-import { BookOpen, Plus, Search, Edit, ToggleLeft, ToggleRight } from "lucide-react";
+import { BookOpen, Plus, Search, Edit, ToggleLeft, ToggleRight, Download } from "lucide-react";
 import {
   collection,
   onSnapshot,
@@ -64,7 +64,7 @@ const PROGRAMMES = [
   "BEng (Hons) Electronic Engineering",
 ];
 
-const SEMESTERS = ["Semester 1", "Semester 2", "Semester 3", "Semester 4", "Semester 5", "Semester 6"];
+const SEMESTERS = ["Semester 1", "Semester 2", "Semester 1 & 2"];
 
 export default function RegistryModulesPage() {
   const [modules, setModules] = useState<Module[]>([]);
@@ -72,7 +72,7 @@ export default function RegistryModulesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [programmeFilter, setProgrammeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [levelFilter, setLevelFilter] = useState("all");
+  const [semesterFilter, setSemesterFilter] = useState("all");
 
   // Dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -121,16 +121,11 @@ export default function RegistryModulesPage() {
         programmeFilter === "all" || m.programme === programmeFilter;
       const matchesStatus =
         statusFilter === "all" || m.status === statusFilter;
-      const levelSemesters: Record<string, string[]> = {
-        "Level 4": ["Semester 1", "Semester 2"],
-        "Level 5": ["Semester 3", "Semester 4"],
-        "Level 6": ["Semester 5", "Semester 6"],
-      };
-      const matchesLevel =
-        levelFilter === "all" || (levelSemesters[levelFilter] ?? []).includes(m.semester);
-      return matchesSearch && matchesProgramme && matchesStatus && matchesLevel;
+      const matchesSemester =
+        semesterFilter === "all" || m.semester === semesterFilter;
+      return matchesSearch && matchesProgramme && matchesStatus && matchesSemester;
     });
-  }, [modules, searchQuery, programmeFilter, statusFilter, levelFilter]);
+  }, [modules, searchQuery, programmeFilter, statusFilter, semesterFilter]);
 
   const activeCount = modules.filter((m) => m.status === "active").length;
 
@@ -236,6 +231,41 @@ export default function RegistryModulesPage() {
   const weightTotal = Number(comp1Weight) + Number(comp2Weight);
   const weightValid = weightTotal === 100;
 
+  const downloadCsvTemplate = () => {
+    const headers = [
+      "Module Code",
+      "Module Name",
+      "Programme",
+      "Credits",
+      "Semester",
+      "Status",
+      "Component 1 Name",
+      "Component 1 Weight",
+      "Component 2 Name",
+      "Component 2 Weight",
+    ];
+    const example = [
+      "CS4001",
+      "Advanced Algorithms",
+      "BSc (Hons) Computer Science",
+      "20",
+      "Semester 1",
+      "active",
+      "Coursework",
+      "40",
+      "Examination",
+      "60",
+    ];
+    const csv = [headers, example].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modules_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleSeedModules = async () => {
     const sampleModules = [
       { moduleCode: 'BIS301', moduleName: 'Business Information Systems', programme: 'BSc (Hons) Business Information Systems', level: 'Level 3', credits: 20, status: 'active' as const, semester: 'Semester 1', components: [] },
@@ -260,10 +290,16 @@ export default function RegistryModulesPage() {
           <h1 className="text-3xl font-bold">Modules</h1>
           <p className="text-muted-foreground">Manage academic modules and assessment components</p>
         </div>
-        <Button className="gap-2" onClick={openAddDialog}>
-          <Plus className="h-4 w-4" />
-          Add Module
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={downloadCsvTemplate}>
+            <Download className="h-4 w-4" />
+            CSV Template
+          </Button>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            Add Module
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -336,15 +372,15 @@ export default function RegistryModulesPage() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={levelFilter} onValueChange={setLevelFilter}>
-              <SelectTrigger className="w-full sm:w-[140px]">
-                <SelectValue placeholder="All Levels" />
+            <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="All Semesters" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Levels</SelectItem>
-                <SelectItem value="Level 4">Level 4</SelectItem>
-                <SelectItem value="Level 5">Level 5</SelectItem>
-                <SelectItem value="Level 6">Level 6</SelectItem>
+                <SelectItem value="all">All Semesters</SelectItem>
+                {SEMESTERS.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

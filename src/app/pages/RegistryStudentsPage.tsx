@@ -34,7 +34,6 @@ import {
   Search,
   Eye,
   Pencil,
-  Trash2,
 } from "lucide-react";
 import {
   collection,
@@ -53,6 +52,12 @@ import { db } from "../../firebase";
 import Papa from "papaparse";
 
 // ── Constants ────────────────────────────────────────────────────────────────
+
+const LEVEL_TO_YEAR: Record<string, string> = {
+  'Level 4': 'Year 1', 'Level 5': 'Year 2', 'Level 6': 'Year 3', 'Level 7': 'Year 4',
+  '1st Year': 'Year 1', '2nd Year': 'Year 2', '3rd Year': 'Year 3', '4th Year': 'Year 4',
+  'Year 1': 'Year 1', 'Year 2': 'Year 2', 'Year 3': 'Year 3', 'Year 4': 'Year 4',
+};
 
 const IIT_PROGRAMMES = [
   "BSc (Hons) Computer Science",
@@ -79,7 +84,7 @@ function getFacultyForProgramme(programme: string): string {
 const CSV_TEMPLATE_HEADERS =
   "StudentID,FullName,Email,Gender,DateOfBirth,ContactNumber,Faculty,Programme,YearOfStudy,Intake,EnrollmentDate,StudentType,Address,EmergencyContactName,EmergencyContactNumber,EmergencyContactRelationship,Nationality,Religion";
 const CSV_TEMPLATE_SAMPLE =
-  "STD020,Amal Perera,amal.perera@university.lk,Male,2000-05-15,0771234567,Business School,BSc (Hons) Business Information Systems,Level 4,2025,2025-01-15,Full-time,123 Main Street Colombo,Nimal Perera,0779876543,Father,Sri Lankan,Buddhist";
+  "STD020,Amal Perera,amal.perera@university.lk,Male,2000-05-15,0771234567,Business School,BSc (Hons) Business Information Systems,Year 1,2025,2025-01-15,Full-time,123 Main Street Colombo,Nimal Perera,0779876543,Father,Sri Lankan,Buddhist";
 
 // ── Interface ─────────────────────────────────────────────────────────────────
 
@@ -132,6 +137,9 @@ export default function RegistryStudentsPage() {
   const [edDateOfBirth, setEdDateOfBirth] = useState("");
   const [edContactNumber, setEdContactNumber] = useState("");
   const [edStudentType, setEdStudentType] = useState("");
+  const [edEmergencyContactName, setEdEmergencyContactName] = useState("");
+  const [edEmergencyContactNumber, setEdEmergencyContactNumber] = useState("");
+  const [edStatus, setEdStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // Delete confirm
@@ -177,19 +185,50 @@ export default function RegistryStudentsPage() {
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const totalEnrolled = students.length;
-  const pendingActivation = students.filter((s) => !s.accountActivated).length;
-  const activeStudents = students.filter((s) => s.accountActivated).length;
+  const activeStudents = students.filter((s) => s.status === 'active' || (s.accountActivated && !s.status)).length;
+  const pendingActivation = students.filter((s) => s.status === 'pending' || (!s.status && !s.accountActivated)).length;
+  const otherStatusCount = students.filter((s) => ['withdrawn', 'deferred', 'suspended', 'graduated'].includes(s.status)).length;
+
+  // Programme options loaded from Firestore
+  const [programmeOptions, setProgrammeOptions] = useState<string[]>([]);
+  const [programmeFacultyMap, setProgrammeFacultyMap] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    getDocs(collection(db, 'programmes')).then((snap) => {
+      const names: string[] = [];
+      const map = new Map<string, string>();
+      snap.docs.forEach((d) => {
+        const name = d.data().programmeName ?? '';
+        const faculty = d.data().faculty ?? '';
+        if (name) { names.push(name); map.set(name, faculty); }
+      });
+      setProgrammeOptions(names.sort());
+      setProgrammeFacultyMap(map);
+    });
+  }, []);
+
+  // ── Table filters ─────────────────────────────────────────────────────────
+  const [filterFaculty, setFilterFaculty] = useState('');
+  const [filterProgramme, setFilterProgramme] = useState('');
+  const [filterYear, setFilterYear] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+
+  const facultyOptions = Array.from(new Set(students.map((s) => programmeFacultyMap.get(s.programme) ?? s.faculty).filter(Boolean))).sort();
+  const programmeFilterOptions = filterFaculty
+    ? programmeOptions.filter((p) => programmeFacultyMap.get(p) === filterFaculty)
+    : programmeOptions;
+
 
   // ── Filter ────────────────────────────────────────────────────────────────
 
   const filtered = students.filter((s) => {
     const q = search.toLowerCase();
-    return (
-      s.studentId.toLowerCase().includes(q) ||
-      s.name.toLowerCase().includes(q) ||
-      s.email.toLowerCase().includes(q) ||
-      s.programme.toLowerCase().includes(q)
-    );
+    if (q && !s.studentId.toLowerCase().includes(q) && !s.name.toLowerCase().includes(q) && !s.email.toLowerCase().includes(q) && !s.programme.toLowerCase().includes(q)) return false;
+    if (filterFaculty && (programmeFacultyMap.get(s.programme) ?? s.faculty) !== filterFaculty) return false;
+    if (filterProgramme && s.programme !== filterProgramme) return false;
+    if (filterYear && (LEVEL_TO_YEAR[s.level] ?? s.level) !== filterYear) return false;
+    if (filterStatus && s.status !== filterStatus) return false;
+    return true;
   });
 
   // ── CSV ───────────────────────────────────────────────────────────────────
@@ -277,14 +316,22 @@ export default function RegistryStudentsPage() {
   const openEdit = (student: StudentRecord) => {
     setEditStudent(student);
     setEdProgramme(student.programme);
-    setEdFaculty(student.faculty || (student.programme ? getFacultyForProgramme(student.programme) : ""));
-    setEdLevel(student.level);
+    setEdFaculty(student.faculty || programmeFacultyMap.get(student.programme) || (student.programme ? getFacultyForProgramme(student.programme) : ""));
+    const LEVEL_TO_YEAR: Record<string, string> = {
+      'Level 4': 'Year 1', 'Level 5': 'Year 2', 'Level 6': 'Year 3', 'Level 7': 'Year 4',
+      '1st Year': 'Year 1', '2nd Year': 'Year 2', '3rd Year': 'Year 3', '4th Year': 'Year 4',
+      'Year 1': 'Year 1', 'Year 2': 'Year 2', 'Year 3': 'Year 3', 'Year 4': 'Year 4',
+    };
+    setEdLevel(LEVEL_TO_YEAR[student.level] ?? student.level);
     setEdIntake(student.intake);
     setEdEnrollmentDate(student.enrollmentDate);
     setEdGender(student.gender);
     setEdDateOfBirth(student.dateOfBirth);
     setEdContactNumber(student.contactNumber);
     setEdStudentType(student.studentType);
+    setEdEmergencyContactName(student.emergencyContactName ?? "");
+    setEdEmergencyContactNumber(student.emergencyContactNumber ?? "");
+    setEdStatus(student.status || (student.accountActivated ? 'active' : 'pending'));
     setIsEditOpen(true);
   };
 
@@ -305,6 +352,9 @@ export default function RegistryStudentsPage() {
         dateOfBirth: edDateOfBirth,
         contactNumber: edContactNumber,
         studentType: edStudentType,
+        emergencyContactName: edEmergencyContactName,
+        emergencyContactNumber: edEmergencyContactNumber,
+        status: edStatus,
       });
       toast.success("Student details updated");
       setIsEditOpen(false);
@@ -333,6 +383,23 @@ export default function RegistryStudentsPage() {
       toast.error("Failed to delete student record.");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // ── Status badge helper ───────────────────────────────────────────────────
+
+  const getStatusBadge = (student: StudentRecord) => {
+    const effectiveStatus = student.accountActivated && (!student.status || student.status === 'pending')
+      ? 'active'
+      : student.status || 'pending';
+    switch (effectiveStatus) {
+      case 'active':    return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>;
+      case 'pending':   return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Pending</Badge>;
+      case 'withdrawn': return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Withdrawn</Badge>;
+      case 'deferred':  return <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">Deferred</Badge>;
+      case 'suspended': return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">Suspended</Badge>;
+      case 'graduated': return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Graduated</Badge>;
+      default:          return <Badge variant="outline">{effectiveStatus}</Badge>;
     }
   };
 
@@ -368,14 +435,23 @@ export default function RegistryStudentsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Enrolled</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">{totalEnrolled}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active Students</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-green-500">{activeStudents}</p>
           </CardContent>
         </Card>
         <Card>
@@ -389,11 +465,12 @@ export default function RegistryStudentsPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Students</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Other Status</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-green-500">{activeStudents}</p>
+            <p className="text-3xl font-bold text-muted-foreground">{otherStatusCount}</p>
+            <p className="text-xs text-muted-foreground mt-1">Withdrawn / Deferred / Suspended</p>
           </CardContent>
         </Card>
       </div>
@@ -402,7 +479,12 @@ export default function RegistryStudentsPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <CardTitle className="text-base">Enrolled Students</CardTitle>
+            <div>
+              <CardTitle className="text-base">Enrolled Students</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {filtered.length} of {students.length} students
+              </p>
+            </div>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -412,6 +494,41 @@ export default function RegistryStudentsPage() {
                 className="pl-9"
               />
             </div>
+          </div>
+          <div className="grid grid-cols-4 gap-2 mt-2">
+            <Select value={filterFaculty || '_all'} onValueChange={(v) => { setFilterFaculty(v === '_all' ? '' : v); setFilterProgramme(''); }}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Faculties" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All Faculties</SelectItem>
+                {facultyOptions.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterProgramme || '_all'} onValueChange={(v) => setFilterProgramme(v === '_all' ? '' : v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Programmes" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All Programmes</SelectItem>
+                {programmeFilterOptions.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterYear || '_all'} onValueChange={(v) => setFilterYear(v === '_all' ? '' : v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Years" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All Years</SelectItem>
+                {['Year 1', 'Year 2', 'Year 3', 'Year 4'].map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus || '_all'} onValueChange={(v) => setFilterStatus(v === '_all' ? '' : v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                <SelectItem value="deferred">Deferred</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="graduated">Graduated</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -432,12 +549,9 @@ export default function RegistryStudentsPage() {
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Student ID</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Full Name</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Programme</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Level</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Student Type</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Intake</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Year</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
                   </tr>
@@ -445,21 +559,12 @@ export default function RegistryStudentsPage() {
                 <tbody>
                   {filtered.map((student) => (
                     <tr key={student.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-gray-700">{student.studentId}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{student.studentId}</td>
                       <td className="px-4 py-3 font-medium">{student.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">{student.email || "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate">
-                        {student.programme || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{student.level || "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{student.studentType || "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{student.intake || "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate">{student.programme || "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{(LEVEL_TO_YEAR[student.level] ?? student.level) || '—'}</td>
                       <td className="px-4 py-3">
-                        {student.accountActivated ? (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Active</Badge>
-                        ) : (
-                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Pending</Badge>
-                        )}
+                        {getStatusBadge(student)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
@@ -480,15 +585,6 @@ export default function RegistryStudentsPage() {
                             onClick={() => openEdit(student)}
                           >
                             <Pencil className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0"
-                            title="Delete"
-                            onClick={() => openDelete(student)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-400" />
                           </Button>
                         </div>
                       </td>
@@ -530,11 +626,7 @@ export default function RegistryStudentsPage() {
                   <Row label="Intake" value={viewStudent.intake} />
                   <Row label="Enrollment Date" value={viewStudent.enrollmentDate} />
                   <Row label="Status">
-                    {viewStudent.accountActivated ? (
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Active</Badge>
-                    ) : (
-                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Pending</Badge>
-                    )}
+                    {getStatusBadge(viewStudent)}
                   </Row>
                 </Section>
                 <Section label="Emergency Contact">
@@ -571,11 +663,19 @@ export default function RegistryStudentsPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="ed-email">Email</Label>
+              <Input id="ed-email" value={editStudent?.email ?? ""} readOnly className="bg-gray-50 text-muted-foreground" />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="ed-programme">Programme <span className="text-red-500">*</span></Label>
-              <Select value={edProgramme} onValueChange={(v) => { setEdProgramme(v); setEdFaculty(getFacultyForProgramme(v)); }}>
+              <Select value={edProgramme} onValueChange={(v) => {
+                setEdProgramme(v);
+                setEdFaculty(programmeFacultyMap.get(v) || getFacultyForProgramme(v));
+              }}>
                 <SelectTrigger id="ed-programme"><SelectValue placeholder="— Select Programme —" /></SelectTrigger>
                 <SelectContent>
-                  {IIT_PROGRAMMES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {programmeOptions.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -590,10 +690,10 @@ export default function RegistryStudentsPage() {
               <Select value={edLevel} onValueChange={setEdLevel}>
                 <SelectTrigger id="ed-level"><SelectValue placeholder="— Select Level —" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Level 4">Level 4</SelectItem>
-                  <SelectItem value="Level 5">Level 5</SelectItem>
-                  <SelectItem value="Level 6">Level 6</SelectItem>
-                  <SelectItem value="Industrial Placement">Industrial Placement</SelectItem>
+                  <SelectItem value="Year 1">Year 1</SelectItem>
+                  <SelectItem value="Year 2">Year 2</SelectItem>
+                  <SelectItem value="Year 3">Year 3</SelectItem>
+                  <SelectItem value="Year 4">Year 4</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -645,6 +745,31 @@ export default function RegistryStudentsPage() {
             <div className="space-y-2">
               <Label htmlFor="ed-contact">Contact Number</Label>
               <Input id="ed-contact" type="tel" placeholder="+94 77 000 0000" value={edContactNumber} onChange={(e) => setEdContactNumber(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ed-ec-name">Emergency Contact Name</Label>
+              <Input id="ed-ec-name" placeholder="Full name" value={edEmergencyContactName} onChange={(e) => setEdEmergencyContactName(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ed-ec-number">Emergency Contact Number</Label>
+              <Input id="ed-ec-number" type="tel" placeholder="+94 77 000 0000" value={edEmergencyContactNumber} onChange={(e) => setEdEmergencyContactNumber(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ed-status">Student Status</Label>
+              <Select value={edStatus} onValueChange={setEdStatus}>
+                <SelectTrigger id="ed-status"><SelectValue placeholder="— Select Status —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                  <SelectItem value="deferred">Deferred</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="graduated">Graduated</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter className="pt-4 border-t">

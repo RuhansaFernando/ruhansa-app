@@ -99,30 +99,9 @@ interface ResultRecord {
   recordedBy: string;
 }
 
-const PROGRAMMES = [
-  "BSc (Hons) Computer Science",
-  "BSc (Hons) Software Engineering",
-  "BSc (Hons) Cyber Security",
-  "BSc (Hons) Business Information Systems",
-  "BEng (Hons) Electronic Engineering",
-];
-
-const IIT_PROGRAMMES = [
-  "BSc (Hons) Computer Science",
-  "BSc (Hons) Software Engineering",
-  "BSc (Hons) Cyber Security",
-  "BSc (Hons) Business Information Systems",
-  "BEng (Hons) Electronic Engineering",
-  "BSc (Hons) Business Computing",
-];
-
-const BUSINESS_PROGRAMMES = new Set([
-  "BSc (Hons) Business Information Systems",
-  "BSc (Hons) Business Computing",
-]);
-
-function getFacultyForProgramme(programme: string): string {
-  return BUSINESS_PROGRAMMES.has(programme) ? "Business School" : "School of Computing";
+interface ProgrammeRecord {
+  name: string;
+  faculty: string;
 }
 
 const LEVEL_SEMESTERS: Record<string, string[]> = {
@@ -171,6 +150,12 @@ export default function RegistryGradesPage() {
   const [results, setResults] = useState<ResultRecord[]>([]);
   const [meetingsCount, setMeetingsCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [programmes, setProgrammes] = useState<ProgrammeRecord[]>([]);
+
+  const getFacultyForProgramme = (programme: string): string => {
+    const found = programmes.find((p) => p.name === programme);
+    return found?.faculty ?? "School of Computing";
+  };
 
   // Filters
   const [programmeFilter, setProgrammeFilter] = useState("all");
@@ -220,6 +205,14 @@ export default function RegistryGradesPage() {
   const [isSavingMeeting, setIsSavingMeeting] = useState(false);
 
   useEffect(() => {
+    getDocs(query(collection(db, "programmes"), orderBy("programmeName"))).then((snap) => {
+      setProgrammes(
+        snap.docs
+          .map((d) => ({ name: d.data().programmeName ?? "", faculty: d.data().faculty ?? "" }))
+          .filter((p) => p.name)
+      );
+    });
+
     const unsubStudents = onSnapshot(collection(db, "students"), (snap) => {
       setStudents(
         snap.docs.map((d) => ({
@@ -731,9 +724,9 @@ export default function RegistryGradesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Programmes</SelectItem>
-                {PROGRAMMES.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
+                {programmes.map((p) => (
+                  <SelectItem key={p.name} value={p.name}>
+                    {p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1109,9 +1102,12 @@ export default function RegistryGradesPage() {
                   <SelectValue placeholder="— Select Programme —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {IIT_PROGRAMMES.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
+                  {programmes.length > 0
+                    ? programmes.map((p) => (
+                        <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                      ))
+                    : <SelectItem value="__none__" disabled>No programmes found</SelectItem>
+                  }
                 </SelectContent>
               </Select>
             </div>

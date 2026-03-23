@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -78,7 +78,20 @@ export default function MentorDashboard() {
           getDocs(query(collection(db, 'interventions'), orderBy('createdAt', 'desc'))),
         ]);
 
-        const allStudents: StudentDoc[] = studentSnap.docs.map((d) => ({
+        const mentorName = user?.name ?? '';
+        const mentorEmail = user?.email ?? '';
+        const mentorUid = (user as any)?.uid ?? '';
+
+        const myStudents: StudentDoc[] = studentSnap.docs
+          .filter((d) => {
+            const data = d.data();
+            return (
+              (mentorName && data.academicMentor === mentorName) ||
+              (mentorEmail && data.academicMentor === mentorEmail) ||
+              (mentorUid && data.mentorId === mentorUid)
+            );
+          })
+          .map((d) => ({
           id: d.id,
           studentId: d.data().studentId ?? d.id,
           name: d.data().name ?? '',
@@ -92,14 +105,9 @@ export default function MentorDashboard() {
           createdAt: d.data().createdAt ?? null,
         }));
 
-        const myStudents = allStudents.filter(
-          (s) => s.academicMentor === user?.name
-        );
         setStudents(myStudents);
 
-        const myStudentIds = allStudents
-          .filter((s) => s.academicMentor === user?.name)
-          .map((s) => s.id);
+        const myStudentIds = myStudents.map((s) => s.id);
 
         const myInterventions: InterventionDoc[] = interventionSnap.docs
           .filter((d) => myStudentIds.includes(d.data().studentId))

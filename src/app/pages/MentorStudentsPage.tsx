@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { CALENDAR_LINKS } from '../config/calendarLinks';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { Card, CardContent } from '../components/ui/card';
@@ -15,6 +16,12 @@ import {
 import { Search, Loader2, X, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
+
+const LEVEL_TO_YEAR: Record<string, string> = {
+  'Level 4': 'Year 1', 'Level 5': 'Year 2', 'Level 6': 'Year 3', 'Level 7': 'Year 4',
+  '1st Year': 'Year 1', '2nd Year': 'Year 2', '3rd Year': 'Year 3', '4th Year': 'Year 4',
+  'Year 1': 'Year 1', 'Year 2': 'Year 2', 'Year 3': 'Year 3', 'Year 4': 'Year 4',
+};
 
 interface StudentDoc {
   id: string;
@@ -118,8 +125,21 @@ export default function MentorStudentsPage() {
     const fetchStudents = async () => {
       setLoading(true);
       try {
+        const mentorName = user?.name ?? '';
+        const mentorEmail = user?.email ?? '';
+        const mentorUid = (user as any)?.uid ?? '';
+
         const snap = await getDocs(collection(db, 'students'));
-        const all: StudentDoc[] = snap.docs.map((d) => ({
+        setStudents(snap.docs
+          .filter((d) => {
+            const data = d.data();
+            return (
+              (mentorName && data.academicMentor === mentorName) ||
+              (mentorEmail && data.academicMentor === mentorEmail) ||
+              (mentorUid && data.mentorId === mentorUid)
+            );
+          })
+          .map((d) => ({
           id: d.id,
           studentId: d.data().studentId ?? d.id,
           name: d.data().name ?? '',
@@ -137,14 +157,13 @@ export default function MentorStudentsPage() {
           riskLevel: d.data().riskLevel ?? 'low',
           academicMentor: d.data().academicMentor ?? '',
           status: d.data().status ?? 'active',
-        }));
-        setStudents(all.filter((s) => s.academicMentor === user?.name));
+        })));
       } finally {
         setLoading(false);
       }
     };
     fetchStudents();
-  }, [user?.name]);
+  }, [user?.name, user?.email]);
 
   const programmes = useMemo(() => {
     const set = new Set(students.map((s) => s.programme).filter(Boolean));
@@ -174,27 +193,22 @@ export default function MentorStudentsPage() {
   };
 
   const handleBookAppointment = async (student: StudentDoc) => {
-    console.log('Booking appointment for:', student.name, student.email);
     let calendarLink = (user as any)?.calendarLink;
 
     if (!calendarLink) {
       try {
-        const usersSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email)));
-        if (!usersSnap.empty) {
-          calendarLink = usersSnap.docs[0].data().calendarLink;
+        const mentorSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email ?? '')));
+        if (!mentorSnap.empty) {
+          calendarLink = mentorSnap.docs[0].data().calendarLink;
         }
       } catch {}
     }
 
     if (!calendarLink) {
-      toast.error('No calendar link set. Please add your Google Calendar link in Settings.');
-      return;
+      calendarLink = CALENDAR_LINKS.mentor;
     }
 
-    const params = new URLSearchParams();
-    if (user?.email) params.set('email', user.email);
-    if (user?.name) params.set('name', user.name);
-    window.open(`${calendarLink}?${params.toString()}`, '_blank');
+    window.open(calendarLink, '_blank');
 
     try {
       await addDoc(collection(db, 'appointments'), {
@@ -237,7 +251,7 @@ export default function MentorStudentsPage() {
         nextSteps: nextSteps,
         recordedBy: user?.name ?? 'Academic Mentor',
         recordedByRole: 'Academic Mentor',
-        status: sessionOutcome === 'Resolved' ? 'completed' : 'active',
+        status: sessionOutcome === 'Resolved' ? 'completed' : 'in-progress',
         createdAt: serverTimestamp(),
       });
       toast.success(`Session notes saved for ${sessionStudent.name}`);
@@ -380,7 +394,7 @@ export default function MentorStudentsPage() {
                     <td className="px-4 py-3 text-xs text-muted-foreground max-w-[160px]">
                       <span className="truncate block">{s.programme || '—'}</span>
                     </td>
-                    <td className="px-4 py-3 text-sm">{s.level || '—'}</td>
+                    <td className="px-4 py-3 text-sm">{(LEVEL_TO_YEAR[s.level] ?? s.level) || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`font-medium text-sm ${s.attendancePercentage < 80 ? 'text-red-600' : ''}`}>
                         {s.attendancePercentage}%

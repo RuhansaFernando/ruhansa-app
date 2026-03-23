@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, BarChart2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -94,9 +94,8 @@ export default function DashboardLayout() {
     } else if (user.role === 'registry') {
       return [
         ...baseItems,
-        { label: 'Student Records', icon: Users, path: '/registry/students' },
-        { label: 'Module Enrollment', icon: BookOpen, path: '/registry/module-enrollment' },
-        { label: 'Academic Records', icon: FileText, path: '/registry/grades' },
+        { label: 'Students', icon: Users, path: '/registry/students' },
+        { label: 'Academic Records', icon: BookOpen, path: '/registry/academic-records' },
         { label: 'Reports', icon: ClipboardList, path: '/registry/reports' },
       ];
     } else if (user.role === 'academic_admin') {
@@ -117,6 +116,7 @@ export default function DashboardLayout() {
       return [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/mentor/dashboard' },
         { label: 'My Students', icon: Users, path: '/mentor/students' },
+        { label: 'Appointments', icon: Calendar, path: '/mentor/appointments' },
       ];
     } else if (user.role === 'course_leader') {
       return [
@@ -313,7 +313,7 @@ export default function DashboardLayout() {
               <p className="text-sm font-semibold truncate">{user.name}</p>
               <p className="text-xs text-muted-foreground truncate">{getRoleName()}</p>
             </div>
-            {user.role !== 'admin' && <SettingsDropdown />}
+            <SettingsDropdown />
           </div>
         </div>
       </aside>
@@ -435,7 +435,7 @@ export default function DashboardLayout() {
                   <p className="text-sm font-semibold truncate">{user.name}</p>
                   <p className="text-xs text-muted-foreground truncate">{getRoleName()}</p>
                 </div>
-                {user.role !== 'admin' && <SettingsDropdown />}
+                <SettingsDropdown />
               </div>
             </div>
           </aside>

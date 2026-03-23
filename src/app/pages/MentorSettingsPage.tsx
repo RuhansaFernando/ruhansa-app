@@ -43,6 +43,10 @@ export default function MentorSettingsPage() {
       toast.error('Could not find your account record.');
       return;
     }
+    if (calendarLink && !calendarLink.startsWith('https://')) {
+      toast.error('Calendar link must start with https://');
+      return;
+    }
     setSaving(true);
     try {
       await updateDoc(doc(db, 'academic_mentors', docId), { calendarLink });

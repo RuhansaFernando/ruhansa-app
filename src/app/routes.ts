@@ -8,7 +8,6 @@ import SRUReportsPage from './pages/SRUReportsPage';
 import SRUAppointmentsPage from './pages/SRUAppointmentsPage';
 import SRUStudentProfilePage from './pages/SRUStudentProfilePage';
 import AttendanceMonitoringPage from './pages/AttendanceMonitoringPage';
-import AcademicPerformancePage from './pages/AcademicPerformancePage';
 import InterventionManagementPage from './pages/InterventionManagementPage';
 import { createBrowserRouter, redirect } from 'react-router';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -35,12 +34,15 @@ import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
 import AdminAlertsPage from './pages/AdminAlertsPage';
 import AdminTutorsPage from './pages/AdminTutorsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminDataCheckPage from './pages/AdminDataCheckPage';
 import AdminSRUPage from './pages/AdminSRUPage';
 import AdminRegistryPage from './pages/AdminRegistryPage';
 import AdminAcademicPage from './pages/AdminAcademicPage';
 import AdminSRUManagementPage from './pages/AdminSRUManagementPage';
 import AdminRegistryManagementPage from './pages/AdminRegistryManagementPage';
+import RegistryAcademicRecordsPage from './pages/RegistryAcademicRecordsPage';
 import RegistryModuleEnrollmentPage from './pages/RegistryModuleEnrollmentPage';
+import RegistryMarksPage from './pages/RegistryMarksPage';
 import RegistryGradesPage from './pages/RegistryGradesPage';
 import RegistryReportsPage from './pages/RegistryReportsPage';
 import RegistryStudentsPage from './pages/RegistryStudentsPage';
@@ -101,10 +103,6 @@ export const router = createBrowserRouter([
       {
         path: 'attendance',
         Component: AttendanceMonitoringPage,
-      },
-      {
-        path: 'performance',
-        Component: AcademicPerformancePage,
       },
       {
         path: 'interventions',
@@ -319,6 +317,10 @@ export const router = createBrowserRouter([
         Component: InterventionManagementPage,
       },
       {
+        path: 'data-check',
+        Component: AdminDataCheckPage,
+      },
+      {
         path: 'change-password',
         Component: ChangePasswordPage,
       },
@@ -345,8 +347,16 @@ export const router = createBrowserRouter([
         Component: RegistryMentorsPage,
       },
       {
+        path: 'academic-records',
+        Component: RegistryAcademicRecordsPage,
+      },
+      {
         path: 'module-enrollment',
         Component: RegistryModuleEnrollmentPage,
+      },
+      {
+        path: 'marks',
+        Component: RegistryMarksPage,
       },
       {
         path: 'grades',
@@ -402,7 +412,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'appointments',
-        loader: () => redirect('/mentor/dashboard'),
+        Component: MentorAppointmentsPage,
       },
       {
         path: 'change-password',

@@ -29,6 +29,8 @@ interface StaffUser {
   staffId: string;
   name: string;
   email: string;
+  programme: string;
+  level: string;
   status: 'active' | 'inactive';
   createdAt?: string;
 }
@@ -67,6 +69,8 @@ export default function AdminCourseLeadersPage() {
   const [editStaffId, setEditStaffId] = useState('');
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editProgramme, setEditProgramme] = useState('');
+  const [editLevel, setEditLevel] = useState('');
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
   const [isEditSaving, setIsEditSaving] = useState(false);
 
@@ -79,6 +83,8 @@ export default function AdminCourseLeadersPage() {
           staffId: d.data().staffId ?? '',
           name: d.data().name ?? '',
           email: d.data().email ?? '',
+          programme: d.data().programme ?? '',
+          level: d.data().level ?? '',
           status: d.data().status ?? 'active',
           createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? undefined,
         })),
@@ -130,6 +136,7 @@ export default function AdminCourseLeadersPage() {
         status: addStatus,
         programme: formProgramme,
         level: formLevel,
+        mustChangePassword: true,
         createdAt: serverTimestamp(),
       });
       try {
@@ -165,6 +172,8 @@ export default function AdminCourseLeadersPage() {
     setEditStaffId(user.staffId);
     setEditName(user.name);
     setEditEmail(user.email);
+    setEditProgramme(user.programme);
+    setEditLevel(user.level);
     setEditStatus(user.status);
     setIsEditDialogOpen(true);
   };
@@ -180,6 +189,8 @@ export default function AdminCourseLeadersPage() {
         staffId: editStaffId.trim(),
         name: editName.trim(),
         email: editEmail.trim(),
+        programme: editProgramme,
+        level: editLevel,
         status: editStatus,
       });
       toast.success('Account updated successfully');
@@ -350,6 +361,8 @@ export default function AdminCourseLeadersPage() {
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Staff ID</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Created</th>
                     <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
@@ -361,6 +374,8 @@ export default function AdminCourseLeadersPage() {
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{user.staffId || '—'}</td>
                       <td className="px-4 py-3 font-medium">{user.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-[160px] truncate">{user.programme || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{user.level || '—'}</td>
                       <td className="px-4 py-3">
                         <Badge className={user.status === 'active' ? 'bg-green-100 text-green-800 border-green-200 text-xs' : 'bg-gray-100 text-gray-600 border-gray-200 text-xs'}>
                           {user.status}
@@ -466,7 +481,7 @@ export default function AdminCourseLeadersPage() {
       />
 
       {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditProgramme(''); setEditLevel(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Course Leader Account</DialogTitle>
@@ -486,6 +501,29 @@ export default function AdminCourseLeadersPage() {
             <div className="space-y-2">
               <Label htmlFor="edit-email">Email <span className="text-red-500">*</span></Label>
               <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} autoComplete="off" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-programme">Programme</Label>
+              <Select value={editProgramme} onValueChange={setEditProgramme}>
+                <SelectTrigger id="edit-programme"><SelectValue placeholder="— Select programme —" /></SelectTrigger>
+                <SelectContent>
+                  {programmes.length > 0 ? programmes.map((p) => (
+                    <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                  )) : <SelectItem value="__none__" disabled>No programmes found</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-level">Level</Label>
+              <Select value={editLevel} onValueChange={setEditLevel}>
+                <SelectTrigger id="edit-level"><SelectValue placeholder="— Select level —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Year 1">1st Year</SelectItem>
+                  <SelectItem value="Year 2">2nd Year</SelectItem>
+                  <SelectItem value="Year 3">3rd Year</SelectItem>
+                  <SelectItem value="Year 4">4th Year</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-status">Status</Label>

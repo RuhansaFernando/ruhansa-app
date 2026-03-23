@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   collection, doc, addDoc, serverTimestamp,
-  onSnapshot, query, orderBy, limit, where, writeBatch, getDocs,
+  onSnapshot, query, orderBy, limit, where, writeBatch, getDocs, updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
@@ -13,6 +13,13 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Users, CheckCircle, Loader2, GraduationCap, AlertTriangle, History, Shuffle } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Normalise every known level/year format to the students-collection format ("1st Year" etc.)
+const LEVEL_NORMALIZE: Record<string, string> = {
+  'Level 4': '1st Year', 'Level 5': '2nd Year', 'Level 6': '3rd Year', 'Level 7': '4th Year',
+  'Year 1': '1st Year',  'Year 2': '2nd Year',  'Year 3': '3rd Year',  'Year 4': '4th Year',
+  '1st Year': '1st Year', '2nd Year': '2nd Year', '3rd Year': '3rd Year', '4th Year': '4th Year',
+};
 
 interface Student {
   id: string;
@@ -76,8 +83,14 @@ export default function CourseLeaderPage() {
         for (const d of snap.docs) {
           const data = d.data();
           if (data.email?.toLowerCase().trim() === user?.email?.toLowerCase().trim()) {
+            const rawLevel = data.level ?? '';
+            const normalised = LEVEL_NORMALIZE[rawLevel] ?? rawLevel;
             setClProgramme(data.programme ?? '');
-            setClLevel(data.level ?? '');
+            setClLevel(normalised);
+            // If the stored level is in an old format, update the Firestore doc to the normalised value
+            if (normalised && normalised !== rawLevel) {
+              updateDoc(doc(db, 'course_leaders', d.id), { level: normalised }).catch(() => {});
+            }
             break;
           }
         }
@@ -159,8 +172,12 @@ export default function CourseLeaderPage() {
   }, []);
 
   // Students filtered to this Course Leader's programme + level
+  // Normalise s.level before comparing so "1st Year" / "Year 1" / "Level 4" all match
   const myStudents = useMemo(() =>
-    students.filter(s => s.programme === clProgramme && s.level === clLevel),
+    students.filter(s =>
+      s.programme === clProgramme &&
+      (LEVEL_NORMALIZE[s.level] ?? s.level) === clLevel
+    ),
   [students, clProgramme, clLevel]);
 
   const assignedCount = myStudents.filter(s => s.academicMentor).length;

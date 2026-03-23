@@ -43,28 +43,29 @@ const YEAR_DISPLAY: Record<string, string> = {
   'Year 3': '3rd Year',
   'Year 4': '4th Year',
 };
-const SEMESTERS = ['Semester 1', 'Semester 2'];
+const SEMESTERS = ['Semester 1', 'Semester 2', 'Semester 1 & 2'];
 const CREDITS_OPTIONS = ['10', '15', '20', '30', '40', '60'];
 
 const CSV_FIELDS = [
-  { key: 'moduleCode', label: 'Module Code', required: true, sampleValue: 'CS401' },
-  { key: 'moduleName', label: 'Module Name', required: true, sampleValue: 'Software Engineering' },
-  { key: 'programme', label: 'Programme', required: true, sampleValue: 'BSc (Hons) Computer Science' },
-  { key: 'yearOfStudy', label: 'Year of Study', required: false, sampleValue: 'Year 1' },
-  { key: 'semester', label: 'Semester', required: true, sampleValue: 'Semester 1' },
-  { key: 'credits', label: 'Credits', required: false, sampleValue: '20' },
-  { key: 'component1Name', label: 'Component 1 Name', required: false, sampleValue: 'Coursework' },
-  { key: 'component1Weight', label: 'Component 1 Weight', required: false, sampleValue: '40' },
-  { key: 'component2Name', label: 'Component 2 Name', required: false, sampleValue: 'Exam' },
-  { key: 'component2Weight', label: 'Component 2 Weight', required: false, sampleValue: '60' },
-  { key: 'status', label: 'Status', required: false, sampleValue: 'active' },
+  { label: 'Module Code', key: 'moduleCode', example: 'BIS101' },
+  { label: 'Module Name', key: 'moduleName', example: 'Introduction to Business Information Systems' },
+  { label: 'Programme', key: 'programme', example: 'BSc (Hons) Business Information Systems' },
+  { label: 'Faculty', key: 'faculty', example: 'Business School' },
+  { label: 'Year of Study', key: 'yearOfStudy', example: 'Year 1' },
+  { label: 'Credits', key: 'credits', example: '20' },
+  { label: 'Status', key: 'status', example: 'active' },
+  { label: 'Semester', key: 'semester', example: 'Semester 1' },
+  { label: 'Assessment Component 1 Name', key: 'assessmentComponent1Name', example: 'Coursework' },
+  { label: 'Assessment Component 1 Weight', key: 'assessmentComponent1Weight', example: '40' },
+  { label: 'Assessment Component 2 Name', key: 'assessmentComponent2Name', example: 'Final Exam' },
+  { label: 'Assessment Component 2 Weight', key: 'assessmentComponent2Weight', example: '60' },
 ];
 
 const downloadTemplate = (faculty: string) => {
   const csv =
     CSV_FIELDS.map((f) => f.key).join(',') +
     '\n' +
-    CSV_FIELDS.map((f) => f.sampleValue ?? '').join(',');
+    CSV_FIELDS.map((f) => f.example ?? '').join(',');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -74,14 +75,20 @@ const downloadTemplate = (faculty: string) => {
   URL.revokeObjectURL(url);
 };
 
+const deptCacheKey = (email: string) => `fa_dept_${email}`;
+
 export default function FacultyAdminModulesPage() {
   const { user } = useAuth();
-  const [myFaculty, setMyFaculty] = useState('');
-  const [loadingFaculty, setLoadingFaculty] = useState(true);
+  const [myFaculty, setMyFaculty] = useState(() =>
+    user?.email ? (sessionStorage.getItem(deptCacheKey(user.email)) ?? '') : ''
+  );
+  const [loadingFaculty, setLoadingFaculty] = useState(() =>
+    user?.email ? !sessionStorage.getItem(deptCacheKey(user.email)) : true
+  );
 
   const [modules, setModules] = useState<Module[]>([]);
   const [programmes, setProgrammes] = useState<Programme[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -105,16 +112,18 @@ export default function FacultyAdminModulesPage() {
   const [formComp2Weight, setFormComp2Weight] = useState('');
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active');
 
-  // Fetch the faculty admin's faculty from Firestore
+  // Fetch the faculty admin's department — skipped if already cached in sessionStorage
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.email || myFaculty) return;
     const fetchFaculty = async () => {
       try {
         const snap = await getDocs(
           query(collection(db, 'faculty_administrators'), where('email', '==', user.email))
         );
         if (!snap.empty) {
-          setMyFaculty(snap.docs[0].data().department ?? '');
+          const dept = snap.docs[0].data().faculty ?? snap.docs[0].data().department ?? '';
+          sessionStorage.setItem(deptCacheKey(user.email), dept);
+          setMyFaculty(dept);
         }
       } catch {
         toast.error('Failed to load faculty information.');
@@ -129,8 +138,10 @@ export default function FacultyAdminModulesPage() {
   useEffect(() => {
     if (!myFaculty) return;
 
+    setLoading(true);
+
     const unsubM = onSnapshot(
-      query(collection(db, 'modules'), where('faculty', '==', myFaculty), orderBy('moduleCode')),
+      query(collection(db, 'modules'), where('faculty', '==', myFaculty)),
       (snap) => {
         setModules(
           snap.docs.map((d) => ({
@@ -144,21 +155,26 @@ export default function FacultyAdminModulesPage() {
             credits: d.data().credits ?? 0,
             status: d.data().status ?? 'active',
             components: d.data().components ?? [],
-          }))
+          })).sort((a, b) => a.moduleCode.localeCompare(b.moduleCode))
         );
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Modules query failed:', err);
+        toast.error('Failed to load modules. A Firestore index may be required.');
         setLoading(false);
       }
     );
 
     const unsubP = onSnapshot(
-      query(collection(db, 'programmes'), where('faculty', '==', myFaculty), orderBy('programmeName')),
+      query(collection(db, 'programmes'), where('faculty', '==', myFaculty)),
       (snap) => {
         setProgrammes(
           snap.docs.map((d) => ({
             id: d.id,
             programmeName: d.data().programmeName ?? '',
             faculty: d.data().faculty ?? '',
-          }))
+          })).sort((a, b) => a.programmeName.localeCompare(b.programmeName))
         );
       }
     );
@@ -215,7 +231,13 @@ export default function FacultyAdminModulesPage() {
       comps.push({ name: formComp1Name.trim(), weight: Number(formComp1Weight) });
     }
     if (formComp2Name.trim() && formComp2Weight !== '') {
-      comps.push({ name: formComp2Name.trim(), weight: Number(formComp2Weight) });
+      const n2 = formComp2Name.trim();
+      if (comps.length > 0 && n2 === comps[0].name) {
+        comps[0] = { ...comps[0], name: `${comps[0].name} 1` };
+        comps.push({ name: `${n2} 2`, weight: Number(formComp2Weight) });
+      } else {
+        comps.push({ name: n2, weight: Number(formComp2Weight) });
+      }
     }
     return comps;
   };
@@ -317,11 +339,19 @@ export default function FacultyAdminModulesPage() {
           continue;
         }
         const comps: { name: string; weight: number }[] = [];
-        if (row.component1Name?.trim() && row.component1Weight?.trim()) {
-          comps.push({ name: row.component1Name.trim(), weight: Number(row.component1Weight) });
+        if (row.assessmentComponent1Name?.trim() && row.assessmentComponent1Weight?.trim()) {
+          comps.push({ name: row.assessmentComponent1Name.trim(), weight: Number(row.assessmentComponent1Weight) });
         }
-        if (row.component2Name?.trim() && row.component2Weight?.trim()) {
-          comps.push({ name: row.component2Name.trim(), weight: Number(row.component2Weight) });
+        if (row.assessmentComponent2Name?.trim() && row.assessmentComponent2Weight?.trim()) {
+          comps.push({ name: row.assessmentComponent2Name.trim(), weight: Number(row.assessmentComponent2Weight) });
+        }
+        if (comps.length > 0) {
+          const total = comps.reduce((sum, c) => sum + c.weight, 0);
+          if (total !== 100) {
+            errors.push(`${row.moduleCode || 'Unknown'} — component weights must add up to 100% (got ${total}%)`);
+            failed++;
+            continue;
+          }
         }
         await addDoc(collection(db, 'modules'), {
           moduleCode: row.moduleCode.trim().toUpperCase(),

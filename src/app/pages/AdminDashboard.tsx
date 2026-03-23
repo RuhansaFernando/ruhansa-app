@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Users, UserCheck, UserX, Shield, AlertTriangle, UserPlus, BarChart2, BookOpen } from 'lucide-react';
+import { Users, UserCheck, UserX, Shield, AlertTriangle } from 'lucide-react';
 import { db } from '../../firebase';
 import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -19,9 +17,7 @@ interface AllStats {
   registry: RoleStats;
   faculty: RoleStats;
   mentors: RoleStats;
-  counsellors: RoleStats;
   courseLeaders: RoleStats;
-  advisors: RoleStats;
 }
 
 const ROLE_CONFIG = [
@@ -71,15 +67,6 @@ const ROLE_CONFIG = [
     dotClass: 'bg-teal-500',
   },
   {
-    key: 'counsellors',
-    label: 'Student Counsellors',
-    color: '#ec4899',
-    bgClass: 'bg-pink-50',
-    textClass: 'text-pink-700',
-    borderClass: 'border-l-pink-500',
-    dotClass: 'bg-pink-500',
-  },
-  {
     key: 'courseLeaders',
     label: 'Course Leaders',
     color: '#6366f1',
@@ -87,15 +74,6 @@ const ROLE_CONFIG = [
     textClass: 'text-indigo-700',
     borderClass: 'border-l-indigo-500',
     dotClass: 'bg-indigo-500',
-  },
-  {
-    key: 'advisors',
-    label: 'Academic Advisors',
-    color: '#f59e0b',
-    bgClass: 'bg-amber-50',
-    textClass: 'text-amber-700',
-    borderClass: 'border-l-amber-500',
-    dotClass: 'bg-amber-500',
   },
 ] as const;
 
@@ -116,26 +94,23 @@ async function fetchCollectionStats(collectionName: string): Promise<RoleStats> 
 const STAFF_COLLECTIONS = [
   'student_support_advisors',
   'registry',
-  'faculty',
+  'faculty_administrators',
   'academic_mentors',
-  'student_counsellors',
   'course_leaders',
-  'advisors',
 ];
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
   const [stats, setStats] = useState<AllStats>({
     students: emptyStats(),
     sru: emptyStats(),
     registry: emptyStats(),
     faculty: emptyStats(),
     mentors: emptyStats(),
-    counsellors: emptyStats(),
     courseLeaders: emptyStats(),
-    advisors: emptyStats(),
   });
   const [pendingPasswordChanges, setPendingPasswordChanges] = useState(0);
+  const studentPendingRef = useRef(0);
+  const staffPendingRef = useRef(0);
   const [staffLoading, setStaffLoading] = useState(true);
   const [studentsLoaded, setStudentsLoaded] = useState(false);
 
@@ -153,7 +128,8 @@ export default function AdminDashboard() {
         if (data.mustChangePassword === true) pendingStudents++;
       });
       setStats((prev) => ({ ...prev, students: { total: snap.size, active, inactive } }));
-      setPendingPasswordChanges((prev) => prev + pendingStudents);
+      studentPendingRef.current = pendingStudents;
+      setPendingPasswordChanges(studentPendingRef.current + staffPendingRef.current);
       setStudentsLoaded(true);
     });
     return () => unsub();
@@ -163,22 +139,21 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [sru, registry, faculty, mentors, counsellors, courseLeaders, advisors] = await Promise.all([
+        const [sru, registry, faculty, mentors, courseLeaders] = await Promise.all([
           fetchCollectionStats('student_support_advisors'),
           fetchCollectionStats('registry'),
-          fetchCollectionStats('faculty'),
+          fetchCollectionStats('faculty_administrators'),
           fetchCollectionStats('academic_mentors'),
-          fetchCollectionStats('student_counsellors'),
           fetchCollectionStats('course_leaders'),
-          fetchCollectionStats('advisors'),
         ]);
-        setStats((prev) => ({ ...prev, sru, registry, faculty, mentors, counsellors, courseLeaders, advisors }));
+        setStats((prev) => ({ ...prev, sru, registry, faculty, mentors, courseLeaders }));
 
         // Count pending password changes across staff collections only (students handled by onSnapshot)
         const snaps = await Promise.all(STAFF_COLLECTIONS.map((c) => getDocs(collection(db, c))));
         let pendingStaff = 0;
         snaps.forEach((snap) => snap.forEach((d) => { if (d.data().mustChangePassword === true) pendingStaff++; }));
-        setPendingPasswordChanges((prev) => prev + pendingStaff);
+        staffPendingRef.current = pendingStaff;
+        setPendingPasswordChanges(studentPendingRef.current + staffPendingRef.current);
       } finally {
         setStaffLoading(false);
       }
@@ -192,23 +167,19 @@ export default function AdminDashboard() {
     registry: stats.registry,
     faculty: stats.faculty,
     mentors: stats.mentors,
-    counsellors: stats.counsellors,
     courseLeaders: stats.courseLeaders,
-    advisors: stats.advisors,
   };
 
   const totalStudents = stats.students.total;
   const totalStaff =
     stats.sru.total + stats.registry.total + stats.faculty.total +
-    stats.mentors.total + stats.counsellors.total + stats.courseLeaders.total + stats.advisors.total;
+    stats.mentors.total + stats.courseLeaders.total;
   const totalActive =
     stats.students.active + stats.sru.active + stats.registry.active +
-    stats.faculty.active + stats.mentors.active + stats.counsellors.active +
-    stats.courseLeaders.active + stats.advisors.active;
+    stats.faculty.active + stats.mentors.active + stats.courseLeaders.active;
   const totalInactive =
     stats.students.inactive + stats.sru.inactive + stats.registry.inactive +
-    stats.faculty.inactive + stats.mentors.inactive + stats.counsellors.inactive +
-    stats.courseLeaders.inactive + stats.advisors.inactive;
+    stats.faculty.inactive + stats.mentors.inactive + stats.courseLeaders.inactive;
 
   const donutData = ROLE_CONFIG.map((r) => ({
     name: r.label,
@@ -402,32 +373,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/students')}>
-              <UserPlus className="h-4 w-4" />
-              Add Student
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/registry')}>
-              <Shield className="h-4 w-4" />
-              Add Staff
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/analytics')}>
-              <BarChart2 className="h-4 w-4" />
-              View Reports
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/modules')}>
-              <BookOpen className="h-4 w-4" />
-              Manage Modules
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

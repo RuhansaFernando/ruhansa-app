@@ -132,11 +132,11 @@ export function BulkImportModal({ open, onOpenChange, role, onImport }: BulkImpo
         const autoMap: Record<string, string> = {};
         fields.forEach((field) => {
           const match = headers.find((h) =>
-            h.toLowerCase().replace(/[^a-z]/g, '').includes(
-              field.key.toLowerCase().replace(/[^a-z]/g, '')
+            h.toLowerCase().replace(/[^a-z0-9]/g, '').includes(
+              field.key.toLowerCase().replace(/[^a-z0-9]/g, '')
             ) ||
-            field.key.toLowerCase().replace(/[^a-z]/g, '').includes(
-              h.toLowerCase().replace(/[^a-z]/g, '')
+            field.key.toLowerCase().replace(/[^a-z0-9]/g, '').includes(
+              h.toLowerCase().replace(/[^a-z0-9]/g, '')
             )
           );
           if (match) autoMap[field.key] = match;

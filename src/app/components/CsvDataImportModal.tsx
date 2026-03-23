@@ -8,8 +8,9 @@ import { Upload, CheckCircle, XCircle, Loader2, ArrowRight, Download } from 'luc
 export interface CsvField {
   key: string;
   label: string;
-  required: boolean;
+  required?: boolean;
   sampleValue?: string;
+  example?: string;
 }
 
 interface CsvDataImportModalProps {
@@ -48,8 +49,8 @@ export function CsvDataImportModal({ open, onOpenChange, title, fields, onImport
         fields.forEach((field) => {
           const match = headers.find(
             (h) =>
-              h.toLowerCase().replace(/[^a-z]/g, '').includes(field.key.toLowerCase().replace(/[^a-z]/g, '')) ||
-              field.key.toLowerCase().replace(/[^a-z]/g, '').includes(h.toLowerCase().replace(/[^a-z]/g, ''))
+              h.toLowerCase().replace(/[^a-z0-9]/g, '').includes(field.key.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
+              field.key.toLowerCase().replace(/[^a-z0-9]/g, '').includes(h.toLowerCase().replace(/[^a-z0-9]/g, ''))
           );
           if (match) autoMap[field.key] = match;
         });
@@ -88,7 +89,7 @@ export function CsvDataImportModal({ open, onOpenChange, title, fields, onImport
 
   const downloadTemplate = () => {
     const headers = fields.map((f) => f.key).join(',');
-    const sample = fields.map((f) => f.sampleValue ?? '').join(',');
+    const sample = fields.map((f) => f.sampleValue ?? f.example ?? '').join(',');
     const csv = `${headers}\n${sample}`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

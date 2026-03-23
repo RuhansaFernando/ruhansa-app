@@ -102,7 +102,7 @@ export default function MentorAppointmentsPage() {
               status: d.data().status ?? 'pending',
               notes: d.data().notes ?? '',
             }))
-            .filter((a) => a.mentorId === user?.id)
+            .filter((a) => a.mentorId === user?.id || a.mentorId === (user as any)?.uid)
         );
       } finally {
         setLoading(false);

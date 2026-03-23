@@ -127,6 +127,7 @@ export default function AdminAcademicPage() {
         department: addDepartment,
         role: 'academic_admin',
         status: addStatus,
+        mustChangePassword: true,
         createdAt: serverTimestamp(),
       });
       try {
