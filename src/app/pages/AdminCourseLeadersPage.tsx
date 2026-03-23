@@ -30,7 +30,6 @@ interface StaffUser {
   name: string;
   email: string;
   programme: string;
-  level: string;
   status: 'active' | 'inactive';
   createdAt?: string;
 }
@@ -61,7 +60,6 @@ export default function AdminCourseLeadersPage() {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [programmes, setProgrammes] = useState<{ id: string; name: string }[]>([]);
   const [formProgramme, setFormProgramme] = useState('');
-  const [formLevel, setFormLevel] = useState('');
 
   // Edit dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -70,7 +68,6 @@ export default function AdminCourseLeadersPage() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editProgramme, setEditProgramme] = useState('');
-  const [editLevel, setEditLevel] = useState('');
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
   const [isEditSaving, setIsEditSaving] = useState(false);
 
@@ -84,7 +81,6 @@ export default function AdminCourseLeadersPage() {
           name: d.data().name ?? '',
           email: d.data().email ?? '',
           programme: d.data().programme ?? '',
-          level: d.data().level ?? '',
           status: d.data().status ?? 'active',
           createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? undefined,
         })),
@@ -113,7 +109,7 @@ export default function AdminCourseLeadersPage() {
 
   const openAddDialog = () => {
     setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active');
-    setFormProgramme(''); setFormLevel('');
+    setFormProgramme('');
     setIsAddDialogOpen(true);
   };
 
@@ -135,7 +131,6 @@ export default function AdminCourseLeadersPage() {
         role: 'course_leader',
         status: addStatus,
         programme: formProgramme,
-        level: formLevel,
         mustChangePassword: true,
         createdAt: serverTimestamp(),
       });
@@ -150,7 +145,7 @@ export default function AdminCourseLeadersPage() {
       } catch (emailErr) {
         console.warn('Welcome email failed:', emailErr);
       }
-      toast.success('Course Leader account created successfully');
+      toast.success('Programme Leader account created successfully');
       setIsAddDialogOpen(false);
     } catch (err) {
       if (err instanceof FirebaseError) {
@@ -173,7 +168,6 @@ export default function AdminCourseLeadersPage() {
     setEditName(user.name);
     setEditEmail(user.email);
     setEditProgramme(user.programme);
-    setEditLevel(user.level);
     setEditStatus(user.status);
     setIsEditDialogOpen(true);
   };
@@ -190,7 +184,6 @@ export default function AdminCourseLeadersPage() {
         name: editName.trim(),
         email: editEmail.trim(),
         programme: editProgramme,
-        level: editLevel,
         status: editStatus,
       });
       toast.success('Account updated successfully');
@@ -231,7 +224,6 @@ export default function AdminCourseLeadersPage() {
           role: 'course_leader',
           status: 'active',
           programme: row.Programme?.trim() ?? '',
-          level: row.Level?.trim() ?? '',
           mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
@@ -261,8 +253,8 @@ export default function AdminCourseLeadersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Course Leader Management</h1>
-          <p className="text-muted-foreground">Manage Course Leader accounts</p>
+          <h1 className="text-3xl font-bold">Programme Leader Management</h1>
+          <p className="text-muted-foreground">Manage Programme Leader accounts</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setBulkImportOpen(true)}>
@@ -271,7 +263,7 @@ export default function AdminCourseLeadersPage() {
           </Button>
           <Button className="gap-2" onClick={openAddDialog}>
             <UserPlus className="h-4 w-4" />
-            Add Course Leader
+            Add Programme Leader
           </Button>
         </div>
       </div>
@@ -280,7 +272,7 @@ export default function AdminCourseLeadersPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Course Leaders</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Programme Leaders</CardTitle>
             <div className="h-9 w-9 rounded-full bg-purple-100 flex items-center justify-center">
               <Users className="h-5 w-5 text-purple-600" />
             </div>
@@ -319,7 +311,7 @@ export default function AdminCourseLeadersPage() {
       {/* Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Course Leader Accounts</CardTitle>
+          <CardTitle>Programme Leader Accounts</CardTitle>
           <div className="mt-3 flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -351,7 +343,7 @@ export default function AdminCourseLeadersPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No Course Leader accounts found</p>
+              <p>No Programme Leader accounts found</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -362,7 +354,6 @@ export default function AdminCourseLeadersPage() {
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
                     <th className="text-left font-medium text-muted-foreground px-4 py-3">Created</th>
                     <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
@@ -375,7 +366,6 @@ export default function AdminCourseLeadersPage() {
                       <td className="px-4 py-3 font-medium">{user.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                       <td className="px-4 py-3 text-muted-foreground max-w-[160px] truncate">{user.programme || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{user.level || '—'}</td>
                       <td className="px-4 py-3">
                         <Badge className={user.status === 'active' ? 'bg-green-100 text-green-800 border-green-200 text-xs' : 'bg-gray-100 text-gray-600 border-gray-200 text-xs'}>
                           {user.status}
@@ -409,11 +399,11 @@ export default function AdminCourseLeadersPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active'); setFormProgramme(''); setFormLevel(''); } setIsAddDialogOpen(open); }}>
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) { setAddStaffId(''); setAddName(''); setAddEmail(''); setAddStatus('active'); setFormProgramme(''); } setIsAddDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Course Leader Account</DialogTitle>
-            <DialogDescription>Create a new Course Leader account</DialogDescription>
+            <DialogTitle>Add Programme Leader Account</DialogTitle>
+            <DialogDescription>Create a new Programme Leader account</DialogDescription>
           </DialogHeader>
           <div className="space-y-4" autoComplete="off">
             <input type="text" style={{ display: 'none' }} autoComplete="username" readOnly />
@@ -438,18 +428,6 @@ export default function AdminCourseLeadersPage() {
                   {programmes.length > 0 ? programmes.map((p) => (
                     <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                   )) : <SelectItem value="__none__" disabled>No programmes found</SelectItem>}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-level">Level</Label>
-              <Select value={formLevel} onValueChange={setFormLevel}>
-                <SelectTrigger id="add-level"><SelectValue placeholder="— Select level —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Year 1">1st Year</SelectItem>
-                  <SelectItem value="Year 2">2nd Year</SelectItem>
-                  <SelectItem value="Year 3">3rd Year</SelectItem>
-                  <SelectItem value="Year 4">4th Year</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -481,10 +459,10 @@ export default function AdminCourseLeadersPage() {
       />
 
       {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditProgramme(''); setEditLevel(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { if (!open) { setEditStaffId(''); setEditName(''); setEditEmail(''); setEditProgramme(''); setEditStatus('active'); setEditingUser(null); } setIsEditDialogOpen(open); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Course Leader Account</DialogTitle>
+            <DialogTitle>Edit Programme Leader Account</DialogTitle>
             <DialogDescription>Update this staff member's information</DialogDescription>
           </DialogHeader>
           <div className="space-y-4" autoComplete="off">
@@ -510,18 +488,6 @@ export default function AdminCourseLeadersPage() {
                   {programmes.length > 0 ? programmes.map((p) => (
                     <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                   )) : <SelectItem value="__none__" disabled>No programmes found</SelectItem>}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-level">Level</Label>
-              <Select value={editLevel} onValueChange={setEditLevel}>
-                <SelectTrigger id="edit-level"><SelectValue placeholder="— Select level —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Year 1">1st Year</SelectItem>
-                  <SelectItem value="Year 2">2nd Year</SelectItem>
-                  <SelectItem value="Year 3">3rd Year</SelectItem>
-                  <SelectItem value="Year 4">4th Year</SelectItem>
                 </SelectContent>
               </Select>
             </div>

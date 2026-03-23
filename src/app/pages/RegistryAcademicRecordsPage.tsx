@@ -207,6 +207,10 @@ export default function RegistryAcademicRecordsPage() {
   // GPA backfill
   const [recalculating, setRecalculating] = useState(false);
 
+  // Pagination
+  const STUDENTS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // ── Load data on mount ───────────────────────────────────────────────────────
   useEffect(() => {
     getDocs(collection(db, 'students'))
@@ -336,6 +340,15 @@ export default function RegistryAcademicRecordsPage() {
     });
     return list;
   }, [students, searchQuery, filterFaculty, filterProgramme, filterYear, sortBy, programmeFacultyMap]);
+
+  // Reset page when filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filterFaculty, filterProgramme, filterYear, sortBy]);
+
+  const totalPages = Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE);
+  const paginatedStudents = filteredStudents.slice(
+    (currentPage - 1) * STUDENTS_PER_PAGE,
+    currentPage * STUDENTS_PER_PAGE
+  );
 
   const goodStandingCount = useMemo(() => students.filter((s) => getAcademicStanding(s.gpa).label === 'Good Standing').length, [students]);
   const satisfactoryCount = useMemo(() => students.filter((s) => getAcademicStanding(s.gpa).label === 'Satisfactory').length, [students]);
@@ -941,9 +954,12 @@ export default function RegistryAcademicRecordsPage() {
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">{filteredStudents.length}</span>
+                      Showing{' '}
+                      <span className="font-medium text-foreground">
+                        {filteredStudents.length === 0 ? 0 : Math.min((currentPage - 1) * STUDENTS_PER_PAGE + 1, filteredStudents.length)}–{Math.min(currentPage * STUDENTS_PER_PAGE, filteredStudents.length)}
+                      </span>
                       {' of '}
-                      <span className="font-medium text-foreground">{students.length}</span>
+                      <span className="font-medium text-foreground">{filteredStudents.length}</span>
                       {' students'}
                     </div>
                   </div>
@@ -994,7 +1010,7 @@ export default function RegistryAcademicRecordsPage() {
                           </td>
                         </tr>
                       ) : (
-                        filteredStudents.map((student) => (
+                        paginatedStudents.map((student) => (
                           <tr
                             key={student.docId}
                             className={`border-b last:border-0 cursor-pointer transition-colors border-l-4 ${
@@ -1030,6 +1046,36 @@ export default function RegistryAcademicRecordsPage() {
                       )}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {!loadingStudents && filteredStudents.length > STUDENTS_PER_PAGE && (
+                <div className="flex items-center justify-between mt-4 px-1">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {Math.min((currentPage - 1) * STUDENTS_PER_PAGE + 1, filteredStudents.length)}–{Math.min(currentPage * STUDENTS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length} students
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage((p) => p - 1)}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm flex items-center px-2">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage === totalPages || totalPages === 0}
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs,
+  collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
@@ -50,6 +50,8 @@ interface InterventionDoc {
   recordedBy: string;
   createdAt: any;
   status: 'active' | 'pending' | 'completed';
+  openStatus: 'open' | 'resolved' | '';
+  followUpDate: string | null;
 }
 
 interface StudentOption {
@@ -103,6 +105,7 @@ export default function SRUInterventionsPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [outcomeFilter, setOutcomeFilter] = useState('all');
   const [riskFilter, setRiskFilter] = useState('all');
+  const [openStatusFilter, setOpenStatusFilter] = useState('all');
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'active' | 'pending' | 'completed'>('active');
@@ -114,6 +117,8 @@ export default function SRUInterventionsPage() {
   const [formDate, setFormDate] = useState(todayStr());
   const [formOutcome, setFormOutcome] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formFollowUpDate, setFormFollowUpDate] = useState('');
+  const [formOpenStatus, setFormOpenStatus] = useState('open');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -135,6 +140,8 @@ export default function SRUInterventionsPage() {
             recordedBy: d.data().recordedBy ?? '',
             createdAt: d.data().createdAt,
             status: d.data().status ?? deriveStatus(outcome),
+            openStatus: d.data().openStatus ?? '',
+            followUpDate: d.data().followUpDate ?? null,
           };
         })
       );
@@ -170,13 +177,14 @@ export default function SRUInterventionsPage() {
       // Tab filter
       if (i.status !== activeTab) return false;
       // Dropdown filters
-      const matchesSearch  = !search || i.studentName.toLowerCase().includes(search.toLowerCase());
-      const matchesType    = typeFilter === 'all' || i.interventionType === typeFilter;
-      const matchesOutcome = outcomeFilter === 'all' || i.outcome === outcomeFilter;
-      const matchesRisk    = riskFilter === 'all' || i.riskLevel === riskFilter;
-      return matchesSearch && matchesType && matchesOutcome && matchesRisk;
+      const matchesSearch     = !search || i.studentName.toLowerCase().includes(search.toLowerCase());
+      const matchesType       = typeFilter === 'all' || i.interventionType === typeFilter;
+      const matchesOutcome    = outcomeFilter === 'all' || i.outcome === outcomeFilter;
+      const matchesRisk       = riskFilter === 'all' || i.riskLevel === riskFilter;
+      const matchesOpenStatus = openStatusFilter === 'all' || i.openStatus === openStatusFilter;
+      return matchesSearch && matchesType && matchesOutcome && matchesRisk && matchesOpenStatus;
     });
-  }, [interventions, search, typeFilter, outcomeFilter, riskFilter, activeTab]);
+  }, [interventions, search, typeFilter, outcomeFilter, riskFilter, activeTab, openStatusFilter]);
 
   const resetForm = () => {
     setFormStudent('');
@@ -184,6 +192,18 @@ export default function SRUInterventionsPage() {
     setFormDate(todayStr());
     setFormOutcome('');
     setFormNotes('');
+    setFormFollowUpDate('');
+    setFormOpenStatus('open');
+  };
+
+  const handleToggleStatus = async (intervention: InterventionDoc) => {
+    const newStatus = intervention.openStatus === 'resolved' ? 'open' : 'resolved';
+    try {
+      await updateDoc(doc(db, 'interventions', intervention.id), { openStatus: newStatus });
+      toast.success(newStatus === 'resolved' ? 'Marked as resolved' : 'Reopened');
+    } catch {
+      toast.error('Failed to update status.');
+    }
   };
 
   const handleSave = async () => {
@@ -207,6 +227,8 @@ export default function SRUInterventionsPage() {
         notes: formNotes.trim(),
         recordedBy: user?.name ?? 'Staff',
         status: deriveStatus(formOutcome),
+        openStatus: formOpenStatus,
+        followUpDate: formFollowUpDate || null,
         createdAt: serverTimestamp(),
       });
       toast.success('Intervention logged successfully.');
@@ -356,6 +378,16 @@ export default function SRUInterventionsPage() {
                   <SelectItem value="low">Low</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={openStatusFilter} onValueChange={setOpenStatusFilter}>
+                <SelectTrigger className="w-32 h-8 text-xs">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -372,65 +404,87 @@ export default function SRUInterventionsPage() {
               <p className="text-sm">No interventions found.</p>
             </div>
           ) : (
-            filtered.map((intervention) => (
-              <div key={intervention.id} className="border rounded-xl p-4 mb-3 last:mb-0 bg-white">
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3 gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm">
-                      {intervention.studentName} — {intervention.interventionType || '—'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Started {intervention.date || formatDate(intervention.createdAt)} · Recorded by {intervention.recordedBy || '—'}
-                    </p>
+            filtered.map((intervention) => {
+              const today = new Date().toISOString().split('T')[0];
+              const isOverdue = intervention.openStatus === 'open' && intervention.followUpDate && intervention.followUpDate < today;
+              return (
+                <div key={intervention.id} className="border rounded-xl p-4 mb-3 last:mb-0 bg-white">
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-3 gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">
+                        {intervention.studentName} — {intervention.interventionType || '—'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Started {intervention.date || formatDate(intervention.createdAt)} · Recorded by {intervention.recordedBy || '—'}
+                      </p>
+                      {intervention.followUpDate && (
+                        <p className={`text-xs mt-0.5 ${isOverdue ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+                          Follow-up: {intervention.followUpDate}{isOverdue ? ' — Overdue' : ''}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
+                      <Badge className={
+                        intervention.riskLevel === 'high'
+                          ? 'bg-red-100 text-red-800 border-red-200 text-xs'
+                          : 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
+                      }>
+                        {intervention.riskLevel === 'high' ? 'High' : 'Medium'}
+                      </Badge>
+                      {intervention.openStatus && (
+                        <Badge className={intervention.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
+                          {intervention.openStatus}
+                        </Badge>
+                      )}
+                      <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs capitalize">
+                        {intervention.status}
+                      </Badge>
+                      {intervention.outcome && getOutcomeBadge(intervention.outcome)}
+                    </div>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-                    <Badge className={
-                      intervention.riskLevel === 'high'
-                        ? 'bg-red-100 text-red-800 border-red-200 text-xs'
-                        : 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
-                    }>
-                      {intervention.riskLevel === 'high' ? 'High' : 'Medium'}
-                    </Badge>
-                    <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs capitalize">
-                      {intervention.status}
-                    </Badge>
-                    {intervention.outcome && getOutcomeBadge(intervention.outcome)}
-                  </div>
-                </div>
 
-                {/* Next Best Action box */}
-                <div className="bg-blue-50 rounded-lg px-3 py-2 mb-3 text-xs text-blue-800 border border-blue-100">
-                  <span className="font-semibold">Next Best Action: </span>
-                  {intervention.notes || 'Schedule a follow-up meeting with the student to review progress.'}
-                </div>
+                  {/* Next Best Action box */}
+                  <div className="bg-blue-50 rounded-lg px-3 py-2 mb-3 text-xs text-blue-800 border border-blue-100">
+                    <span className="font-semibold">Next Best Action: </span>
+                    {intervention.notes || 'Schedule a follow-up meeting with the student to review progress.'}
+                  </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex gap-2 flex-wrap">
-                    <Badge variant="outline" className="text-xs">{intervention.interventionType || '—'}</Badge>
-                    <Badge variant="outline" className="text-xs">{intervention.programme || 'Unknown programme'}</Badge>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs"
-                      onClick={() => navigate(`/sru/students/${intervention.studentId}`)}
-                    >
-                      View Profile
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-xs"
-                      onClick={() => { resetForm(); setFormStudent(intervention.studentId); setIsOpen(true); }}
-                    >
-                      Update Progress
-                    </Button>
+                  {/* Footer */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-xs">{intervention.interventionType || '—'}</Badge>
+                      <Badge variant="outline" className="text-xs">{intervention.programme || 'Unknown programme'}</Badge>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={`text-xs ${intervention.openStatus === 'resolved' ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-green-300 text-green-700 hover:bg-green-50'}`}
+                        onClick={() => handleToggleStatus(intervention)}
+                      >
+                        {intervention.openStatus === 'resolved' ? 'Reopen' : 'Mark Resolved'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => navigate(`/sru/students/${intervention.studentId}`)}
+                      >
+                        View Profile
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-xs"
+                        onClick={() => { resetForm(); setFormStudent(intervention.studentId); setIsOpen(true); }}
+                      >
+                        Update Progress
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -504,6 +558,31 @@ export default function SRUInterventionsPage() {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
                 autoComplete="off"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Follow-up Date</Label>
+              <Input
+                type="date"
+                value={formFollowUpDate}
+                onChange={(e) => setFormFollowUpDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={formOpenStatus} onValueChange={setFormOpenStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

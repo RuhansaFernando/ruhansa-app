@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { useRiskScore } from '../hooks/useRiskScore';
@@ -17,8 +17,10 @@ import { RiskLevelBadge } from '../components/RiskScoreBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import {
@@ -47,7 +49,16 @@ export default function SRUStudentProfilePage() {
   const [student, setStudent]                 = useState<StudentData | null>(null);
   const [loading, setLoading]                 = useState(true);
   const [viewedByStudent, setViewedByStudent] = useState<string | null>(null);
-  const [interventions, setInterventions]     = useState<{ id: string }[]>([]);
+  const [interventions, setInterventions]     = useState<{
+    id: string;
+    interventionType: string;
+    date: string;
+    outcome: string;
+    recordedBy: string;
+    openStatus?: string;
+    followUpDate?: string | null;
+    createdAt: any;
+  }[]>([]);
 
   // Referral modal state
   const [referralModalOpen, setReferralModalOpen]   = useState(false);
@@ -57,6 +68,8 @@ export default function SRUStudentProfilePage() {
   const [referralSubmitting, setReferralSubmitting] = useState(false);
   const [linkCopied, setLinkCopied]                 = useState(false);
   const [ssaCalendarLink, setSsaCalendarLink]       = useState('');
+  const [ssaFollowUpDate, setSsaFollowUpDate]       = useState('');
+  const [ssaInterventionStatus, setSsaInterventionStatus] = useState('open');
 
   // Fetch SSA's calendar link
   useEffect(() => {
@@ -106,11 +119,20 @@ export default function SRUStudentProfilePage() {
           setViewedByStudent(vd.viewedAt?.toDate?.()?.toLocaleString() ?? 'Recently');
         }
 
-        // Fetch active interventions for this student
+        // Fetch interventions for this student
         const intSnap = await getDocs(
           query(collection(db, 'interventions'), where('studentId', '==', studentId))
         );
-        setInterventions(intSnap.docs.map((d) => ({ id: d.id })));
+        setInterventions(intSnap.docs.map((d) => ({
+          id: d.id,
+          interventionType: d.data().interventionType ?? '',
+          date: d.data().date ?? '',
+          outcome: d.data().outcome ?? '',
+          recordedBy: d.data().recordedBy ?? '',
+          openStatus: d.data().openStatus ?? '',
+          followUpDate: d.data().followUpDate ?? null,
+          createdAt: d.data().createdAt ?? null,
+        })));
       } finally {
         setLoading(false);
       }
@@ -151,12 +173,16 @@ export default function SRUStudentProfilePage() {
         counsellorCalendarLink: selectedCounsellor.calendarLink ?? '',
         recordedBy: user?.name ?? 'SSA',
         status: 'Active',
+        openStatus: ssaInterventionStatus,
+        followUpDate: ssaFollowUpDate || null,
         createdAt: serverTimestamp(),
       });
       toast.success(`Student referred to ${selectedCounsellor.name} successfully`);
       setReferralModalOpen(false);
       setSelectedCounsellor(null);
       setReferralNotes('');
+      setSsaFollowUpDate('');
+      setSsaInterventionStatus('open');
     } catch {
       toast.error('Failed to log referral. Please try again.');
     } finally {
@@ -414,6 +440,46 @@ export default function SRUStudentProfilePage() {
         </div>
       ) : null}
 
+      {/* Intervention History */}
+      {interventions.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Intervention History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {interventions.slice(0, 5).map((i) => {
+                const today = new Date().toISOString().split('T')[0];
+                const isOverdue = i.openStatus === 'open' && i.followUpDate && i.followUpDate < today;
+                return (
+                  <div key={i.id} className="rounded-lg border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{i.interventionType || '—'}</span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {i.openStatus && (
+                          <Badge className={i.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
+                            {i.openStatus}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">{i.date || '—'}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Outcome: {i.outcome || '—'} · By: {i.recordedBy || '—'}
+                    </p>
+                    {i.followUpDate && (
+                      <p className={`text-xs mt-0.5 ${isOverdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                        Follow-up: {i.followUpDate}{isOverdue ? ' — Overdue' : ''}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Counsellor Referral Modal */}
       <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -490,6 +556,29 @@ export default function SRUStudentProfilePage() {
                 value={referralNotes}
                 onChange={(e) => setReferralNotes(e.target.value)}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ssaFollowUpDate">Follow-up Date</Label>
+              <Input
+                id="ssaFollowUpDate"
+                type="date"
+                value={ssaFollowUpDate}
+                onChange={(e) => setSsaFollowUpDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+              <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={ssaInterventionStatus} onValueChange={setSsaInterventionStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Selected counsellor summary */}

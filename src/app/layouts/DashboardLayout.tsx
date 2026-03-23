@@ -86,7 +86,7 @@ export default function DashboardLayout() {
         { label: 'Student Support Advisors', icon: ClipboardCheck, path: '/admin/sru-staff' },
         { label: 'Faculty Administrators', icon: GraduationCap, path: '/admin/academic-staff' },
         { label: 'Academic Mentors', icon: BookUser, path: '/admin/tutors' },
-        { label: 'Course Leaders', icon: GraduationCap, path: '/admin/course-leaders' },
+        { label: 'Programme Leaders', icon: GraduationCap, path: '/admin/course-leaders' },
         { section: 'Academic Management' } as any,
         { label: 'Faculties', icon: Landmark, path: '/admin/faculties' },
         { label: 'Programmes', icon: GraduationCap, path: '/admin/programmes' },
@@ -100,8 +100,10 @@ export default function DashboardLayout() {
       ];
     } else if (user.role === 'academic_admin') {
       return [
+        { label: 'Dashboard', icon: LayoutDashboard, path: '/academic/dashboard' },
         { label: 'Upload Attendance', icon: ClipboardList, path: '/academic/upload' },
         { label: 'Modules', icon: BookOpen, path: '/academic/modules' },
+        { label: 'Reports', icon: FileText, path: '/academic/reports' },
       ];
     } else if (user.role === 'sru') {
       return [
@@ -116,10 +118,10 @@ export default function DashboardLayout() {
       return [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/mentor/dashboard' },
         { label: 'My Students', icon: Users, path: '/mentor/students' },
-        { label: 'Appointments', icon: Calendar, path: '/mentor/appointments' },
       ];
     } else if (user.role === 'course_leader') {
       return [
+        { label: 'Dashboard', icon: LayoutDashboard, path: '/course-leader/dashboard' },
         { label: 'Mentor Assignment', icon: BookUser, path: '/course-leader/mentor-assignment' },
       ];
     }
@@ -152,7 +154,7 @@ export default function DashboardLayout() {
       case 'student_counsellor':
         return 'Student Counsellor';
       case 'course_leader':
-        return 'Course Leader';
+        return 'Programme Leader';
       default:
         return user.role;
     }
@@ -212,7 +214,7 @@ export default function DashboardLayout() {
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white border-r">
         {/* Logo Section */}
         <div className="flex items-center p-2 border-b bg-white">
-          <Link to={user.role === 'academic_admin' ? '/academic/upload' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/mentor-assignment' : `/${user.role}/dashboard`}>
+          <Link to={user.role === 'academic_admin' ? '/academic/dashboard' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/dashboard' : `/${user.role}/dashboard`}>
             <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
           </Link>
         </div>
@@ -327,7 +329,7 @@ export default function DashboardLayout() {
           >
             {/* Logo Section */}
             <div className="flex items-center justify-between p-2 border-b bg-white">
-              <Link to={user.role === 'academic_admin' ? '/academic/upload' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/mentor-assignment' : `/${user.role}/dashboard`}>
+              <Link to={user.role === 'academic_admin' ? '/academic/dashboard' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/dashboard' : `/${user.role}/dashboard`}>
                 <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
               </Link>
               <Button

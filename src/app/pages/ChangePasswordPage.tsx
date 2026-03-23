@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -15,6 +16,7 @@ import { useAuth } from '../AuthContext';
 
 export default function ChangePasswordPage() {
   const { user, login } = useAuth();
+  const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -67,6 +69,19 @@ export default function ChangePasswordPage() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      // Redirect to dashboard after 2 seconds
+      setTimeout(() => {
+        const roleBase =
+          user.role === 'academic_mentor' ? 'mentor'
+          : user.role === 'academic_admin' ? 'academic'
+          : user.role === 'course_leader' ? 'course-leader'
+          : user.role === 'student' ? 'student'
+          : user.role === 'registry' ? 'registry'
+          : user.role === 'sru' ? 'sru'
+          : user.role === 'admin' ? 'admin'
+          : user.role;
+        navigate(`/${roleBase}/dashboard`);
+      }, 2000);
     } catch (err: any) {
       if (
         err.code === 'auth/wrong-password' ||

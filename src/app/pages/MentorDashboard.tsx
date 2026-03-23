@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -32,6 +32,8 @@ interface InterventionDoc {
   date?: string;
   description?: string;
   status: string;
+  openStatus?: string;
+  followUpDate?: string | null;
   riskLevel?: string;
   recordedBy?: string;
   createdAt: any;
@@ -68,44 +70,50 @@ export default function MentorDashboard() {
   const [interventions, setInterventions] = useState<InterventionDoc[]>([]);
   const [interventionCount, setInterventionCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [calendarLink, setCalendarLink] = useState('');
 
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
+      const mentorName = user?.name ?? '';
+      if (!mentorName) {
+        setStudents([]);
+        setInterventions([]);
+        setInterventionCount(0);
+        setLoading(false);
+        return;
+      }
+
+      const mapStudentFields = (d: any): Omit<StudentDoc, 'id'> => {
+        const data = d.data();
+        return {
+          studentId: data.studentId ?? d.id,
+          name: data.name ?? '',
+          email: data.email ?? '',
+          programme: data.programme ?? '',
+          level: data.level ?? '',
+          attendancePercentage: data.attendancePercentage ?? 100,
+          gpa: data.gpa ?? 0,
+          riskLevel: data.riskLevel ?? 'low',
+          academicMentor: data.academicMentor ?? '',
+          createdAt: data.createdAt ?? null,
+        };
+      };
+
       try {
-        const [studentSnap, interventionSnap] = await Promise.all([
-          getDocs(collection(db, 'students')),
-          getDocs(query(collection(db, 'interventions'), orderBy('createdAt', 'desc'))),
-        ]);
-
-        const mentorName = user?.name ?? '';
-        const mentorEmail = user?.email ?? '';
-        const mentorUid = (user as any)?.uid ?? '';
-
-        const myStudents: StudentDoc[] = studentSnap.docs
-          .filter((d) => {
-            const data = d.data();
-            return (
-              (mentorName && data.academicMentor === mentorName) ||
-              (mentorEmail && data.academicMentor === mentorEmail) ||
-              (mentorUid && data.mentorId === mentorUid)
-            );
-          })
-          .map((d) => ({
-          id: d.id,
-          studentId: d.data().studentId ?? d.id,
-          name: d.data().name ?? '',
-          email: d.data().email ?? '',
-          programme: d.data().programme ?? '',
-          level: d.data().level ?? '',
-          attendancePercentage: d.data().attendancePercentage ?? 100,
-          gpa: d.data().gpa ?? 0,
-          riskLevel: d.data().riskLevel ?? 'low',
-          academicMentor: d.data().academicMentor ?? '',
-          createdAt: d.data().createdAt ?? null,
-        }));
-
+        const studentsSnap = await getDocs(collection(db, 'students'));
+        const allStudents = studentsSnap.docs.map(d => ({ id: d.id, ...mapStudentFields(d) }));
+        const myStudents: StudentDoc[] = allStudents.filter(s =>
+          s.academicMentor?.trim().toLowerCase() === mentorName.trim().toLowerCase()
+        );
         setStudents(myStudents);
+
+        try {
+          const mentorSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email ?? '')));
+          if (!mentorSnap.empty) setCalendarLink(mentorSnap.docs[0].data().calendarLink ?? '');
+        } catch {}
+
+        const interventionSnap = await getDocs(query(collection(db, 'interventions'), orderBy('createdAt', 'desc')));
 
         const myStudentIds = myStudents.map((s) => s.id);
 
@@ -120,6 +128,8 @@ export default function MentorDashboard() {
             date: d.data().date ?? '',
             description: d.data().description ?? '',
             status: d.data().status ?? 'pending',
+            openStatus: d.data().openStatus ?? '',
+            followUpDate: d.data().followUpDate ?? null,
             riskLevel: d.data().riskLevel ?? '',
             recordedBy: d.data().recordedBy ?? '',
             createdAt: d.data().createdAt ?? null,
@@ -140,6 +150,11 @@ export default function MentorDashboard() {
 
   const recentInterventions = interventions.slice(0, 3);
 
+  const today = new Date().toISOString().split('T')[0];
+  const overdueInterventions = interventions.filter(
+    (i) => i.openStatus === 'open' && i.followUpDate && i.followUpDate < today
+  );
+
   const recentlyAssigned = students.filter(s => {
     if (!s.createdAt) return false;
     const assignedDate = s.createdAt.toDate ? s.createdAt.toDate() : new Date(s.createdAt);
@@ -157,6 +172,16 @@ export default function MentorDashboard() {
           {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {students.length} students assigned to you
         </p>
       </div>
+
+      {/* Overdue follow-ups warning */}
+      {!loading && overdueInterventions.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm font-medium text-amber-900">
+            You have {overdueInterventions.length} overdue follow-up{overdueInterventions.length > 1 ? 's' : ''} — please review and update the intervention status.
+          </p>
+        </div>
+      )}
 
       {/* Recently assigned notification */}
       {!loading && recentlyAssigned.length > 0 && (
@@ -198,9 +223,8 @@ export default function MentorDashboard() {
           variant="outline"
           className="border-green-300 text-green-700 hover:bg-green-100 flex-shrink-0 text-xs gap-1.5"
           onClick={() => {
-            const link = (user as any)?.calendarLink;
-            if (link) {
-              window.open(link, '_blank');
+            if (calendarLink) {
+              window.open(calendarLink, '_blank');
             } else {
               toast.error('No Google Calendar link set. Go to Settings to add your calendar link.');
             }
@@ -296,10 +320,10 @@ export default function MentorDashboard() {
                       size="sm"
                       variant="outline"
                       className="flex-shrink-0 h-7 text-xs"
-                      onClick={() => window.open(
-                        `https://calendar.app.google/jCLhbY857ksnKQNC8?email=${encodeURIComponent(s.email ?? '')}`,
-                        '_blank'
-                      )}
+                      onClick={() => {
+                        const link = calendarLink || 'https://calendar.google.com';
+                        window.open(link, '_blank');
+                      }}
                     >
                       Book Session
                     </Button>
@@ -339,13 +363,20 @@ export default function MentorDashboard() {
                           {intervention.date || '—'} · By: {intervention.recordedBy || '—'}
                         </p>
                       </div>
-                      <Badge className={
-                        intervention.riskLevel === 'high' ? 'bg-red-100 text-red-800 border-red-200 text-xs' :
-                        intervention.riskLevel === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs' :
-                        'bg-green-100 text-green-800 border-green-200 text-xs'
-                      }>
-                        {intervention.riskLevel || 'low'} risk
-                      </Badge>
+                      <div className="flex flex-col gap-1 items-end flex-shrink-0">
+                        <Badge className={
+                          intervention.riskLevel === 'high' ? 'bg-red-100 text-red-800 border-red-200 text-xs' :
+                          intervention.riskLevel === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs' :
+                          'bg-green-100 text-green-800 border-green-200 text-xs'
+                        }>
+                          {intervention.riskLevel || 'low'} risk
+                        </Badge>
+                        {intervention.openStatus && (
+                          <Badge className={intervention.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
+                            {intervention.openStatus}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

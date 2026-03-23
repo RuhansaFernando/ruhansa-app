@@ -68,7 +68,7 @@ const ROLE_CONFIG = [
   },
   {
     key: 'courseLeaders',
-    label: 'Course Leaders',
+    label: 'Programme Leaders',
     color: '#6366f1',
     bgClass: 'bg-indigo-50',
     textClass: 'text-indigo-700',

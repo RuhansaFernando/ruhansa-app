@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { CALENDAR_LINKS } from '../config/calendarLinks';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
@@ -51,6 +51,8 @@ interface InterventionDoc {
   date: string;
   outcome: string;
   recordedBy: string;
+  openStatus?: string;
+  followUpDate?: string | null;
   createdAt: any;
 }
 
@@ -120,50 +122,56 @@ export default function MentorStudentsPage() {
   const [sessionOutcome, setSessionOutcome] = useState('');
   const [nextSteps, setNextSteps] = useState('');
   const [sessionSubmitting, setSessionSubmitting] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [interventionStatus, setInterventionStatus] = useState('open');
+  const [calendarLink, setCalendarLink] = useState('');
 
   useEffect(() => {
     const fetchStudents = async () => {
       setLoading(true);
-      try {
-        const mentorName = user?.name ?? '';
-        const mentorEmail = user?.email ?? '';
-        const mentorUid = (user as any)?.uid ?? '';
+      const mentorName = user?.name ?? '';
+      if (!mentorName) { setStudents([]); setLoading(false); return; }
 
+      const mapStudentFields = (d: any): Omit<StudentDoc, 'id'> => {
+        const data = d.data();
+        return {
+          studentId: data.studentId ?? d.id,
+          name: data.name ?? '',
+          email: data.email ?? '',
+          programme: data.programme ?? '',
+          level: data.level ?? '',
+          faculty: data.faculty ?? '',
+          intake: data.intake ?? '',
+          gender: data.gender ?? '',
+          dateOfBirth: data.dateOfBirth ?? '',
+          contactNumber: data.contactNumber ?? '',
+          attendancePercentage: data.attendancePercentage ?? 100,
+          consecutiveAbsences: data.consecutiveAbsences ?? 0,
+          gpa: data.gpa ?? 0,
+          riskLevel: data.riskLevel ?? 'low',
+          academicMentor: data.academicMentor ?? '',
+          status: data.status ?? 'active',
+        };
+      };
+
+      try {
         const snap = await getDocs(collection(db, 'students'));
-        setStudents(snap.docs
-          .filter((d) => {
-            const data = d.data();
-            return (
-              (mentorName && data.academicMentor === mentorName) ||
-              (mentorEmail && data.academicMentor === mentorEmail) ||
-              (mentorUid && data.mentorId === mentorUid)
-            );
-          })
-          .map((d) => ({
-          id: d.id,
-          studentId: d.data().studentId ?? d.id,
-          name: d.data().name ?? '',
-          email: d.data().email ?? '',
-          programme: d.data().programme ?? '',
-          level: d.data().level ?? '',
-          faculty: d.data().faculty ?? '',
-          intake: d.data().intake ?? '',
-          gender: d.data().gender ?? '',
-          dateOfBirth: d.data().dateOfBirth ?? '',
-          contactNumber: d.data().contactNumber ?? '',
-          attendancePercentage: d.data().attendancePercentage ?? 100,
-          consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
-          gpa: d.data().gpa ?? 0,
-          riskLevel: d.data().riskLevel ?? 'low',
-          academicMentor: d.data().academicMentor ?? '',
-          status: d.data().status ?? 'active',
-        })));
+        const allStudents = snap.docs.map(d => ({ id: d.id, ...mapStudentFields(d) }));
+        const mentorStudents = allStudents.filter(s =>
+          s.academicMentor?.trim().toLowerCase() === mentorName.trim().toLowerCase()
+        );
+        setStudents(mentorStudents);
+
+        try {
+          const mentorSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email ?? '')));
+          if (!mentorSnap.empty) setCalendarLink(mentorSnap.docs[0].data().calendarLink ?? '');
+        } catch {}
       } finally {
         setLoading(false);
       }
     };
     fetchStudents();
-  }, [user?.name, user?.email]);
+  }, [user?.name]);
 
   const programmes = useMemo(() => {
     const set = new Set(students.map((s) => s.programme).filter(Boolean));
@@ -189,26 +197,14 @@ export default function MentorStudentsPage() {
     setSessionNotes('');
     setSessionOutcome('');
     setNextSteps('');
+    setFollowUpDate('');
+    setInterventionStatus('open');
     setSessionModalOpen(true);
   };
 
   const handleBookAppointment = async (student: StudentDoc) => {
-    let calendarLink = (user as any)?.calendarLink;
-
-    if (!calendarLink) {
-      try {
-        const mentorSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email ?? '')));
-        if (!mentorSnap.empty) {
-          calendarLink = mentorSnap.docs[0].data().calendarLink;
-        }
-      } catch {}
-    }
-
-    if (!calendarLink) {
-      calendarLink = CALENDAR_LINKS.mentor;
-    }
-
-    window.open(calendarLink, '_blank');
+    const link = calendarLink || CALENDAR_LINKS.mentor;
+    window.open(link, '_blank');
 
     try {
       await addDoc(collection(db, 'appointments'), {
@@ -249,6 +245,8 @@ export default function MentorStudentsPage() {
         notes: sessionNotes,
         outcome: sessionOutcome,
         nextSteps: nextSteps,
+        followUpDate: followUpDate || null,
+        openStatus: interventionStatus,
         recordedBy: user?.name ?? 'Academic Mentor',
         recordedByRole: 'Academic Mentor',
         status: sessionOutcome === 'Resolved' ? 'completed' : 'in-progress',
@@ -284,6 +282,8 @@ export default function MentorStudentsPage() {
             date: d.data().date ?? '',
             outcome: d.data().outcome ?? '',
             recordedBy: d.data().recordedBy ?? '',
+            openStatus: d.data().openStatus ?? '',
+            followUpDate: d.data().followUpDate ?? null,
             createdAt: d.data().createdAt,
           }))
       );
@@ -374,6 +374,7 @@ export default function MentorStudentsPage() {
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Attendance %</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Consec. Abs.</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk Level</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Actions</th>
@@ -382,7 +383,7 @@ export default function MentorStudentsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                  <td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
                     No students found.
                   </td>
                 </tr>
@@ -399,6 +400,17 @@ export default function MentorStudentsPage() {
                       <span className={`font-medium text-sm ${s.attendancePercentage < 80 ? 'text-red-600' : ''}`}>
                         {s.attendancePercentage}%
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge className={
+                        s.consecutiveAbsences > 2
+                          ? 'bg-red-100 text-red-800 border-red-200 text-xs'
+                          : s.consecutiveAbsences > 0
+                          ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
+                          : 'bg-green-100 text-green-800 border-green-200 text-xs'
+                      }>
+                        {s.consecutiveAbsences}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm">{s.gpa.toFixed(2)}</td>
                     <td className="px-4 py-3">{getRiskBadge(s.riskLevel)}</td>
@@ -468,6 +480,18 @@ export default function MentorStudentsPage() {
                   </div>
                 ))}
                 <div className="space-y-0.5">
+                  <p className="text-xs text-muted-foreground">Consecutive Absences</p>
+                  <Badge className={
+                    selectedStudent.consecutiveAbsences > 2
+                      ? 'bg-red-100 text-red-800 border-red-200 text-xs'
+                      : selectedStudent.consecutiveAbsences > 0
+                      ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
+                      : 'bg-green-100 text-green-800 border-green-200 text-xs'
+                  }>
+                    {selectedStudent.consecutiveAbsences}
+                  </Badge>
+                </div>
+                <div className="space-y-0.5">
                   <p className="text-xs text-muted-foreground">Risk Level</p>
                   {getRiskBadge(selectedStudent.riskLevel)}
                 </div>
@@ -484,19 +508,35 @@ export default function MentorStudentsPage() {
                   <p className="text-sm text-muted-foreground">No interventions recorded.</p>
                 ) : (
                   <div className="space-y-2">
-                    {studentInterventions.map((i) => (
-                      <div key={i.id} className="rounded-lg border px-3 py-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{i.interventionType}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {i.date || formatDate(i.createdAt)}
-                          </span>
+                    {studentInterventions.map((i) => {
+                      const today = new Date().toISOString().split('T')[0];
+                      const isOverdue = i.openStatus === 'open' && i.followUpDate && i.followUpDate < today;
+                      return (
+                        <div key={i.id} className="rounded-lg border px-3 py-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{i.interventionType}</span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {i.openStatus && (
+                                <Badge className={i.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
+                                  {i.openStatus}
+                                </Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {i.date || formatDate(i.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Outcome: {i.outcome || '—'} · By: {i.recordedBy || '—'}
+                          </p>
+                          {i.followUpDate && (
+                            <p className={`text-xs mt-0.5 ${isOverdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                              Follow-up: {i.followUpDate}{isOverdue ? ' — Overdue' : ''}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Outcome: {i.outcome || '—'} · By: {i.recordedBy || '—'}
-                        </p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -599,6 +639,29 @@ export default function MentorStudentsPage() {
                 value={nextSteps}
                 onChange={(e) => setNextSteps(e.target.value)}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="followUpDate">Follow-up Date</Label>
+              <Input
+                id="followUpDate"
+                type="date"
+                value={followUpDate}
+                onChange={(e) => setFollowUpDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+              <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={interventionStatus} onValueChange={setInterventionStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {sessionStudent && (

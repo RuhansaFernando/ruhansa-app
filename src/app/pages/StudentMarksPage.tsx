@@ -10,7 +10,8 @@ import { BookOpen, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 interface ResultDoc {
   id: string;
   studentId: string;
-  module: string;
+  moduleCode: string;
+  moduleName: string;
   component1: number;
   component2: number;
   overall: number;
@@ -19,12 +20,18 @@ interface ResultDoc {
   academicYear: string;
 }
 
-const PassIcon = () => <CheckCircle className="h-4 w-4 text-green-600 inline" />;
-const FailIcon = () => <XCircle className="h-4 w-4 text-red-600 inline" />;
+const getGrade = (mark: number): string => {
+  if (mark >= 70) return 'A';
+  if (mark >= 60) return 'B';
+  if (mark >= 50) return 'C';
+  if (mark >= 40) return 'D';
+  return 'F';
+};
 
 export default function StudentMarksPage() {
   const { user } = useAuth();
   const [results, setResults] = useState<ResultDoc[]>([]);
+  const [gpa, setGpa] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [semesterFilter, setSemesterFilter] = useState('all');
   const [yearFilter, setYearFilter] = useState('all');
@@ -33,38 +40,69 @@ export default function StudentMarksPage() {
     const fetchResults = async () => {
       setLoading(true);
       try {
-        const snap = await getDocs(
-          query(collection(db, 'results'), where('studentId', '==', user?.id))
+        // Step 1: find student record by email
+        const studentSnap = await getDocs(
+          query(collection(db, 'students'), where('email', '==', user?.email ?? ''))
         );
+
+        if (studentSnap.empty) {
+          setLoading(false);
+          return;
+        }
+
+        const studentData = studentSnap.docs[0].data();
+        const studentId = studentData.studentId ?? studentSnap.docs[0].id;
+        setGpa(studentData.gpa ?? null);
+
+        // Step 2: load modules for name lookup
+        const modSnap = await getDocs(collection(db, 'modules'));
+        const moduleByCode = new Map<string, string>();
+        const moduleById = new Map<string, string>();
+        modSnap.forEach((d) => {
+          const code = d.data().moduleCode ?? '';
+          const name = d.data().moduleName ?? '';
+          if (code) moduleByCode.set(code, name);
+          moduleById.set(d.id, name);
+        });
+
+        // Step 3: load results by studentId
+        const resultsSnap = await getDocs(
+          query(collection(db, 'results'), where('studentId', '==', studentId))
+        );
+
         setResults(
-          snap.docs.map((d) => ({
-            id: d.id,
-            studentId: d.data().studentId ?? '',
-            module: d.data().module ?? d.data().moduleName ?? '',
-            component1: d.data().component1 ?? 0,
-            component2: d.data().component2 ?? 0,
-            overall: d.data().overall ?? 0,
-            moduleStatus: d.data().moduleStatus ?? (d.data().overall >= 40 ? 'pass' : 'fail'),
-            semester: d.data().semester ?? '',
-            academicYear: d.data().academicYear ?? '',
-          }))
+          resultsSnap.docs.map((d) => {
+            const data = d.data();
+            const rawCode = data.moduleCode ?? '';
+            const rawName = data.moduleName ?? data.module ?? '';
+            const resolvedName =
+              rawName ||
+              (rawCode ? (moduleByCode.get(rawCode) ?? '') : '') ||
+              (data.moduleId ? (moduleById.get(data.moduleId) ?? '') : '');
+            const overall = data.overall ?? 0;
+            return {
+              id: d.id,
+              studentId: data.studentId ?? '',
+              moduleCode: rawCode,
+              moduleName: resolvedName,
+              component1: data.component1 ?? 0,
+              component2: data.component2 ?? 0,
+              overall,
+              moduleStatus: data.moduleStatus ?? (overall >= 40 ? 'pass' : 'fail'),
+              semester: data.semester ?? '',
+              academicYear: data.academicYear ?? '',
+            };
+          })
         );
       } finally {
         setLoading(false);
       }
     };
     fetchResults();
-  }, [user?.id]);
+  }, [(user as any)?.uid, user?.email]);
 
-  const semesters = useMemo(() => {
-    const s = new Set(results.map((r) => r.semester).filter(Boolean));
-    return Array.from(s).sort();
-  }, [results]);
-
-  const academicYears = useMemo(() => {
-    const s = new Set(results.map((r) => r.academicYear).filter(Boolean));
-    return Array.from(s).sort().reverse();
-  }, [results]);
+  const semesters = useMemo(() => Array.from(new Set(results.map((r) => r.semester).filter(Boolean))).sort(), [results]);
+  const academicYears = useMemo(() => Array.from(new Set(results.map((r) => r.academicYear).filter(Boolean))).sort().reverse(), [results]);
 
   const filtered = useMemo(() => {
     let list = results;
@@ -76,16 +114,11 @@ export default function StudentMarksPage() {
   const passedCount = results.filter((r) => r.moduleStatus === 'pass').length;
   const failedCount = results.filter((r) => r.moduleStatus === 'fail').length;
 
-  // Compute GPA from results if available (overall >= 40 = pass, scale 0–100 → 0–4)
-  const gpa = results.length > 0
-    ? (results.reduce((sum, r) => sum + Math.min(4, (r.overall / 100) * 4), 0) / results.length)
-    : 0;
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Marks</h1>
-        <p className="text-muted-foreground text-sm mt-1">View your module results</p>
+        <p className="text-muted-foreground text-sm mt-1">View your module results and grades</p>
       </div>
 
       {/* Summary Cards */}
@@ -96,9 +129,9 @@ export default function StudentMarksPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Current GPA</p>
                 <p className="text-3xl font-bold mt-1 text-purple-600">
-                  {loading ? '—' : gpa.toFixed(2)}
+                  {loading ? '—' : gpa !== null ? gpa.toFixed(2) : '—'}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Based on module results</p>
+                <p className="text-xs text-muted-foreground mt-1">From student record</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-purple-50 flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-purple-600" />
@@ -112,9 +145,7 @@ export default function StudentMarksPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Modules Passed</p>
-                <p className="text-3xl font-bold mt-1 text-green-600">
-                  {loading ? '—' : passedCount}
-                </p>
+                <p className="text-3xl font-bold mt-1 text-green-600">{loading ? '—' : passedCount}</p>
                 <p className="text-xs text-muted-foreground mt-1">Overall ≥ 40%</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
@@ -129,9 +160,7 @@ export default function StudentMarksPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Modules Failed</p>
-                <p className="text-3xl font-bold mt-1 text-red-600">
-                  {loading ? '—' : failedCount}
-                </p>
+                <p className="text-3xl font-bold mt-1 text-red-600">{loading ? '—' : failedCount}</p>
                 <p className="text-xs text-muted-foreground mt-1">Overall &lt; 40%</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
@@ -150,9 +179,7 @@ export default function StudentMarksPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Semesters</SelectItem>
-            {semesters.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
+            {semesters.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={yearFilter} onValueChange={setYearFilter}>
@@ -161,9 +188,7 @@ export default function StudentMarksPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Years</SelectItem>
-            {academicYears.map((y) => (
-              <SelectItem key={y} value={y}>{y}</SelectItem>
-            ))}
+            {academicYears.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -178,54 +203,45 @@ export default function StudentMarksPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50">
-                <th className="text-left font-medium text-muted-foreground px-4 py-3">Module</th>
-                <th className="text-center font-medium text-muted-foreground px-4 py-3">Component 1</th>
-                <th className="text-center font-medium text-muted-foreground px-4 py-3">Component 2</th>
-                <th className="text-center font-medium text-muted-foreground px-4 py-3">Overall</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Code</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Name</th>
+                <th className="text-center font-medium text-muted-foreground px-4 py-3">Assessment</th>
+                <th className="text-center font-medium text-muted-foreground px-4 py-3">Mark</th>
+                <th className="text-center font-medium text-muted-foreground px-4 py-3">Grade</th>
                 <th className="text-center font-medium text-muted-foreground px-4 py-3">Status</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Semester</th>
+                <th className="text-left font-medium text-muted-foreground px-4 py-3">Academic Year</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
-                    No results yet.
+                  <td colSpan={8} className="text-center py-16 text-muted-foreground text-sm">
+                    <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    No marks recorded yet.
                   </td>
                 </tr>
               ) : (
                 filtered.map((r) => (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">
-                      <div>{r.module || '—'}</div>
-                      {(r.semester || r.academicYear) && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {[r.semester, r.academicYear].filter(Boolean).join(' · ')}
-                        </div>
-                      )}
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {r.moduleCode || '—'}
                     </td>
+                    <td className="px-4 py-3 font-medium">{r.moduleName || '—'}</td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {r.component1 >= 30 ? <PassIcon /> : <FailIcon />}
-                        <span className={r.component1 >= 30 ? 'text-green-700' : 'text-red-700'}>
-                          {r.component1}%
-                        </span>
+                      <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div>C1: <span className={r.component1 >= 30 ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>{r.component1}%</span></div>
+                        <div>C2: <span className={r.component2 >= 30 ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>{r.component2}%</span></div>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {r.component2 >= 30 ? <PassIcon /> : <FailIcon />}
-                        <span className={r.component2 >= 30 ? 'text-green-700' : 'text-red-700'}>
-                          {r.component2}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`font-semibold ${
-                          r.overall >= 40 ? 'text-green-700' : 'text-red-700'
-                        }`}
-                      >
+                      <span className={`text-lg font-bold ${r.overall >= 40 ? 'text-green-700' : 'text-red-700'}`}>
                         {r.overall}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`font-bold text-base ${r.overall >= 40 ? 'text-green-700' : 'text-red-600'}`}>
+                        {getGrade(r.overall)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -235,6 +251,8 @@ export default function StudentMarksPage() {
                         <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Fail</Badge>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground text-sm">{r.semester || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-sm">{r.academicYear || '—'}</td>
                   </tr>
                 ))
               )}

@@ -23,7 +23,7 @@ const ROLE_LABELS: Record<string, string> = {
   registry: 'Registry Staff',
   faculty: 'Faculty Administrators',
   student: 'Students',
-  course_leader: 'Course Leaders',
+  course_leader: 'Programme Leaders',
   advisor: 'Academic Advisors',
 };
 
@@ -65,7 +65,6 @@ const REQUIRED_FIELDS: Record<string, { key: string; label: string; required: bo
     { key: 'FullName', label: 'Full Name', required: true },
     { key: 'Email', label: 'Email', required: true },
     { key: 'Programme', label: 'Programme', required: false },
-    { key: 'Level', label: 'Level', required: false },
   ],
   advisor: [
     { key: 'StaffID', label: 'Staff ID', required: true },
@@ -96,7 +95,7 @@ const PASSWORD_MESSAGES: Record<string, { id: string; noun: string }> = {
   ssa: { id: 'StaffID', noun: 'Student Support Advisors' },
   mentor: { id: 'StaffID', noun: 'Academic Mentors' },
   faculty: { id: 'StaffID', noun: 'Faculty Administrators' },
-  course_leader: { id: 'StaffID', noun: 'Course Leaders' },
+  course_leader: { id: 'StaffID', noun: 'Programme Leaders' },
   advisor: { id: 'StaffID', noun: 'Advisors' },
 };
 

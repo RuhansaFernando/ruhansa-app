@@ -1,67 +1,43 @@
-import AdminSystemHealthPage from './pages/AdminSystemHealthPage';
-import SRUDashboard from './pages/SRUDashboard';
-import SRUStudentListPage from './pages/SRUStudentListPage';
-import SRUStudentsPage from './pages/SRUStudentsPage';
-import SRUInterventionsPage from './pages/SRUInterventionsPage';
-import SRUAlertsPage from './pages/SRUAlertsPage';
-import SRUReportsPage from './pages/SRUReportsPage';
-import SRUAppointmentsPage from './pages/SRUAppointmentsPage';
-import SRUStudentProfilePage from './pages/SRUStudentProfilePage';
-import AttendanceMonitoringPage from './pages/AttendanceMonitoringPage';
-import InterventionManagementPage from './pages/InterventionManagementPage';
 import { createBrowserRouter, redirect } from 'react-router';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/LoginPage';
-import AdvisorDashboard from './pages/AdvisorDashboard';
-import StudentProfile from './pages/StudentProfile';
 import StudentDashboard from './pages/StudentDashboard';
-import FacultyDashboard from './pages/FacultyDashboard';
-import CounselorDashboard from './pages/CounselorDashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import ReportsPage from './pages/ReportsPage';
-import AppointmentsPage from './pages/AppointmentsPage';
-import SettingsPage from './pages/SettingsPage';
-import FacultyStudentsPage from './pages/FacultyStudentsPage';
-import FacultyAlertsPage from './pages/FacultyAlertsPage';
-import CounselorCasesPage from './pages/CounselorCasesPage';
-import CounselorAnalyticsPage from './pages/CounselorAnalyticsPage';
-import StudentAppointmentsPage from './pages/StudentAppointmentsPage';
-import AdminStudentsPage from './pages/AdminStudentsPage';
-import AdminFacultyPage from './pages/AdminFacultyPage';
-import AdminAdvisorsPage from './pages/AdminAdvisorsPage';
-import AdminCounselorsPage from './pages/AdminCounselorsPage';
-import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
-import AdminAlertsPage from './pages/AdminAlertsPage';
-import AdminTutorsPage from './pages/AdminTutorsPage';
-import AdminUsersPage from './pages/AdminUsersPage';
-import AdminDataCheckPage from './pages/AdminDataCheckPage';
-import AdminSRUPage from './pages/AdminSRUPage';
-import AdminRegistryPage from './pages/AdminRegistryPage';
-import AdminAcademicPage from './pages/AdminAcademicPage';
-import AdminSRUManagementPage from './pages/AdminSRUManagementPage';
-import AdminRegistryManagementPage from './pages/AdminRegistryManagementPage';
-import RegistryAcademicRecordsPage from './pages/RegistryAcademicRecordsPage';
-import RegistryModuleEnrollmentPage from './pages/RegistryModuleEnrollmentPage';
-import RegistryMarksPage from './pages/RegistryMarksPage';
-import RegistryGradesPage from './pages/RegistryGradesPage';
-import RegistryReportsPage from './pages/RegistryReportsPage';
-import RegistryStudentsPage from './pages/RegistryStudentsPage';
-import RegistryMentorsPage from './pages/RegistryMentorsPage';
-import AcademicUploadPage from './pages/AcademicUploadPage';
 import StudentMarksPage from './pages/StudentMarksPage';
 import StudentAttendancePage from './pages/StudentAttendancePage';
+import StudentAppointmentsPage from './pages/StudentAppointmentsPage';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminStudentsPage from './pages/AdminStudentsPage';
+import AdminAdvisorsPage from './pages/AdminAdvisorsPage';
+import AdminCounselorsPage from './pages/AdminCounselorsPage';
+import AdminTutorsPage from './pages/AdminTutorsPage';
+import AdminAcademicPage from './pages/AdminAcademicPage';
+import AdminSRUPage from './pages/AdminSRUPage';
+import AdminRegistryManagementPage from './pages/AdminRegistryManagementPage';
+import AdminRegistryPage from './pages/AdminRegistryPage';
+import AdminCourseLeadersPage from './pages/AdminCourseLeadersPage';
+import AdminProgrammesPage from './pages/AdminProgrammesPage';
+import AdminFacultiesPage from './pages/AdminFacultiesPage';
+import RegistryStudentsPage from './pages/RegistryStudentsPage';
+import RegistryAcademicRecordsPage from './pages/RegistryAcademicRecordsPage';
+import RegistryModuleEnrollmentPage from './pages/RegistryModuleEnrollmentPage';
+import RegistryReportsPage from './pages/RegistryReportsPage';
+import AcademicUploadPage from './pages/AcademicUploadPage';
+import FacultyAdminDashboard from './pages/FacultyAdminDashboard';
+import FacultyAdminModulesPage from './pages/FacultyAdminModulesPage';
+import FacultyAdminReportsPage from './pages/FacultyAdminReportsPage';
 import MentorDashboard from './pages/MentorDashboard';
 import MentorStudentsPage from './pages/MentorStudentsPage';
-import MentorAppointmentsPage from './pages/MentorAppointmentsPage';
 import MentorSettingsPage from './pages/MentorSettingsPage';
-import ChangePasswordPage from './pages/ChangePasswordPage';
-import AvailabilitySettingsPage from './pages/AvailabilitySettingsPage';
+import SRUDashboard from './pages/SRUDashboard';
+import SRUStudentsPage from './pages/SRUStudentsPage';
+import SRUStudentProfilePage from './pages/SRUStudentProfilePage';
+import SRUInterventionsPage from './pages/SRUInterventionsPage';
+import SRUAlertsPage from './pages/SRUAlertsPage';
+import SRUAppointmentsPage from './pages/SRUAppointmentsPage';
+import SRUReportsPage from './pages/SRUReportsPage';
+import CourseLeaderDashboard from './pages/CourseLeaderDashboard';
 import CourseLeaderPage from './pages/CourseLeaderPage';
-import AdminCourseLeadersPage from './pages/AdminCourseLeadersPage';
-import SSASettingsPage from './pages/SSASettingsPage';
-import AdminProgrammesPage from './pages/AdminProgrammesPage';
-import FacultyAdminModulesPage from './pages/FacultyAdminModulesPage';
-import AdminFacultiesPage from './pages/AdminFacultiesPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import {
   RedirectToLogin,
   NotFound,
@@ -75,48 +51,6 @@ export const router = createBrowserRouter([
   {
     path: '/',
     Component: RedirectToLogin,
-  },
-  {
-    path: '/advisor',
-    Component: DashboardLayout,
-    children: [
-      {
-        index: true,
-        loader: () => redirect('/advisor/dashboard'),
-      },
-      {
-        path: 'dashboard',
-        Component: AdvisorDashboard,
-      },
-      {
-        path: 'student/:studentId',
-        Component: StudentProfile,
-      },
-      {
-        path: 'reports',
-        Component: ReportsPage,
-      },
-      {
-        path: 'appointments',
-        Component: AppointmentsPage,
-      },
-      {
-        path: 'attendance',
-        Component: AttendanceMonitoringPage,
-      },
-      {
-        path: 'interventions',
-        Component: InterventionManagementPage,
-      },
-      {
-        path: 'settings',
-        Component: SettingsPage,
-      },
-      {
-        path: 'change-password',
-        Component: ChangePasswordPage,
-      },
-    ],
   },
   {
     path: '/student',
@@ -143,78 +77,6 @@ export const router = createBrowserRouter([
         Component: StudentAppointmentsPage,
       },
       {
-        path: 'settings',
-        Component: SettingsPage,
-      },
-      {
-        path: 'change-password',
-        Component: ChangePasswordPage,
-      },
-    ],
-  },
-  {
-    path: '/faculty',
-    Component: DashboardLayout,
-    children: [
-      {
-        index: true,
-        loader: () => redirect('/faculty/dashboard'),
-      },
-      {
-        path: 'dashboard',
-        Component: FacultyDashboard,
-      },
-      {
-        path: 'student/:studentId',
-        Component: StudentProfile,
-      },
-      {
-        path: 'students',
-        Component: FacultyStudentsPage,
-      },
-      {
-        path: 'alerts',
-        Component: FacultyAlertsPage,
-      },
-      {
-        path: 'settings',
-        Component: SettingsPage,
-      },
-      {
-        path: 'change-password',
-        Component: ChangePasswordPage,
-      },
-    ],
-  },
-  {
-    path: '/counselor',
-    Component: DashboardLayout,
-    children: [
-      {
-        index: true,
-        loader: () => redirect('/counselor/dashboard'),
-      },
-      {
-        path: 'dashboard',
-        Component: CounselorDashboard,
-      },
-      {
-        path: 'student/:studentId',
-        Component: StudentProfile,
-      },
-      {
-        path: 'cases',
-        Component: CounselorCasesPage,
-      },
-      {
-        path: 'analytics',
-        Component: CounselorAnalyticsPage,
-      },
-      {
-        path: 'settings',
-        Component: SettingsPage,
-      },
-      {
         path: 'change-password',
         Component: ChangePasswordPage,
       },
@@ -233,16 +95,8 @@ export const router = createBrowserRouter([
         Component: AdminDashboard,
       },
       {
-        path: 'student/:studentId',
-        Component: StudentProfile,
-      },
-      {
         path: 'students',
         Component: AdminStudentsPage,
-      },
-      {
-        path: 'faculty',
-        Component: AdminFacultyPage,
       },
       {
         path: 'advisors',
@@ -255,34 +109,6 @@ export const router = createBrowserRouter([
       {
         path: 'tutors',
         Component: AdminTutorsPage,
-      },
-      {
-        path: 'analytics',
-        Component: AdminAnalyticsPage,
-      },
-      {
-        path: 'alerts',
-        Component: AdminAlertsPage,
-      },
-      {
-        path: 'users',
-        Component: AdminUsersPage,
-      },
-      {
-        path: 'health',
-        Component: AdminSystemHealthPage,
-      },
-      {
-        path: 'reports',
-        Component: ReportsPage,
-      },
-      {
-        path: 'sru',
-        Component: AdminSRUManagementPage,
-      },
-      {
-        path: 'registry',
-        Component: AdminRegistryManagementPage,
       },
       {
         path: 'sru-staff',
@@ -309,18 +135,6 @@ export const router = createBrowserRouter([
         Component: AdminFacultiesPage,
       },
       {
-        path: 'settings',
-        Component: SettingsPage,
-      },
-      {
-        path: 'interventions',
-        Component: InterventionManagementPage,
-      },
-      {
-        path: 'data-check',
-        Component: AdminDataCheckPage,
-      },
-      {
         path: 'change-password',
         Component: ChangePasswordPage,
       },
@@ -343,24 +157,12 @@ export const router = createBrowserRouter([
         Component: RegistryStudentsPage,
       },
       {
-        path: 'mentors',
-        Component: RegistryMentorsPage,
-      },
-      {
         path: 'academic-records',
         Component: RegistryAcademicRecordsPage,
       },
       {
         path: 'module-enrollment',
         Component: RegistryModuleEnrollmentPage,
-      },
-      {
-        path: 'marks',
-        Component: RegistryMarksPage,
-      },
-      {
-        path: 'grades',
-        Component: RegistryGradesPage,
       },
       {
         path: 'reports',
@@ -378,7 +180,11 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        loader: () => redirect('/academic/upload'),
+        loader: () => redirect('/academic/dashboard'),
+      },
+      {
+        path: 'dashboard',
+        Component: FacultyAdminDashboard,
       },
       {
         path: 'upload',
@@ -387,6 +193,10 @@ export const router = createBrowserRouter([
       {
         path: 'modules',
         Component: FacultyAdminModulesPage,
+      },
+      {
+        path: 'reports',
+        Component: FacultyAdminReportsPage,
       },
       {
         path: 'change-password',
@@ -411,20 +221,16 @@ export const router = createBrowserRouter([
         Component: MentorStudentsPage,
       },
       {
-        path: 'appointments',
-        Component: MentorAppointmentsPage,
-      },
-      {
-        path: 'change-password',
-        Component: ChangePasswordPage,
-      },
-      {
         path: 'availability',
         loader: () => redirect('/mentor/dashboard'),
       },
       {
         path: 'settings',
         Component: MentorSettingsPage,
+      },
+      {
+        path: 'change-password',
+        Component: ChangePasswordPage,
       },
     ],
   },
@@ -476,10 +282,6 @@ export const router = createBrowserRouter([
         path: 'change-password',
         Component: ChangePasswordPage,
       },
-      {
-        path: 'settings',
-        Component: SSASettingsPage,
-      },
     ],
   },
   {
@@ -488,7 +290,11 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        loader: () => redirect('/course-leader/mentor-assignment'),
+        loader: () => redirect('/course-leader/dashboard'),
+      },
+      {
+        path: 'dashboard',
+        Component: CourseLeaderDashboard,
       },
       {
         path: 'mentor-assignment',

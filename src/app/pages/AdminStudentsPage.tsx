@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import Papa from "papaparse";
 import {
   Card,
   CardContent,
@@ -34,10 +33,10 @@ import {
   UserCheck,
   UserX,
   Users,
-  Upload,
-  ArrowRight,
   Loader2,
   PlayCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   collection,
@@ -61,39 +60,77 @@ interface StudentRecord {
   faculty: string;
   programme: string;
   level: string;
-  status: "active" | "inactive";
+  status: string;
   accountActivated: boolean;
   riskLevel: string;
   riskScore: number;
   gpa: number;
 }
 
+const LEVEL_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+const STATUS_OPTIONS = ['active', 'inactive', 'pending', 'withdrawn', 'deferred', 'suspended', 'graduated'];
+const STUDENTS_PER_PAGE = 20;
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+};
+
+const getRiskBadge = (level: string) => {
+  switch (level?.toLowerCase()) {
+    case 'critical':
+      return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Critical</Badge>;
+    case 'high':
+      return <Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">High</Badge>;
+    case 'medium':
+      return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">Medium</Badge>;
+    case 'low':
+      return <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Low</Badge>;
+    default:
+      return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-xs">—</Badge>;
+  }
+};
+
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [filterFaculty, setFilterFaculty] = useState('all');
+  const [filterProgramme, setFilterProgramme] = useState('all');
+  const [filterLevel, setFilterLevel] = useState('all');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Add dialog
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [formStudentId, setFormStudentId] = useState("");
-  const [formName, setFormName] = useState("");
-  const [formEmail, setFormEmail] = useState("");
-  const [formFaculty, setFormFaculty] = useState("");
-  const [formProgramme, setFormProgramme] = useState("");
-  const [formLevel, setFormLevel] = useState("");
-  const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
+  const [formStudentId, setFormStudentId] = useState('');
+  const [formName, setFormName] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formFaculty, setFormFaculty] = useState('');
+  const [formProgramme, setFormProgramme] = useState('');
+  const [formLevel, setFormLevel] = useState('');
+  const [formStatus, setFormStatus] = useState<string>('active');
   const [autoFilled, setAutoFilled] = useState(false);
   const [studentNotFound, setStudentNotFound] = useState(false);
-  const [foundStudentDocId, setFoundStudentDocId] = useState("");
+  const [foundStudentDocId, setFoundStudentDocId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // Edit dialog
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRecord | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editStudentId, setEditStudentId] = useState("");
-  const [editEmail, setEditEmail] = useState("");
+  const [editName, setEditName] = useState('');
+  const [editStudentId, setEditStudentId] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editStatus, setEditStatus] = useState('active');
+  const [editLevel, setEditLevel] = useState('');
   const [isEditSaving, setIsEditSaving] = useState(false);
 
   // Bulk activate pending accounts
@@ -101,40 +138,30 @@ export default function AdminStudentsPage() {
   const [activating, setActivating] = useState(false);
   const [activateProgress, setActivateProgress] = useState<{ current: number; total: number } | null>(null);
 
-  // Mentor assignment
-  const [mentorAssignOpen, setMentorAssignOpen] = useState(false);
-  const [mentorHeaders, setMentorHeaders] = useState<string[]>([]);
-  const [mentorData, setMentorData] = useState<any[]>([]);
-  const [mentorMapping, setMentorMapping] = useState<{ studentId: string; mentorName: string }>({ studentId: '', mentorName: '' });
-  const [mentorSubmitting, setMentorSubmitting] = useState(false);
-  const [mentorResult, setMentorResult] = useState<{ updated: number; skipped: number; errors: string[] } | null>(null);
-
   useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, "students"),
-      (snap) => {
-        setStudents(
-          snap.docs.map((d) => ({
-            id: d.id,
-            studentId: d.data().studentId ?? d.id,
-            name: d.data().name ?? "",
-            email: d.data().email ?? "",
-            faculty: d.data().faculty ?? "",
-            programme: d.data().programme ?? "",
-            level: d.data().level ?? "",
-            status: d.data().status ?? "active",
-            accountActivated: d.data().accountActivated ?? false,
-            riskLevel: d.data().riskLevel ?? "low",
-            riskScore: d.data().riskScore ?? 0,
-            gpa: d.data().gpa ?? 0,
-          }))
-        );
-        setLoading(false);
-      }
-    );
+    const unsub = onSnapshot(collection(db, 'students'), (snap) => {
+      setStudents(
+        snap.docs.map((d) => ({
+          id: d.id,
+          studentId: d.data().studentId ?? d.id,
+          name: d.data().name ?? '',
+          email: d.data().email ?? '',
+          faculty: d.data().faculty ?? '',
+          programme: d.data().programme ?? '',
+          level: d.data().level ?? '',
+          status: d.data().status ?? 'active',
+          accountActivated: d.data().accountActivated ?? false,
+          riskLevel: d.data().riskLevel ?? '',
+          riskScore: d.data().riskScore ?? 0,
+          gpa: d.data().gpa ?? 0,
+        }))
+      );
+      setLoading(false);
+    });
     return () => unsub();
   }, []);
 
+  // Auto-fill from studentId lookup
   useEffect(() => {
     if (!formStudentId || formStudentId.length < 3) {
       setAutoFilled(false);
@@ -142,15 +169,15 @@ export default function AdminStudentsPage() {
       return;
     }
     const timer = setTimeout(async () => {
-      const snap = await getDocs(query(collection(db, "students"), where("studentId", "==", formStudentId.trim())));
+      const snap = await getDocs(query(collection(db, 'students'), where('studentId', '==', formStudentId.trim())));
       if (!snap.empty) {
         const data = snap.docs[0].data();
         setFoundStudentDocId(snap.docs[0].id);
-        setFormName(data.name ?? "");
-        setFormEmail(data.email ?? "");
-        setFormFaculty(data.faculty ?? "");
-        setFormProgramme(data.programme ?? "");
-        setFormLevel(data.level ?? "");
+        setFormName(data.name ?? '');
+        setFormEmail(data.email ?? '');
+        setFormFaculty(data.faculty ?? '');
+        setFormProgramme(data.programme ?? '');
+        setFormLevel(data.level ?? '');
         setAutoFilled(true);
         setStudentNotFound(false);
       } else {
@@ -161,39 +188,58 @@ export default function AdminStudentsPage() {
     return () => clearTimeout(timer);
   }, [formStudentId]);
 
+  // Reset page on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, filterFaculty, filterProgramme, filterLevel]);
+
+  // Unique faculty options
+  const facultyOptions = useMemo(() => {
+    const vals = Array.from(new Set(students.map((s) => s.faculty).filter(Boolean))).sort();
+    return vals;
+  }, [students]);
+
+  // Programme options — filtered by selected faculty
+  const programmeOptions = useMemo(() => {
+    const base = filterFaculty && filterFaculty !== 'all'
+      ? students.filter((s) => s.faculty === filterFaculty)
+      : students;
+    return Array.from(new Set(base.map((s) => s.programme).filter(Boolean))).sort();
+  }, [students, filterFaculty]);
+
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
+        !searchQuery ||
         s.name.toLowerCase().includes(q) ||
         s.studentId.toLowerCase().includes(q) ||
         s.email.toLowerCase().includes(q);
-      const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
+      const matchesFaculty = filterFaculty === 'all' || s.faculty === filterFaculty;
+      const matchesProgramme = filterProgramme === 'all' || s.programme === filterProgramme;
+      const matchesLevel = filterLevel === 'all' || s.level === filterLevel;
+      return matchesSearch && matchesStatus && matchesFaculty && matchesProgramme && matchesLevel;
     });
-  }, [students, searchQuery, statusFilter]);
+  }, [students, searchQuery, statusFilter, filterFaculty, filterProgramme, filterLevel]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE));
+  const paginatedStudents = filteredStudents.slice(
+    (currentPage - 1) * STUDENTS_PER_PAGE,
+    currentPage * STUDENTS_PER_PAGE
+  );
 
   const stats = {
     total: students.length,
-    active: students.filter((s) => s.status === "active").length,
-    inactive: students.filter((s) => s.status === "inactive").length,
-  };
-
-  const getRiskColor = (level: string) => {
-    switch (level) {
-      case "critical": return "bg-red-100 text-red-800 border-red-200";
-      case "high": return "bg-orange-100 text-orange-800 border-orange-200";
-      case "medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "low": return "bg-green-100 text-green-800 border-green-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
-    }
+    active: students.filter((s) => s.status === 'active').length,
+    inactive: students.filter((s) => s.status === 'inactive').length,
   };
 
   const resetAddDialog = () => {
-    setFormStudentId(""); setFormName(""); setFormEmail("");
-    setFormFaculty(""); setFormProgramme(""); setFormLevel("");
-    setFormStatus("active");
-    setAutoFilled(false); setStudentNotFound(false); setFoundStudentDocId("");
+    setFormStudentId(''); setFormName(''); setFormEmail('');
+    setFormFaculty(''); setFormProgramme(''); setFormLevel('');
+    setFormStatus('active');
+    setAutoFilled(false); setStudentNotFound(false); setFoundStudentDocId('');
   };
 
   const openAddDialog = () => {
@@ -203,7 +249,7 @@ export default function AdminStudentsPage() {
 
   const handleAddStudent = async () => {
     if (!autoFilled || !foundStudentDocId) {
-      toast.error("Search for a valid Student ID first");
+      toast.error('Search for a valid Student ID first');
       return;
     }
     const tempPassword = `${formStudentId.trim()}@DropGuard`;
@@ -211,7 +257,7 @@ export default function AdminStudentsPage() {
     try {
       const cred = await createUserWithEmailAndPassword(secondaryAuth, formEmail, tempPassword);
       await secondaryAuth.signOut();
-      await updateDoc(doc(db, "students", foundStudentDocId), {
+      await updateDoc(doc(db, 'students', foundStudentDocId), {
         uid: cred.user.uid,
         status: formStatus,
         mustChangePassword: true,
@@ -232,13 +278,13 @@ export default function AdminStudentsPage() {
       setIsAddOpen(false);
     } catch (err) {
       if (err instanceof FirebaseError) {
-        if (err.code === "auth/email-already-in-use") {
-          toast.error("A login account for this email already exists.");
+        if (err.code === 'auth/email-already-in-use') {
+          toast.error('A login account for this email already exists.');
         } else {
           toast.error(`Failed to create account: ${err.message}`);
         }
       } else {
-        toast.error("An unexpected error occurred. Please try again.");
+        toast.error('An unexpected error occurred. Please try again.');
       }
     } finally {
       setIsSaving(false);
@@ -250,36 +296,40 @@ export default function AdminStudentsPage() {
     setEditName(student.name);
     setEditStudentId(student.studentId);
     setEditEmail(student.email);
+    setEditStatus(student.status || 'active');
+    setEditLevel(student.level || '');
     setIsEditOpen(true);
   };
 
   const handleSaveEdit = async () => {
     if (!editingStudent || !editName.trim() || !editStudentId.trim() || !editEmail.trim()) {
-      toast.error("Please fill in all required fields");
+      toast.error('Please fill in all required fields');
       return;
     }
     setIsEditSaving(true);
     try {
-      await updateDoc(doc(db, "students", editingStudent.id), {
+      await updateDoc(doc(db, 'students', editingStudent.id), {
         name: editName.trim(),
         studentId: editStudentId.trim(),
         email: editEmail.trim(),
+        status: editStatus,
+        level: editLevel,
       });
-      toast.success("Student account updated successfully");
+      toast.success('Student account updated successfully');
       setIsEditOpen(false);
       setEditingStudent(null);
     } catch {
-      toast.error("Failed to update student. Please try again.");
+      toast.error('Failed to update student. Please try again.');
     } finally {
       setIsEditSaving(false);
     }
   };
 
   const handleToggleStatus = async (student: StudentRecord) => {
-    const newStatus = student.status === "active" ? "inactive" : "active";
+    const newStatus = student.status === 'active' ? 'inactive' : 'active';
     try {
-      await updateDoc(doc(db, "students", student.id), { status: newStatus });
-      if (newStatus === "active") {
+      await updateDoc(doc(db, 'students', student.id), { status: newStatus });
+      if (newStatus === 'active') {
         try {
           await emailjs.send('service_y8aewpn', 'template_welcome', {
             to_name: student.name,
@@ -290,19 +340,19 @@ export default function AdminStudentsPage() {
         } catch (emailErr) {
           console.warn('Welcome email failed:', emailErr);
         }
-        toast.success("Student account activated and welcome email sent.");
+        toast.success('Student account activated and welcome email sent.');
       } else {
-        toast.success("Student account deactivated.");
+        toast.success('Student account deactivated.');
       }
     } catch {
-      toast.error("Failed to update status. Please try again.");
+      toast.error('Failed to update status. Please try again.');
     }
   };
 
   const handleActivatePending = async () => {
-    const pending = students.filter((s) => !s.accountActivated || s.status !== "active");
+    const pending = students.filter((s) => !s.accountActivated || s.status !== 'active');
     if (pending.length === 0) {
-      toast.info("No pending students to activate.");
+      toast.info('No pending students to activate.');
       setActivateConfirmOpen(false);
       return;
     }
@@ -318,9 +368,9 @@ export default function AdminStudentsPage() {
       try {
         const cred = await createUserWithEmailAndPassword(secondaryAuth, student.email, tempPassword);
         await secondaryAuth.signOut();
-        await updateDoc(doc(db, "students", student.id), {
+        await updateDoc(doc(db, 'students', student.id), {
           uid: cred.user.uid,
-          status: "active",
+          status: 'active',
           accountActivated: true,
           mustChangePassword: true,
         });
@@ -336,10 +386,9 @@ export default function AdminStudentsPage() {
         }
         succeeded++;
       } catch (err) {
-        if (err instanceof FirebaseError && err.code === "auth/email-already-in-use") {
-          // Account exists — just mark as activated in Firestore
-          await updateDoc(doc(db, "students", student.id), {
-            status: "active",
+        if (err instanceof FirebaseError && err.code === 'auth/email-already-in-use') {
+          await updateDoc(doc(db, 'students', student.id), {
+            status: 'active',
             accountActivated: true,
           });
           succeeded++;
@@ -351,87 +400,41 @@ export default function AdminStudentsPage() {
 
     setActivating(false);
     setActivateProgress(null);
-    toast.success(`${succeeded} account${succeeded !== 1 ? "s" : ""} activated successfully.`);
+    toast.success(`${succeeded} account${succeeded !== 1 ? 's' : ''} activated successfully.`);
   };
 
-  const handleMentorFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    Papa.parse(f, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const headers = results.meta.fields ?? [];
-        setMentorHeaders(headers);
-        setMentorData(results.data as any[]);
-        // Auto-map columns
-        const studentIdCol = headers.find((h) =>
-          h.toLowerCase().replace(/[^a-z]/g, '').includes('studentid') ||
-          h.toLowerCase().replace(/[^a-z]/g, '').includes('studentno')
-        ) ?? '';
-        const mentorCol = headers.find((h) =>
-          h.toLowerCase().replace(/[^a-z]/g, '').includes('mentor') ||
-          h.toLowerCase().replace(/[^a-z]/g, '').includes('advisor')
-        ) ?? '';
-        setMentorMapping({ studentId: studentIdCol, mentorName: mentorCol });
-        setMentorResult(null);
-      },
-    });
-  };
-
-  const handleMentorAssign = async () => {
-    if (!mentorMapping.studentId || !mentorMapping.mentorName) {
-      toast.error("Please map both Student ID and Mentor Name columns");
-      return;
-    }
-    setMentorSubmitting(true);
-    let updated = 0;
-    let skipped = 0;
-    const errors: string[] = [];
-
-    for (const row of mentorData) {
-      const studentId = row[mentorMapping.studentId]?.trim();
-      const mentorName = row[mentorMapping.mentorName]?.trim();
-      if (!studentId || !mentorName) { skipped++; continue; }
-      try {
-        await updateDoc(doc(db, "students", studentId), { academicMentor: mentorName });
-        updated++;
-      } catch {
-        errors.push(`${studentId} — student not found`);
-        skipped++;
-      }
-    }
-
-    setMentorResult({ updated, skipped, errors });
-    setMentorSubmitting(false);
-  };
+  const pendingCount = students.filter((s) => !s.accountActivated || s.status !== 'active').length;
+  const startIndex = (currentPage - 1) * STUDENTS_PER_PAGE + 1;
+  const endIndex = Math.min(currentPage * STUDENTS_PER_PAGE, filteredStudents.length);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Students</h1>
-          <p className="text-muted-foreground">
-            Manage student accounts
-          </p>
+          <p className="text-muted-foreground">Manage student accounts</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             className="gap-2"
             onClick={() => setActivateConfirmOpen(true)}
-            disabled={activating || students.filter((s) => !s.accountActivated || s.status !== "active").length === 0}
+            disabled={activating || pendingCount === 0}
           >
             {activating ? (
-              <><Loader2 className="h-4 w-4 animate-spin" />
-                {activateProgress ? `Activating ${activateProgress.current} of ${activateProgress.total}…` : "Activating…"}
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {activateProgress
+                  ? `Activating ${activateProgress.current} of ${activateProgress.total}…`
+                  : 'Activating…'}
               </>
             ) : (
-              <><PlayCircle className="h-4 w-4" />
+              <>
+                <PlayCircle className="h-4 w-4" />
                 Activate Pending
-                {students.filter((s) => !s.accountActivated || s.status !== "active").length > 0 && (
+                {pendingCount > 0 && (
                   <span className="ml-1 bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5 rounded-full">
-                    {students.filter((s) => !s.accountActivated || s.status !== "active").length}
+                    {pendingCount}
                   </span>
                 )}
               </>
@@ -492,11 +495,11 @@ export default function AdminStudentsPage() {
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap gap-3 mb-6">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder="Search by name, ID or email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -504,20 +507,55 @@ export default function AdminStudentsPage() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[150px]">
+              <SelectTrigger className="w-[140px]">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                {STATUS_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s} className="capitalize">{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterFaculty} onValueChange={(v) => { setFilterFaculty(v); setFilterProgramme('all'); }}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Faculties" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Faculties</SelectItem>
+                {facultyOptions.map((f) => (
+                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterProgramme} onValueChange={setFilterProgramme}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Programmes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Programmes</SelectItem>
+                {programmeOptions.map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterLevel} onValueChange={setFilterLevel}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="All Years" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Years</SelectItem>
+                {LEVEL_OPTIONS.map((l) => (
+                  <SelectItem key={l} value={l}>{l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
           {/* Table */}
           {loading ? (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
               Loading students…
             </div>
           ) : filteredStudents.length === 0 ? (
@@ -526,88 +564,125 @@ export default function AdminStudentsPage() {
               <p>No students found matching your criteria</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Full Name</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Faculty</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
-                    <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.map((student) => (
-                    <tr
-                      key={student.id}
-                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {student.studentId}
-                      </td>
-                      <td className="px-4 py-3 font-medium">{student.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{student.email}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-[140px] truncate">
-                        {student.faculty || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate">
-                        {student.programme || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {student.level || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className={
-                            student.status === "active"
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : "bg-gray-100 text-gray-600 border-gray-200"
-                          }
-                        >
-                          {student.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1"
-                            onClick={() => openEditDialog(student)}
-                          >
-                            <Edit className="h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                          {student.status === "active" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:text-red-600 hover:bg-red-50 border-red-200"
-                              onClick={() => handleToggleStatus(student)}
-                            >
-                              Deactivate
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-600 hover:text-green-600 hover:bg-green-50 border-green-200"
-                              onClick={() => handleToggleStatus(student)}
-                            >
-                              Activate
-                            </Button>
-                          )}
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Full Name</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Faculty</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Account</th>
+                      <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {paginatedStudents.map((student) => (
+                      <tr key={student.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{student.studentId}</td>
+                        <td className="px-4 py-3 font-medium">{student.name}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{student.email}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[120px] truncate">{student.faculty || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[140px] truncate">{student.programme || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{student.level || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">
+                          {student.gpa ? student.gpa.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-4 py-3">{getRiskBadge(student.riskLevel)}</td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            className={
+                              student.status === 'active'
+                                ? 'bg-green-100 text-green-800 border-green-200 text-xs'
+                                : student.status === 'inactive'
+                                ? 'bg-gray-100 text-gray-600 border-gray-200 text-xs'
+                                : 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
+                            }
+                          >
+                            {student.status || '—'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {student.accountActivated ? (
+                            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Activated</Badge>
+                          ) : (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Pending</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1"
+                              onClick={() => openEditDialog(student)}
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            {student.status === 'active' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-600 hover:bg-red-50 border-red-200"
+                                onClick={() => handleToggleStatus(student)}
+                              >
+                                Deactivate
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 hover:text-green-600 hover:bg-green-50 border-green-200"
+                                onClick={() => handleToggleStatus(student)}
+                              >
+                                Activate
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4 pt-4 border-t text-sm text-muted-foreground">
+                <span>
+                  Showing {filteredStudents.length === 0 ? 0 : startIndex}–{endIndex} of {filteredStudents.length} students
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -618,10 +693,7 @@ export default function AdminStudentsPage() {
           <DialogHeader>
             <DialogTitle>Activate Pending Accounts</DialogTitle>
             <DialogDescription>
-              {(() => {
-                const count = students.filter((s) => !s.accountActivated || s.status !== "active").length;
-                return `${count} student${count !== 1 ? "s are" : " is"} pending activation. Create Firebase Auth accounts and send welcome emails to all of them?`;
-              })()}
+              {pendingCount} student{pendingCount !== 1 ? 's are' : ' is'} pending activation. Create Firebase Auth accounts and send welcome emails to all of them?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -643,7 +715,6 @@ export default function AdminStudentsPage() {
             <DialogDescription>Enter a Student ID to look up their details.</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            {/* Step 1 — always visible */}
             <div className="space-y-2">
               <Label htmlFor="form-studentId">Student ID <span className="text-red-500">*</span></Label>
               <Input
@@ -659,14 +730,12 @@ export default function AdminStudentsPage() {
               />
             </div>
 
-            {/* Step 3 — not found */}
             {studentNotFound && (
               <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
                 ✗ Student ID not found in the system
               </div>
             )}
 
-            {/* Step 2 — found */}
             {autoFilled && (
               <>
                 <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700 font-medium">
@@ -675,11 +744,11 @@ export default function AdminStudentsPage() {
 
                 <div className="space-y-3">
                   {[
-                    { label: "Full Name", value: formName, id: "form-name" },
-                    { label: "Email", value: formEmail, id: "form-email" },
-                    { label: "Faculty", value: formFaculty, id: "form-faculty" },
-                    { label: "Programme", value: formProgramme, id: "form-programme" },
-                    { label: "Level / Year", value: formLevel, id: "form-level" },
+                    { label: 'Full Name', value: formName, id: 'form-name' },
+                    { label: 'Email', value: formEmail, id: 'form-email' },
+                    { label: 'Faculty', value: formFaculty, id: 'form-faculty' },
+                    { label: 'Programme', value: formProgramme, id: 'form-programme' },
+                    { label: 'Level / Year', value: formLevel, id: 'form-level' },
                   ].map(({ label, value, id }) => (
                     <div key={id} className="space-y-1">
                       <Label htmlFor={id} className="text-sm">{label}</Label>
@@ -696,11 +765,14 @@ export default function AdminStudentsPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="form-status">Status</Label>
-                  <Select value={formStatus} onValueChange={(v) => setFormStatus(v as "active" | "inactive")}>
+                  <Select value={formStatus} onValueChange={setFormStatus}>
                     <SelectTrigger id="form-status"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
+                      {STATUS_OPTIONS.map((s) => (
+                        <SelectItem key={s} value={s} className="capitalize">
+                          {s.charAt(0).toUpperCase() + s.slice(1)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -711,7 +783,7 @@ export default function AdminStudentsPage() {
             <Button size="sm" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
             {autoFilled && (
               <Button size="sm" disabled={isSaving} onClick={handleAddStudent}>
-                {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating…</> : "Create Account & Send Email"}
+                {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating…</> : 'Create Account & Send Email'}
               </Button>
             )}
           </DialogFooter>
@@ -719,161 +791,87 @@ export default function AdminStudentsPage() {
       </Dialog>
 
       {/* Edit Student Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={(open) => { if (!open) { setEditName(''); setEditStudentId(''); setEditEmail(''); setEditingStudent(null); } setIsEditOpen(open); }}>
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditName(''); setEditStudentId(''); setEditEmail('');
+            setEditStatus('active'); setEditLevel(''); setEditingStudent(null);
+          }
+          setIsEditOpen(open);
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Student</DialogTitle>
             <DialogDescription>Update the student's information</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4" autoComplete="off">
-            <input type="text" style={{display:'none'}} autoComplete="username" readOnly />
-            <input type="password" style={{display:'none'}} autoComplete="current-password" readOnly />
+          <div className="space-y-4">
+            <input type="text" style={{ display: 'none' }} autoComplete="username" readOnly />
+            <input type="password" style={{ display: 'none' }} autoComplete="current-password" readOnly />
             <div className="space-y-2">
               <Label htmlFor="edit-name">Full Name <span className="text-red-500">*</span></Label>
-              <Input
-                id="edit-name"
-                autoComplete="off"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-              />
+              <Input id="edit-name" autoComplete="off" value={editName} onChange={(e) => setEditName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-studentId">Student ID <span className="text-red-500">*</span></Label>
-              <Input
-                id="edit-studentId"
-                autoComplete="off"
-                value={editStudentId}
-                onChange={(e) => setEditStudentId(e.target.value)}
-              />
+              <Input id="edit-studentId" autoComplete="off" value={editStudentId} onChange={(e) => setEditStudentId(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-email">Email <span className="text-red-500">*</span></Label>
+              <Input id="edit-email" type="email" autoComplete="off" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-faculty">Faculty</Label>
               <Input
-                id="edit-email"
-                type="email"
-                autoComplete="off"
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
+                id="edit-faculty"
+                value={editingStudent?.faculty || '—'}
+                readOnly
+                className="bg-gray-50 text-muted-foreground cursor-default"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-programme">Programme</Label>
+              <Input
+                id="edit-programme"
+                value={editingStudent?.programme || '—'}
+                readOnly
+                className="bg-gray-50 text-muted-foreground cursor-default"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-level">Level / Year</Label>
+              <Select value={editLevel} onValueChange={setEditLevel}>
+                <SelectTrigger id="edit-level"><SelectValue placeholder="Select year" /></SelectTrigger>
+                <SelectContent>
+                  {LEVEL_OPTIONS.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select value={editStatus} onValueChange={setEditStatus}>
+                <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s} className="capitalize">
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
             <Button size="sm" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
             <Button size="sm" disabled={isEditSaving} onClick={handleSaveEdit}>
-              {isEditSaving ? "Saving…" : "Save"}
+              {isEditSaving ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Mentor Assignment Dialog */}
-      <Dialog open={mentorAssignOpen} onOpenChange={(open) => { if (!open) { setMentorData([]); setMentorHeaders([]); setMentorMapping({ studentId: '', mentorName: '' }); setMentorResult(null); } setMentorAssignOpen(open); }}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Assign Academic Mentors</DialogTitle>
-            <DialogDescription>
-              Upload a CSV with Student IDs and Mentor Names to bulk-assign mentors.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {mentorData.length === 0 ? (
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
-                <div className="flex flex-col items-center gap-2">
-                  <Upload className="h-7 w-7 text-gray-400" />
-                  <p className="text-sm text-gray-600">Click to upload CSV</p>
-                  <p className="text-xs text-gray-400">Must contain Student ID and Mentor Name columns</p>
-                </div>
-                <input type="file" accept=".csv" className="hidden" onChange={handleMentorFileChange} />
-              </label>
-            ) : mentorResult ? (
-              <div className={`rounded-xl p-5 border text-center ${mentorResult.skipped === 0 && mentorResult.errors.length === 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-                <p className="font-medium text-base mb-1">
-                  {mentorResult.updated} student{mentorResult.updated !== 1 ? 's' : ''} updated
-                </p>
-                {mentorResult.skipped > 0 && (
-                  <p className="text-sm text-amber-700">{mentorResult.skipped} rows skipped</p>
-                )}
-                {mentorResult.errors.length > 0 && (
-                  <div className="text-left mt-3 space-y-1 max-h-28 overflow-y-auto">
-                    {mentorResult.errors.map((e, i) => (
-                      <p key={i} className="text-xs text-red-700">• {e}</p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                  <p className="text-xs text-blue-700">
-                    CSV loaded: <strong>{mentorData.length} rows</strong>, {mentorHeaders.length} columns.
-                    Map the columns below.
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-4 p-3 border rounded-xl">
-                    <div className="w-36 flex-shrink-0">
-                      <p className="text-sm font-medium">Student ID</p>
-                      <span className="text-[10px] text-red-500 font-medium">Required</span>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                    <Select value={mentorMapping.studentId} onValueChange={(v) => setMentorMapping((p) => ({ ...p, studentId: v }))}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select column..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mentorHeaders.map((h) => (
-                          <SelectItem key={h} value={h}>{h}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center gap-4 p-3 border rounded-xl">
-                    <div className="w-36 flex-shrink-0">
-                      <p className="text-sm font-medium">Mentor Name</p>
-                      <span className="text-[10px] text-red-500 font-medium">Required</span>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                    <Select value={mentorMapping.mentorName} onValueChange={(v) => setMentorMapping((p) => ({ ...p, mentorName: v }))}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select column..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mentorHeaders.map((h) => (
-                          <SelectItem key={h} value={h}>{h}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button size="sm" variant="outline" onClick={() => setMentorAssignOpen(false)}>
-              {mentorResult ? 'Close' : 'Cancel'}
-            </Button>
-            {mentorData.length > 0 && !mentorResult && (
-              <Button
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-700 gap-1.5"
-                disabled={mentorSubmitting || !mentorMapping.studentId || !mentorMapping.mentorName}
-                onClick={handleMentorAssign}
-              >
-                {mentorSubmitting ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating...</>
-                ) : (
-                  <>Assign {mentorData.length} Mentors</>
-                )}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
     </div>
   );
 }

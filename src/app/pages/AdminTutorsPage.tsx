@@ -149,6 +149,7 @@ export default function AdminTutorsPage() {
           department: formDepartment,
           status: formStatus,
           role: "academic_mentor",
+          mustChangePassword: true,
           createdAt: serverTimestamp(),
         });
         try {
