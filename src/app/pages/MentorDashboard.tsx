@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Users, AlertTriangle, Activity, Loader2 } from 'lucide-react';
+import { Users, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
@@ -23,22 +23,6 @@ interface StudentDoc {
   createdAt?: any;
 }
 
-interface InterventionDoc {
-  id: string;
-  studentId: string;
-  studentName?: string;
-  interventionType?: string;
-  type?: string;
-  date?: string;
-  description?: string;
-  status: string;
-  openStatus?: string;
-  followUpDate?: string | null;
-  riskLevel?: string;
-  recordedBy?: string;
-  createdAt: any;
-}
-
 const getRiskBadge = (riskLevel: string) => {
   if (riskLevel === 'high')
     return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">High</Badge>;
@@ -47,28 +31,11 @@ const getRiskBadge = (riskLevel: string) => {
   return <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Low</Badge>;
 };
 
-const getInterventionStatusBadge = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Completed</Badge>;
-    case 'in-progress':
-      return <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">In Progress</Badge>;
-    case 'pending':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Pending</Badge>;
-    case 'cancelled':
-      return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Cancelled</Badge>;
-    default:
-      return <Badge className="text-xs">{status}</Badge>;
-  }
-};
-
 export default function MentorDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
   const [students, setStudents] = useState<StudentDoc[]>([]);
-  const [interventions, setInterventions] = useState<InterventionDoc[]>([]);
-  const [interventionCount, setInterventionCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [calendarLink, setCalendarLink] = useState('');
 
@@ -78,8 +45,6 @@ export default function MentorDashboard() {
       const mentorName = user?.name ?? '';
       if (!mentorName) {
         setStudents([]);
-        setInterventions([]);
-        setInterventionCount(0);
         setLoading(false);
         return;
       }
@@ -112,31 +77,6 @@ export default function MentorDashboard() {
           const mentorSnap = await getDocs(query(collection(db, 'academic_mentors'), where('email', '==', user?.email ?? '')));
           if (!mentorSnap.empty) setCalendarLink(mentorSnap.docs[0].data().calendarLink ?? '');
         } catch {}
-
-        const interventionSnap = await getDocs(query(collection(db, 'interventions'), orderBy('createdAt', 'desc')));
-
-        const myStudentIds = myStudents.map((s) => s.id);
-
-        const myInterventions: InterventionDoc[] = interventionSnap.docs
-          .filter((d) => myStudentIds.includes(d.data().studentId))
-          .map((d) => ({
-            id: d.id,
-            studentId: d.data().studentId ?? '',
-            studentName: d.data().studentName ?? '',
-            interventionType: d.data().interventionType ?? '',
-            type: d.data().type ?? '',
-            date: d.data().date ?? '',
-            description: d.data().description ?? '',
-            status: d.data().status ?? 'pending',
-            openStatus: d.data().openStatus ?? '',
-            followUpDate: d.data().followUpDate ?? null,
-            riskLevel: d.data().riskLevel ?? '',
-            recordedBy: d.data().recordedBy ?? '',
-            createdAt: d.data().createdAt ?? null,
-          }));
-
-        setInterventions(myInterventions);
-        setInterventionCount(myInterventions.length);
       } finally {
         setLoading(false);
       }
@@ -146,13 +86,6 @@ export default function MentorDashboard() {
 
   const atRiskStudents = students.filter(
     (s) => s.riskLevel === 'high' || s.riskLevel === 'medium'
-  );
-
-  const recentInterventions = interventions.slice(0, 3);
-
-  const today = new Date().toISOString().split('T')[0];
-  const overdueInterventions = interventions.filter(
-    (i) => i.openStatus === 'open' && i.followUpDate && i.followUpDate < today
   );
 
   const recentlyAssigned = students.filter(s => {
@@ -172,16 +105,6 @@ export default function MentorDashboard() {
           {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {students.length} students assigned to you
         </p>
       </div>
-
-      {/* Overdue follow-ups warning */}
-      {!loading && overdueInterventions.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
-          <p className="text-sm font-medium text-amber-900">
-            You have {overdueInterventions.length} overdue follow-up{overdueInterventions.length > 1 ? 's' : ''} — please review and update the intervention status.
-          </p>
-        </div>
-      )}
 
       {/* Recently assigned notification */}
       {!loading && recentlyAssigned.length > 0 && (
@@ -235,7 +158,7 @@ export default function MentorDashboard() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
@@ -264,24 +187,10 @@ export default function MentorDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Interventions</CardTitle>
-            <div className="h-9 w-9 rounded-full bg-purple-100 flex items-center justify-center">
-              <Activity className="h-5 w-5 text-purple-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-purple-600">{loading ? '—' : interventionCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Logged this semester</p>
-          </CardContent>
-        </Card>
-
       </div>
 
-      {/* Two-column section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: At-Risk Students */}
+      {/* At-Risk Students */}
+      <div>
         <Card>
           <CardHeader>
             <CardTitle className="text-base">My At-Risk Students</CardTitle>
@@ -327,57 +236,6 @@ export default function MentorDashboard() {
                     >
                       Book Session
                     </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Right: Recent Interventions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent Interventions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading...
-              </div>
-            ) : recentInterventions.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground text-sm">
-                No interventions logged yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {recentInterventions.map((intervention: any) => (
-                  <div key={intervention.id} className="p-3 border rounded-xl bg-white hover:bg-gray-50">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{intervention.studentName || '—'}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {intervention.interventionType || intervention.type || '—'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {intervention.date || '—'} · By: {intervention.recordedBy || '—'}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-1 items-end flex-shrink-0">
-                        <Badge className={
-                          intervention.riskLevel === 'high' ? 'bg-red-100 text-red-800 border-red-200 text-xs' :
-                          intervention.riskLevel === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs' :
-                          'bg-green-100 text-green-800 border-green-200 text-xs'
-                        }>
-                          {intervention.riskLevel || 'low'} risk
-                        </Badge>
-                        {intervention.openStatus && (
-                          <Badge className={intervention.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
-                            {intervention.openStatus}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 ))}
               </div>

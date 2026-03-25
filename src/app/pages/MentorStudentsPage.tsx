@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { CALENDAR_LINKS } from '../config/calendarLinks';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
@@ -7,13 +7,11 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../components/ui/dialog';
-import { Search, Loader2, X, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
@@ -39,21 +37,9 @@ interface StudentDoc {
   consecutiveAbsences: number;
   gpa: number;
   riskLevel: string;
+  riskScore: number;
   academicMentor: string;
   status: string;
-}
-
-interface InterventionDoc {
-  id: string;
-  studentId: string;
-  studentName: string;
-  interventionType: string;
-  date: string;
-  outcome: string;
-  recordedBy: string;
-  openStatus?: string;
-  followUpDate?: string | null;
-  createdAt: any;
 }
 
 interface AppointmentDoc {
@@ -66,7 +52,8 @@ interface AppointmentDoc {
   status: string;
 }
 
-const getRiskBadge = (riskLevel: string) => {
+const getRiskBadge = (riskLevel: string, riskScore: number) => {
+  if (!riskScore) return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-xs">Pending</Badge>;
   if (riskLevel === 'high')
     return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">High</Badge>;
   if (riskLevel === 'medium')
@@ -89,16 +76,6 @@ const getStatusBadge = (status: string) => {
   }
 };
 
-const formatDate = (val: any) => {
-  if (!val) return '—';
-  try {
-    const d = val?.toDate ? val.toDate() : new Date(val);
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  } catch {
-    return '—';
-  }
-};
-
 export default function MentorStudentsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -111,19 +88,8 @@ export default function MentorStudentsPage() {
   const [programmeFilter, setProgrammeFilter] = useState('all');
 
   const [selectedStudent, setSelectedStudent] = useState<StudentDoc | null>(null);
-  const [studentInterventions, setStudentInterventions] = useState<InterventionDoc[]>([]);
   const [studentAppointments, setStudentAppointments] = useState<AppointmentDoc[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
-
-  const [sessionModalOpen, setSessionModalOpen] = useState(false);
-  const [sessionStudent, setSessionStudent] = useState<StudentDoc | null>(null);
-  const [sessionType, setSessionType] = useState('Academic Mentoring Session');
-  const [sessionNotes, setSessionNotes] = useState('');
-  const [sessionOutcome, setSessionOutcome] = useState('');
-  const [nextSteps, setNextSteps] = useState('');
-  const [sessionSubmitting, setSessionSubmitting] = useState(false);
-  const [followUpDate, setFollowUpDate] = useState('');
-  const [interventionStatus, setInterventionStatus] = useState('open');
   const [calendarLink, setCalendarLink] = useState('');
 
   useEffect(() => {
@@ -149,6 +115,7 @@ export default function MentorStudentsPage() {
           consecutiveAbsences: data.consecutiveAbsences ?? 0,
           gpa: data.gpa ?? 0,
           riskLevel: data.riskLevel ?? 'low',
+          riskScore: data.riskScore ?? 0,
           academicMentor: data.academicMentor ?? '',
           status: data.status ?? 'active',
         };
@@ -191,17 +158,6 @@ export default function MentorStudentsPage() {
     return list;
   }, [students, riskFilter, programmeFilter, search]);
 
-  const openSessionModal = (student: StudentDoc) => {
-    setSessionStudent(student);
-    setSessionType('Academic Mentoring Session');
-    setSessionNotes('');
-    setSessionOutcome('');
-    setNextSteps('');
-    setFollowUpDate('');
-    setInterventionStatus('open');
-    setSessionModalOpen(true);
-  };
-
   const handleBookAppointment = async (student: StudentDoc) => {
     const link = calendarLink || CALENDAR_LINKS.mentor;
     window.open(link, '_blank');
@@ -227,66 +183,11 @@ export default function MentorStudentsPage() {
     }
   };
 
-  const handleSessionSubmit = async () => {
-    if (!sessionStudent || !sessionNotes) {
-      toast.error('Please add session notes before saving');
-      return;
-    }
-    setSessionSubmitting(true);
-    try {
-      await addDoc(collection(db, 'interventions'), {
-        studentId: sessionStudent.id,
-        studentName: sessionStudent.name,
-        programme: sessionStudent.programme,
-        riskLevel: sessionStudent.riskLevel,
-        interventionType: sessionType,
-        type: sessionType,
-        date: new Date().toISOString().split('T')[0],
-        notes: sessionNotes,
-        outcome: sessionOutcome,
-        nextSteps: nextSteps,
-        followUpDate: followUpDate || null,
-        openStatus: interventionStatus,
-        recordedBy: user?.name ?? 'Academic Mentor',
-        recordedByRole: 'Academic Mentor',
-        status: sessionOutcome === 'Resolved' ? 'completed' : 'in-progress',
-        createdAt: serverTimestamp(),
-      });
-      toast.success(`Session notes saved for ${sessionStudent.name}`);
-      setSessionModalOpen(false);
-    } catch {
-      toast.error('Failed to save session notes. Please try again.');
-    } finally {
-      setSessionSubmitting(false);
-    }
-  };
-
   const openProfile = async (student: StudentDoc) => {
     setSelectedStudent(student);
     setModalLoading(true);
     try {
-      const [intSnap, apptSnap] = await Promise.all([
-        getDocs(query(collection(db, 'interventions'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'appointments'), orderBy('date', 'desc'))),
-      ]);
-
-      setStudentInterventions(
-        intSnap.docs
-          .filter((d) => d.data().studentId === student.id || d.data().studentName === student.name)
-          .slice(0, 5)
-          .map((d) => ({
-            id: d.id,
-            studentId: d.data().studentId ?? '',
-            studentName: d.data().studentName ?? '',
-            interventionType: d.data().interventionType ?? '',
-            date: d.data().date ?? '',
-            outcome: d.data().outcome ?? '',
-            recordedBy: d.data().recordedBy ?? '',
-            openStatus: d.data().openStatus ?? '',
-            followUpDate: d.data().followUpDate ?? null,
-            createdAt: d.data().createdAt,
-          }))
-      );
+      const apptSnap = await getDocs(query(collection(db, 'appointments'), orderBy('date', 'desc')));
 
       setStudentAppointments(
         apptSnap.docs
@@ -413,7 +314,7 @@ export default function MentorStudentsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm">{s.gpa.toFixed(2)}</td>
-                    <td className="px-4 py-3">{getRiskBadge(s.riskLevel)}</td>
+                    <td className="px-4 py-3">{getRiskBadge(s.riskLevel, s.riskScore)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Button
@@ -423,13 +324,6 @@ export default function MentorStudentsPage() {
                           onClick={() => openProfile(s)}
                         >
                           View Profile
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700"
-                          onClick={() => openSessionModal(s)}
-                        >
-                          Log Session Notes
                         </Button>
                         <Button
                           size="sm"
@@ -493,52 +387,8 @@ export default function MentorStudentsPage() {
                 </div>
                 <div className="space-y-0.5">
                   <p className="text-xs text-muted-foreground">Risk Level</p>
-                  {getRiskBadge(selectedStudent.riskLevel)}
+                  {getRiskBadge(selectedStudent.riskLevel, selectedStudent.riskScore)}
                 </div>
-              </div>
-
-              {/* Interventions */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2">Recent Interventions</h3>
-                {modalLoading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Loading...
-                  </div>
-                ) : studentInterventions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No interventions recorded.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {studentInterventions.map((i) => {
-                      const today = new Date().toISOString().split('T')[0];
-                      const isOverdue = i.openStatus === 'open' && i.followUpDate && i.followUpDate < today;
-                      return (
-                        <div key={i.id} className="rounded-lg border px-3 py-2 text-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">{i.interventionType}</span>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {i.openStatus && (
-                                <Badge className={i.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
-                                  {i.openStatus}
-                                </Badge>
-                              )}
-                              <span className="text-xs text-muted-foreground">
-                                {i.date || formatDate(i.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Outcome: {i.outcome || '—'} · By: {i.recordedBy || '—'}
-                          </p>
-                          {i.followUpDate && (
-                            <p className={`text-xs mt-0.5 ${isOverdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
-                              Follow-up: {i.followUpDate}{isOverdue ? ' — Overdue' : ''}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
               {/* Appointments */}
@@ -571,128 +421,6 @@ export default function MentorStudentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Session Notes Modal */}
-      <Dialog open={sessionModalOpen} onOpenChange={setSessionModalOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Log Session Notes</DialogTitle>
-            {sessionStudent && (
-              <p className="text-sm text-muted-foreground">
-                Recording notes for <strong>{sessionStudent.name}</strong> · {sessionStudent.studentId}
-              </p>
-            )}
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Session Type</Label>
-              <Select value={sessionType} onValueChange={setSessionType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Academic Mentoring Session">Academic Mentoring Session</SelectItem>
-                  <SelectItem value="Academic Progress Review">Academic Progress Review</SelectItem>
-                  <SelectItem value="Module Support Session">Module Support Session</SelectItem>
-                  <SelectItem value="Career Guidance Session">Career Guidance Session</SelectItem>
-                  <SelectItem value="Welfare Check">Welfare Check</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sessionNotes">
-                Session Summary <span className="text-red-500">*</span>
-              </Label>
-              <Textarea
-                id="sessionNotes"
-                rows={4}
-                placeholder="Summarise what was discussed in this session..."
-                value={sessionNotes}
-                onChange={(e) => setSessionNotes(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Session Outcome</Label>
-              <Select value={sessionOutcome} onValueChange={setSessionOutcome}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select outcome..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Follow Up Required">Follow Up Required</SelectItem>
-                  <SelectItem value="Resolved">Resolved</SelectItem>
-                  <SelectItem value="Referred to SSA">Referred to SSA</SelectItem>
-                  <SelectItem value="Referred to External Counsellor">Referred to External Counsellor</SelectItem>
-                  <SelectItem value="No Action Required">No Action Required</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="nextSteps">Next Steps</Label>
-              <Textarea
-                id="nextSteps"
-                rows={2}
-                placeholder="What are the agreed next steps for this student?..."
-                value={nextSteps}
-                onChange={(e) => setNextSteps(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="followUpDate">Follow-up Date</Label>
-              <Input
-                id="followUpDate"
-                type="date"
-                value={followUpDate}
-                onChange={(e) => setFollowUpDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
-              <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={interventionStatus} onValueChange={setInterventionStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {sessionStudent && (
-              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 border">
-                <p className="font-medium text-gray-800 mb-1">Student Context</p>
-                <p>Attendance: <span className={sessionStudent.attendancePercentage < 75 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>{sessionStudent.attendancePercentage}%</span></p>
-                <p>GPA: <span className={sessionStudent.gpa < 2.5 ? 'text-amber-600 font-medium' : 'text-green-600 font-medium'}>{sessionStudent.gpa.toFixed(2)}</span></p>
-                <p>Risk Level: <span className="font-medium capitalize">{sessionStudent.riskLevel}</span></p>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setSessionModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700 gap-1.5"
-              disabled={!sessionNotes || sessionSubmitting}
-              onClick={handleSessionSubmit}
-            >
-              {sessionSubmitting ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...</>
-              ) : (
-                'Save Session Notes'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

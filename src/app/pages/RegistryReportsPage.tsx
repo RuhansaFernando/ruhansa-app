@@ -64,7 +64,6 @@ interface AtRiskRow {
   riskScore: number;
   attendancePercentage: number;
   gpa: number;
-  academicMentor: string;
 }
 
 function semesterToLevel(semester: string): string {
@@ -373,10 +372,9 @@ export default function RegistryReportsPage() {
             riskScore: data.riskScore ?? 0,
             attendancePercentage: data.attendancePercentage ?? 0,
             gpa: data.gpa ?? 0,
-            academicMentor: data.academicMentor ?? "—",
           };
         })
-        .filter((r) => r.riskLevel === "high" || r.riskLevel === "medium");
+        .filter((r) => r.riskScore > 0 && (r.riskLevel === "high" || r.riskLevel === "medium"));
 
       rows.sort((a, b) => {
         if (a.riskLevel !== b.riskLevel) return a.riskLevel === "high" ? -1 : 1;
@@ -405,7 +403,6 @@ export default function RegistryReportsPage() {
         "Risk Score",
         "Attendance %",
         "GPA",
-        "Academic Mentor",
       ],
       atRiskRows.map((r) => [
         r.studentId,
@@ -416,7 +413,6 @@ export default function RegistryReportsPage() {
         r.riskScore,
         `${r.attendancePercentage}%`,
         r.gpa,
-        r.academicMentor,
       ])
     );
   };
@@ -791,7 +787,7 @@ export default function RegistryReportsPage() {
             {/* At-Risk Students */}
             {activeReport === 'atrisk' && (
               atRiskRows == null || atRiskRows.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground">No at-risk students found.</p>
+                <p className="text-center py-8 text-muted-foreground">No at-risk students identified — ML model integration pending</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -805,7 +801,6 @@ export default function RegistryReportsPage() {
                         <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk Score</th>
                         <th className="text-left font-medium text-muted-foreground px-4 py-3">Attendance %</th>
                         <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Academic Mentor</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -816,14 +811,17 @@ export default function RegistryReportsPage() {
                           <td className="px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate">{r.programme}</td>
                           <td className="px-4 py-3 text-muted-foreground">{r.level}</td>
                           <td className="px-4 py-3">
-                            <Badge className={r.riskLevel === 'high' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-amber-100 text-amber-800 border-amber-200'}>
-                              {r.riskLevel.charAt(0).toUpperCase() + r.riskLevel.slice(1)}
-                            </Badge>
+                            {r.riskScore > 0 ? (
+                              <Badge className={r.riskLevel === 'high' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-amber-100 text-amber-800 border-amber-200'}>
+                                {r.riskLevel.charAt(0).toUpperCase() + r.riskLevel.slice(1)}
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-gray-100 text-gray-500 border-gray-200">Pending</Badge>
+                            )}
                           </td>
-                          <td className="px-4 py-3 font-medium text-center">{r.riskScore}</td>
+                          <td className="px-4 py-3 font-medium text-center">{r.riskScore > 0 ? r.riskScore : '—'}</td>
                           <td className="px-4 py-3 text-center">{r.attendancePercentage}%</td>
                           <td className="px-4 py-3 text-center">{r.gpa.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-muted-foreground max-w-[140px] truncate">{r.academicMentor}</td>
                         </tr>
                       ))}
                     </tbody>

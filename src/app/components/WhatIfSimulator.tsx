@@ -1,40 +1,65 @@
 // ============================================================
 // WhatIfSimulator.tsx  —  Novelty 2
 // Interactive slider-based simulator for SSAs.
-// Shows how changing attendance/GPA/engagement changes risk score.
+// Shows how changing attendance/GPA/consecutive absences changes risk.
 // Pure frontend calculation — no API call needed.
 // ============================================================
 
 import { useState, useCallback } from 'react';
 import { simulateRiskScore, getRiskLevelFromScore, getRiskColour } from '../services/riskScoreService';
+import type { RiskFactors } from '../services/riskScoreService';
 import { RiskScoreBadge } from './RiskScoreBadge';
 
 interface WhatIfSimulatorProps {
   baseAttendance: number;
   baseGpa: number;
-  baseEngagement: number;
+  baseConsecutiveAbsences: number;
   baseScore: number;
+  pending?: boolean;
 }
 
 export function WhatIfSimulator({
   baseAttendance,
   baseGpa,
-  baseEngagement,
+  baseConsecutiveAbsences,
   baseScore,
+  pending,
 }: WhatIfSimulatorProps) {
-  const [attendance,  setAttendance]  = useState(baseAttendance);
-  const [gpa,         setGpa]         = useState(Math.round(baseGpa * 10));  // store as int 0–40
-  const [engagement,  setEngagement]  = useState(baseEngagement);
+  if (pending) {
+    return (
+      <div className="py-4 text-center text-sm text-muted-foreground">
+        What-If simulator will be available once ML model is connected
+      </div>
+    );
+  }
+  const [attendance,   setAttendance]   = useState(baseAttendance);
+  const [gpa,          setGpa]          = useState(Math.round(baseGpa * 10));  // store as int 0–40
+  const [absences,     setAbsences]     = useState(baseConsecutiveAbsences);
 
-  const simScore = simulateRiskScore(attendance, gpa / 10, engagement);
+  const baseFactors: RiskFactors = {
+    attendancePercentage: baseAttendance,
+    gpa: baseGpa,
+    consecutiveAbsences: baseConsecutiveAbsences,
+    failedModules: 0,
+    missingAssignments: 0,
+    poorExamScores: 0,
+    repeatingModules: 0,
+  };
+
+  const simResult = simulateRiskScore(baseFactors, {
+    attendancePercentage: attendance,
+    gpa: gpa / 10,
+    consecutiveAbsences: absences,
+  });
+  const simScore = simResult.score;
   const delta    = baseScore - simScore;
   const colour   = getRiskColour(getRiskLevelFromScore(simScore));
 
   const reset = useCallback(() => {
     setAttendance(baseAttendance);
     setGpa(Math.round(baseGpa * 10));
-    setEngagement(baseEngagement);
-  }, [baseAttendance, baseGpa, baseEngagement]);
+    setAbsences(baseConsecutiveAbsences);
+  }, [baseAttendance, baseGpa, baseConsecutiveAbsences]);
 
   const getInsight = () => {
     if (delta <= 0) return "Adjust the sliders above to model how an intervention would reduce this student's risk score.";
@@ -88,19 +113,19 @@ export function WhatIfSimulator({
           </div>
         </div>
 
-        {/* Engagement */}
+        {/* Consecutive Absences */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="text-xs text-gray-600">Engagement target</label>
-            <span className="text-xs font-semibold text-gray-800">{engagement}%</span>
+            <label className="text-xs text-gray-600">Consecutive absences target</label>
+            <span className="text-xs font-semibold text-gray-800">{absences}</span>
           </div>
           <input
-            type="range" min={baseEngagement} max={100} value={engagement} step={1}
-            onChange={(e) => setEngagement(Number(e.target.value))}
+            type="range" min={0} max={baseConsecutiveAbsences} value={absences} step={1}
+            onChange={(e) => setAbsences(Number(e.target.value))}
             className="w-full accent-blue-600 h-1.5 cursor-pointer"
           />
           <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-            <span>Current: {baseEngagement}%</span><span>Target: 60%+</span>
+            <span>Current: {baseConsecutiveAbsences}</span><span>Target: 0</span>
           </div>
         </div>
       </div>

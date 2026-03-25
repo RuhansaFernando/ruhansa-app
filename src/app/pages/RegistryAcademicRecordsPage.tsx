@@ -98,6 +98,7 @@ interface Student {
   programme: string;
   level: string;
   gpa: number;
+  faculty?: string;
 }
 
 interface EnrollmentRecord {
@@ -224,6 +225,7 @@ export default function RegistryAcademicRecordsPage() {
               programme: d.data().programme ?? '',
               level: String(d.data().level ?? d.data().yearOfStudy ?? ''),
               gpa: d.data().gpa ?? 0,
+              faculty: d.data().faculty ?? '',
             }))
             .sort((a, b) => a.studentId.localeCompare(b.studentId))
         );
@@ -379,13 +381,27 @@ export default function RegistryAcademicRecordsPage() {
     ).sort();
   }, [allModules, enrollFaculty]);
 
+  const YEAR_ALIASES: Record<string, string[]> = {
+    'Year 1': ['Year 1', '1st Year', 'Level 4'],
+    'Year 2': ['Year 2', '2nd Year', 'Level 5'],
+    'Year 3': ['Year 3', '3rd Year', 'Level 6'],
+    'Year 4': ['Year 4', '4th Year', 'Level 7'],
+  };
+  const normalizeYear = (y: string) => {
+    for (const [key, aliases] of Object.entries(YEAR_ALIASES)) {
+      if (aliases.includes(y)) return key;
+    }
+    return y;
+  };
+
   const filteredModuleList = useMemo(() => {
-    if (!enrollFaculty || !enrollProgramme || !enrollYear || !enrollSemester) return [];
+    if (!enrollProgramme) return [];
     return allModules.filter((m) => {
-      const facultyMatch = m.faculty === enrollFaculty;
+      const facultyMatch = !enrollFaculty || m.faculty === enrollFaculty;
       const programmeMatch = m.programme === enrollProgramme;
-      const yearMatch = m.yearOfStudy === enrollYear;
+      const yearMatch = !enrollYear || normalizeYear(m.yearOfStudy ?? '') === normalizeYear(enrollYear ?? '');
       const semesterMatch =
+        !enrollSemester ||
         m.semester === enrollSemester ||
         m.semester === 'Semester 1 & 2' ||
         enrollSemester === 'Semester 1 & 2';
@@ -395,13 +411,13 @@ export default function RegistryAcademicRecordsPage() {
   }, [allModules, enrollFaculty, enrollProgramme, enrollYear, enrollSemester, enrolledModuleIds]);
 
   const semesterOptions = useMemo(() => {
-    if (!enrollFaculty || !enrollProgramme || !enrollYear) return [];
+    if (!enrollProgramme) return [];
     const sems = new Set(
       allModules
         .filter((m) =>
-          m.faculty === enrollFaculty &&
+          (!enrollFaculty || m.faculty === enrollFaculty) &&
           m.programme === enrollProgramme &&
-          m.yearOfStudy === enrollYear
+          (!enrollYear || normalizeYear(m.yearOfStudy ?? '') === normalizeYear(enrollYear ?? ''))
         )
         .map((m) => m.semester)
         .filter(Boolean)
@@ -505,10 +521,10 @@ export default function RegistryAcademicRecordsPage() {
 
   // ── Enrollment handlers ──────────────────────────────────────────────────────
   const openEnrollModal = () => {
-    setEnrollFaculty('');
-    setEnrollProgramme('');
-    setEnrollYear('');
-    setEnrollSemester('');
+    setEnrollFaculty(programmeFacultyMap.get(selectedStudent?.programme ?? '') ?? '');
+    setEnrollProgramme(selectedStudent?.programme ?? '');
+    setEnrollYear(LEVEL_TO_YEAR[selectedStudent?.level ?? ''] ?? '');
+    setEnrollSemester('Semester 1');
     setEnrollModuleId('');
     setShowEnrollModal(true);
   };
@@ -1462,100 +1478,31 @@ export default function RegistryAcademicRecordsPage() {
             <DialogTitle>Enroll in Module</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Student info (read-only) */}
+            <div className="rounded-lg bg-gray-50 border px-4 py-3 text-sm">
+              <p className="font-medium">Enrolling: {selectedStudent?.name}</p>
+              <p className="text-muted-foreground mt-0.5">
+                {selectedStudent?.programme} — {selectedStudent?.level}
+              </p>
+            </div>
+
             <div className="space-y-1.5">
-              <Label>Faculty</Label>
+              <Label>Semester</Label>
               <Select
-                value={enrollFaculty}
+                value={enrollSemester}
                 onValueChange={(v) => {
-                  setEnrollFaculty(v);
-                  setEnrollProgramme('');
-                  setEnrollYear('');
-                  setEnrollSemester('');
+                  setEnrollSemester(v);
                   setEnrollModuleId('');
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="— Select faculty —" />
+                  <SelectValue placeholder="— Select semester —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {facultyOptions.map((f) => (
-                    <SelectItem key={f} value={f}>
-                      {f}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="Semester 1">Semester 1</SelectItem>
+                  <SelectItem value="Semester 2">Semester 2</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Programme</Label>
-              <Select
-                value={enrollProgramme}
-                onValueChange={(v) => {
-                  setEnrollProgramme(v);
-                  setEnrollYear('');
-                  setEnrollSemester('');
-                  setEnrollModuleId('');
-                }}
-                disabled={!enrollFaculty}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="— Select programme —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {programmeOptions.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Year</Label>
-                <Select
-                  value={enrollYear}
-                  onValueChange={(v) => {
-                    setEnrollYear(v);
-                    setEnrollSemester('');
-                    setEnrollModuleId('');
-                  }}
-                  disabled={!enrollProgramme}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="— Year —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Year 1">Year 1</SelectItem>
-                    <SelectItem value="Year 2">Year 2</SelectItem>
-                    <SelectItem value="Year 3">Year 3</SelectItem>
-                    <SelectItem value="Year 4">Year 4</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Semester</Label>
-                <Select
-                  value={enrollSemester}
-                  onValueChange={(v) => {
-                    setEnrollSemester(v);
-                    setEnrollModuleId('');
-                  }}
-                  disabled={semesterOptions.length === 0}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={!enrollYear ? '— Select Year first —' : semesterOptions.length === 0 ? 'No semesters available' : '— Semester —'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {semesterOptions.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -1569,9 +1516,9 @@ export default function RegistryAcademicRecordsPage() {
                   <SelectValue
                     placeholder={
                       !enrollSemester
-                        ? 'Select filters first'
+                        ? 'Select a semester first'
                         : filteredModuleList.length === 0
-                        ? 'No modules found'
+                        ? 'No modules available'
                         : '— Select module —'
                     }
                   />

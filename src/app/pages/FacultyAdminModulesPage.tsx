@@ -90,6 +90,8 @@ export default function FacultyAdminModulesPage() {
   const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterProgramme, setFilterProgramme] = useState('all');
+  const [filterYear, setFilterYear] = useState('all');
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -182,9 +184,14 @@ export default function FacultyAdminModulesPage() {
     return () => { unsubM(); unsubP(); };
   }, [myFaculty]);
 
+  const programmeOptions = [...new Set(modules.map((m) => m.programme).filter(Boolean))].sort();
+
   const filtered = modules.filter((m) => {
     const q = searchQuery.toLowerCase();
-    return m.moduleCode.toLowerCase().includes(q) || m.moduleName.toLowerCase().includes(q);
+    const matchSearch = !q || m.moduleCode.toLowerCase().includes(q) || m.moduleName.toLowerCase().includes(q);
+    const matchProgramme = !filterProgramme || filterProgramme === 'all' || m.programme === filterProgramme;
+    const matchYear = !filterYear || filterYear === 'all' || m.yearOfStudy === filterYear;
+    return matchSearch && matchProgramme && matchYear;
   });
 
   const activeCount = modules.filter((m) => m.status === 'active').length;
@@ -457,8 +464,30 @@ export default function FacultyAdminModulesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Module Directory</CardTitle>
-          <div className="mt-3">
-            <div className="relative max-w-sm">
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Select value={filterProgramme} onValueChange={setFilterProgramme}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="All Programmes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Programmes</SelectItem>
+                {programmeOptions.map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterYear} onValueChange={setFilterYear}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="All Years" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Years</SelectItem>
+                {YEARS_OF_STUDY.map((y) => (
+                  <SelectItem key={y} value={y}>{YEAR_DISPLAY[y] ?? y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="relative max-w-sm flex-1 min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by code or name..."

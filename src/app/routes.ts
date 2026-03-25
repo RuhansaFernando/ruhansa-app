@@ -33,6 +33,7 @@ import SRUStudentsPage from './pages/SRUStudentsPage';
 import SRUStudentProfilePage from './pages/SRUStudentProfilePage';
 import SRUInterventionsPage from './pages/SRUInterventionsPage';
 import SRUAlertsPage from './pages/SRUAlertsPage';
+import SSASettingsPage from './pages/SSASettingsPage';
 import SRUAppointmentsPage from './pages/SRUAppointmentsPage';
 import SRUReportsPage from './pages/SRUReportsPage';
 import CourseLeaderDashboard from './pages/CourseLeaderDashboard';
@@ -251,10 +252,6 @@ export const router = createBrowserRouter([
         Component: SRUStudentsPage,
       },
       {
-        path: 'student/:studentId',
-        Component: SRUStudentProfilePage,
-      },
-      {
         path: 'students/:studentId',
         Component: SRUStudentProfilePage,
       },
@@ -277,6 +274,10 @@ export const router = createBrowserRouter([
       {
         path: 'reports',
         Component: SRUReportsPage,
+      },
+      {
+        path: 'settings',
+        Component: SSASettingsPage,
       },
       {
         path: 'change-password',

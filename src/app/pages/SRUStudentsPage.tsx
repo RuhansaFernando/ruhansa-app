@@ -46,6 +46,7 @@ interface StudentDoc {
   level: string;
   gpa: number;
   riskLevel: string;
+  riskScore: number;
   attendancePercentage: number;
   consecutiveAbsences: number;
   status: string;
@@ -93,6 +94,7 @@ export default function SRUStudentsPage() {
           level: d.data().level ?? '',
           gpa: d.data().gpa ?? 0,
           riskLevel: d.data().riskLevel ?? 'low',
+          riskScore: d.data().riskScore ?? 0,
           attendancePercentage: d.data().attendancePercentage ?? 100,
           consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
           status: d.data().status ?? 'active',
@@ -179,7 +181,8 @@ export default function SRUStudentsPage() {
     }
   };
 
-  const getRiskBadge = (level: string) => {
+  const getRiskBadge = (level: string, riskScore: number) => {
+    if (!riskScore) return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-xs">Pending</Badge>;
     switch (level) {
       case 'high':
         return (
@@ -452,7 +455,7 @@ export default function SRUStudentsPage() {
                     }`}>
                       {student.riskLevel === 'high' ? '75+' : student.riskLevel === 'medium' ? '40-74' : '<40'}
                     </p>
-                    {getRiskBadge(student.riskLevel)}
+                    {getRiskBadge(student.riskLevel, student.riskScore)}
                     <p className="text-xs text-muted-foreground mt-1">Risk</p>
                   </div>
 

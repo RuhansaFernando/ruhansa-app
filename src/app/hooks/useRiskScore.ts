@@ -1,54 +1,91 @@
 // ============================================================
 // useRiskScore.ts  —  Novelty 1
-// React hook that fetches + caches the ML risk score per student.
+// React hook that computes the ML risk score for a student.
+// Collects 6 academic features from Firestore and calls the
+// ML model (currently a pending stub until Flask is ready).
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { getRiskScore, type RiskScoreResult } from '../services/riskScoreService';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { prepareMLFeatures, callMLModel, type RiskResult } from '../services/riskScoreService';
 
-interface UseRiskScoreOptions {
-  studentId: string;
-  attendancePct: number;
-  gpa: number;
-  engagementPct?: number;
-  skip?: boolean;
+interface StudentRiskData {
+  attendancePercentage?: number;
+  gpa?: number;
+  studentId?: string;
+  consecutiveAbsences?: number;
 }
 
-interface UseRiskScoreReturn {
-  data: RiskScoreResult | null;
-  loading: boolean;
-  error: string | null;
-  refetch: () => void;
-}
-
-export function useRiskScore({
-  studentId,
-  attendancePct,
-  gpa,
-  engagementPct = 50,
-  skip = false,
-}: UseRiskScoreOptions): UseRiskScoreReturn {
-  const [data, setData]       = useState<RiskScoreResult | null>(null);
-  const [loading, setLoading] = useState(!skip);
-  const [error, setError]     = useState<string | null>(null);
-  const [tick, setTick]       = useState(0);
+export function useRiskScore(studentData: StudentRiskData): RiskResult {
+  const [result, setResult] = useState<RiskResult>({
+    score: 0,
+    level: 'low',
+    confidence: 0,
+    factors: [],
+    pending: true,
+  });
 
   useEffect(() => {
-    if (skip || !studentId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
+    const compute = async () => {
+      if (!studentData.studentId) return;
 
-    getRiskScore(studentId, attendancePct, gpa, engagementPct)
-      .then((result) => {
-        if (!cancelled) { setData(result); setLoading(false); }
-      })
-      .catch((err) => {
-        if (!cancelled) { setError(err.message ?? 'Failed to load risk score'); setLoading(false); }
-      });
+      try {
+        // Fetch intervention count
+        const intSnap = await getDocs(
+          query(
+            collection(db, 'interventions'),
+            where('studentId', '==', studentData.studentId)
+          )
+        );
+        const interventionCount = intSnap.size;
 
-    return () => { cancelled = true; };
-  }, [studentId, attendancePct, gpa, engagementPct, skip, tick]);
+        // Fetch results for failed modules and credits
+        const resultsSnap = await getDocs(
+          query(
+            collection(db, 'results'),
+            where('studentId', '==', studentData.studentId)
+          )
+        );
 
-  return { data, loading, error, refetch: () => setTick((t) => t + 1) };
+        const results = resultsSnap.docs.map((d) => d.data());
+        const failedModules = results.filter(
+          (r) => (r.finalMark ?? r.mark ?? 0) < 40
+        ).length;
+        const creditsCompleted = results.filter(
+          (r) => (r.finalMark ?? r.mark ?? 0) >= 40
+        ).length;
+
+        // Calculate GPA history per semester
+        const bySemester: Record<string, number[]> = {};
+        results.forEach((r) => {
+          const key = `${r.academicYear}-${r.semester}`;
+          if (!bySemester[key]) bySemester[key] = [];
+          bySemester[key].push(r.finalMark ?? r.mark ?? 0);
+        });
+        const semesterGPAs = Object.values(bySemester).map((marks) => {
+          const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
+          return avg / 25; // convert marks to 0-4 GPA scale
+        });
+
+        const features = prepareMLFeatures({
+          attendancePercentage: studentData.attendancePercentage,
+          gpa: studentData.gpa,
+          interventionCount,
+          creditsCompleted,
+          failedModules,
+          gpaHistory: semesterGPAs,
+        });
+
+        const riskResult = await callMLModel(features);
+        setResult(riskResult);
+      } catch (err) {
+        console.error('Risk calculation error:', err);
+      }
+    };
+
+    compute();
+  }, [studentData.studentId, studentData.attendancePercentage, studentData.gpa]);
+
+  return result;
 }

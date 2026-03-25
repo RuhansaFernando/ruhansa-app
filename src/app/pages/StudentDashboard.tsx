@@ -24,6 +24,7 @@ import { useNavigate, Link } from 'react-router';
 
 interface StudentDoc {
   id: string;
+  studentId: string;
   name: string;
   programme: string;
   level: string;
@@ -86,6 +87,7 @@ export default function StudentDashboard() {
           const d = studentDoc.docs[0];
           const studentData: StudentDoc = {
             id: d.id,
+            studentId: d.data().studentId ?? '',
             name: d.data().name ?? '',
             programme: d.data().programme ?? '',
             level: d.data().level ?? '',
@@ -131,16 +133,14 @@ export default function StudentDashboard() {
   }, [user?.id]);
 
   // ── Novelty 1 + 3: ML risk score ─────────────────────────
-  const { data: riskData } = useRiskScore({
-    studentId: student?.id ?? user?.id ?? 'guest',
-    attendancePct: student?.attendancePercentage ?? 0,
-    gpa: student?.gpa ?? 0,
-    engagementPct: student?.engagementScore ?? 50,
-    skip: false,
+  const riskData = useRiskScore({
+    attendancePercentage: student?.attendancePercentage,
+    gpa:                  student?.gpa,
+    studentId:            student?.studentId,
   });
 
   // Health score = inverse of risk score (100 = perfect health, 0 = max risk)
-  const healthScore = riskData ? Math.max(0, 100 - riskData.score) : 100;
+  const healthScore = Math.max(0, 100 - riskData.score);
 
   const today = new Date().toISOString().split('T')[0];
   const upcomingAppts = appointments
@@ -175,7 +175,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* ── Risk Alert Banner ─────────────────────────────── */}
-      {riskData?.riskLevel === 'critical' || riskData?.riskLevel === 'high' ? (
+      {riskData?.level === 'critical' || riskData?.level === 'high' ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -188,7 +188,7 @@ export default function StudentDashboard() {
             Book Appointment Now
           </Button>
         </div>
-      ) : riskData?.riskLevel === 'medium' ? (
+      ) : riskData?.level === 'medium' ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -252,12 +252,12 @@ export default function StudentDashboard() {
                 <div className="mt-2">
                   {riskData ? (
                     <Badge className={
-                      riskData.riskLevel === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
-                      riskData.riskLevel === 'high'     ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                      riskData.riskLevel === 'medium'   ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                      riskData.level === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
+                      riskData.level === 'high'     ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                      riskData.level === 'medium'   ? 'bg-blue-100 text-blue-800 border-blue-200' :
                       'bg-green-100 text-green-800 border-green-200'
                     }>
-                      {riskData.riskLevel.charAt(0).toUpperCase() + riskData.riskLevel.slice(1)} Risk
+                      {riskData.level.charAt(0).toUpperCase() + riskData.level.slice(1)} Risk
                     </Badge>
                   ) : '—'}
                 </div>
@@ -337,7 +337,15 @@ export default function StudentDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Health score gauge */}
               <div className="flex flex-col justify-center">
-                <AcademicHealthScore score={healthScore} />
+                {riskData?.pending ? (
+                  <div className="text-center p-6">
+                    <p className="text-muted-foreground text-sm">
+                      Academic health analysis coming soon
+                    </p>
+                  </div>
+                ) : (
+                  <AcademicHealthScore score={healthScore} />
+                )}
               </div>
 
               {/* Factor bars */}

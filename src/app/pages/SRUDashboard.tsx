@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Users, AlertTriangle, TrendingUp, Loader2, Flag, Calendar, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { runDailyAlertCheck, hasRunTodayCheck, markTodayCheckDone, AlertResult } from '../services/alertService';
 
 interface StudentDoc {
   id: string;
@@ -62,6 +63,30 @@ export default function SRUDashboard() {
   const [todayAppts, setTodayAppts] = useState<AppointmentDoc[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [loadingInterventions, setLoadingInterventions] = useState(true);
+  const [alertResult, setAlertResult] = useState<AlertResult | null>(null);
+  const [alertChecking, setAlertChecking] = useState(false);
+
+  useEffect(() => {
+    const runCheck = async () => {
+      if (!user?.email) return;
+      try {
+        const alreadyRan = await hasRunTodayCheck();
+        if (alreadyRan) return;
+        setAlertChecking(true);
+        const result = await runDailyAlertCheck(
+          user.email,
+          user.name ?? 'Student Support Advisor'
+        );
+        markTodayCheckDone();
+        if (result.alertsSent > 0) setAlertResult(result);
+      } catch (err) {
+        console.error('Daily alert check failed:', err);
+      } finally {
+        setAlertChecking(false);
+      }
+    };
+    runCheck();
+  }, [user?.email]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'students'), (snap) => {
@@ -162,6 +187,61 @@ export default function SRUDashboard() {
           {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {totalStudents} students assigned
         </p>
       </div>
+
+      {/* Daily alert check — running indicator */}
+      {alertChecking && (
+        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4">
+          <span className="animate-spin">⏳</span>
+          Running daily risk check across all students...
+        </div>
+      )}
+
+      {/* Daily alert check — result banner */}
+      {alertResult && alertResult.alertsSent > 0 && (
+        <div className="bg-red-50 border border-red-300 rounded-lg p-4 mb-6">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <p className="font-semibold text-red-800 text-base">
+                  {alertResult.alertsSent} new high risk student{alertResult.alertsSent > 1 ? 's' : ''} detected today
+                </p>
+                <p className="text-sm text-red-600 mt-0.5">
+                  Alert email sent to {user?.email} — Action required within 24 hours
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setAlertResult(null)}
+              className="text-red-400 hover:text-red-600 text-lg font-bold ml-4"
+            >✕</button>
+          </div>
+          <div className="mt-3 divide-y divide-red-100">
+            {alertResult.highRiskStudents.slice(0, 3).map((s) => (
+              <div key={s.studentId} className="py-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                <span className="font-medium text-red-800">{s.name}</span>
+                <span className="text-red-600">Risk: {s.riskScore}/100</span>
+                <span className="text-red-600">Attendance: {s.attendancePercentage}%</span>
+                {s.gpa ? (
+                  <span className="text-red-600">GPA: {s.gpa}</span>
+                ) : (
+                  <span className="text-amber-600">GPA: Pending</span>
+                )}
+                {s.dataAvailable === 'attendance_only' && (
+                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                    Attendance only
+                  </span>
+                )}
+              </div>
+            ))}
+            {alertResult.highRiskStudents.length > 3 && (
+              <p className="pt-2 text-sm text-red-600 font-medium">
+                +{alertResult.highRiskStudents.length - 3} more students — view Alerts page
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Critical alert banner */}
       {highRisk > 0 && (

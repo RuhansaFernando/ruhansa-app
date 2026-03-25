@@ -30,6 +30,7 @@ import {
 
 interface StudentData {
   id: string;
+  studentId: string;
   name: string;
   email: string;
   programme: string;
@@ -59,6 +60,12 @@ export default function SRUStudentProfilePage() {
     followUpDate?: string | null;
     createdAt: any;
   }[]>([]);
+
+  // Academic feature states
+  const [failedModules, setFailedModules]       = useState(0);
+  const [creditsCompleted, setCreditsCompleted] = useState(0);
+  const [gpaHistory, setGpaHistory]             = useState<number[]>([]);
+  const [academicWarnings, setAcademicWarnings] = useState(0);
 
   // Referral modal state
   const [referralModalOpen, setReferralModalOpen]   = useState(false);
@@ -98,6 +105,7 @@ export default function SRUStudentProfilePage() {
           const d = snap.data();
           setStudent({
             id: snap.id,
+            studentId: d.studentId ?? '',
             name: d.name ?? '',
             email: d.email ?? '',
             programme: d.programme ?? '',
@@ -141,6 +149,43 @@ export default function SRUStudentProfilePage() {
   }, [studentId]);
 
   useEffect(() => {
+    if (!student?.studentId) return;
+    const fetchAcademicFeatures = async () => {
+      try {
+        const resultsSnap = await getDocs(
+          query(collection(db, 'results'), where('studentId', '==', student.studentId))
+        );
+        const results = resultsSnap.docs.map((d) => d.data());
+
+        const failed = results.filter((r) => (r.finalMark ?? r.mark ?? 0) < 40).length;
+        const passed  = results.filter((r) => (r.finalMark ?? r.mark ?? 0) >= 40).length;
+        setFailedModules(failed);
+        setCreditsCompleted(passed);
+
+        const bySemester: Record<string, number[]> = {};
+        results.forEach((r) => {
+          const key = `${r.academicYear ?? 'Unknown'}-${r.semester ?? 'Unknown'}`;
+          if (!bySemester[key]) bySemester[key] = [];
+          bySemester[key].push(r.finalMark ?? r.mark ?? 0);
+        });
+        const history = Object.values(bySemester).map((marks) => {
+          const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
+          return Math.round(avg * 10) / 10;
+        });
+        setGpaHistory(history);
+
+        const intSnap = await getDocs(
+          query(collection(db, 'interventions'), where('studentId', '==', student.studentId))
+        );
+        setAcademicWarnings(intSnap.size);
+      } catch (err) {
+        console.error('Failed to fetch academic features:', err);
+      }
+    };
+    fetchAcademicFeatures();
+  }, [student?.studentId]);
+
+  useEffect(() => {
     if (!referralModalOpen) return;
     const fetchCounsellors = async () => {
       const snap = await getDocs(collection(db, 'student_counsellors'));
@@ -163,7 +208,7 @@ export default function SRUStudentProfilePage() {
         studentId: student.id,
         studentName: student.name,
         programme: student.programme,
-        riskLevel: riskData?.riskLevel ?? 'medium',
+        riskLevel: riskData.level ?? 'medium',
         interventionType: 'Referred to External Counsellor',
         type: 'Referred to External Counsellor',
         date: new Date().toISOString().split('T')[0],
@@ -190,12 +235,11 @@ export default function SRUStudentProfilePage() {
     }
   };
 
-  const { data: riskData, loading: riskLoading } = useRiskScore({
-    studentId: studentId ?? '',
-    attendancePct: student?.attendancePercentage ?? 100,
-    gpa: student?.gpa ?? 0,
-    engagementPct: student?.engagementScore ?? 50,
-    skip: !student,
+  const riskData = useRiskScore({
+    attendancePercentage: student?.attendancePercentage,
+    gpa:                  student?.gpa,
+    studentId:            student?.studentId,
+    consecutiveAbsences:  student?.consecutiveAbsences,
   });
 
   if (loading) {
@@ -217,8 +261,8 @@ export default function SRUStudentProfilePage() {
 
   const initials = student.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
   const avatarColour =
-    riskData?.score && riskData.score >= 80 ? 'bg-red-100 text-red-700' :
-    riskData?.score && riskData.score >= 60 ? 'bg-amber-100 text-amber-700' :
+    riskData.score >= 80 ? 'bg-red-100 text-red-700' :
+    riskData.score >= 60 ? 'bg-amber-100 text-amber-700' :
     'bg-blue-100 text-blue-700';
 
   return (
@@ -256,7 +300,7 @@ export default function SRUStudentProfilePage() {
                 {student.id} · {student.programme} · {student.level}
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
-                {riskData && <RiskLevelBadge level={riskData.riskLevel} />}
+                {!riskData.pending && <RiskLevelBadge level={riskData.level} />}
                 <Badge variant="outline" className="text-xs">{student.email}</Badge>
               </div>
             </div>
@@ -324,16 +368,67 @@ export default function SRUStudentProfilePage() {
               <p className="text-xs text-muted-foreground mt-0.5">Interventions</p>
             </div>
           </div>
+
+          {/* Academic Indicators */}
+          <div className="mt-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Academic Indicators</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-background border rounded-lg p-3 text-center">
+                <p className={`text-2xl font-bold ${failedModules > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  {failedModules}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Failed Modules</p>
+              </div>
+              <div className="bg-background border rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-blue-500">{creditsCompleted}</p>
+                <p className="text-xs text-muted-foreground mt-1">Modules Passed</p>
+              </div>
+              <div className="bg-background border rounded-lg p-3 text-center">
+                <p className={`text-2xl font-bold ${
+                  gpaHistory.length < 2 ? 'text-gray-400' :
+                  gpaHistory[gpaHistory.length - 1] >= gpaHistory[gpaHistory.length - 2]
+                    ? 'text-green-500' : 'text-red-500'
+                }`}>
+                  {gpaHistory.length < 2 ? '—' :
+                    gpaHistory[gpaHistory.length - 1] >= gpaHistory[gpaHistory.length - 2]
+                      ? '↑ Improving' : '↓ Declining'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">GPA Trend</p>
+              </div>
+              <div className="bg-background border rounded-lg p-3 text-center">
+                <p className={`text-2xl font-bold ${
+                  academicWarnings === 0 ? 'text-green-500' :
+                  academicWarnings <= 2  ? 'text-amber-500' : 'text-red-500'
+                }`}>
+                  {academicWarnings}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Academic Warnings</p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* NOVELTY 2: XAI Risk Breakdown + What-If */}
-      {riskLoading ? (
-        <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground text-xs">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Calculating risk score...
+      {/* Stage indicator */}
+      {student.attendancePercentage !== undefined && student.attendancePercentage > 0 && student.gpa === 0 ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 flex items-center gap-2">
+          <span>⚡</span>
+          <span>
+            <strong>Stage 1 — Early Warning:</strong> Risk assessment based on attendance data only.
+            GPA will be included once marks are recorded.
+          </span>
         </div>
-      ) : riskData ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      ) : student.gpa > 0 ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700 flex items-center gap-2">
+          <span>🎯</span>
+          <span>
+            <strong>Stage 2 — Full Assessment:</strong> Risk assessment using all 6 academic indicators.
+          </span>
+        </div>
+      ) : null}
+
+      {/* NOVELTY 2: XAI Risk Breakdown + What-If */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* LEFT: XAI Breakdown */}
           <Card>
@@ -347,27 +442,35 @@ export default function SRUStudentProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Gauge + score */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl mb-5">
-                <div className="flex-shrink-0">
-                  <RiskGauge score={riskData.score} size={140} />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Dropout risk score</p>
-                  <RiskLevelBadge level={riskData.riskLevel} />
-                  <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                    Score generated from 3 weighted factor groups. Updated daily.
+              {riskData.pending ? (
+                <div className="flex flex-col items-center justify-center p-8 text-center">
+                  <div className="text-4xl mb-3">🤖</div>
+                  <p className="font-semibold text-lg">ML Model Not Connected</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Risk analysis will be available once the AI model is integrated
                   </p>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Gauge + score */}
+                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl mb-5">
+                    <div className="flex-shrink-0">
+                      <RiskGauge score={riskData.score} size={140} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Dropout risk score</p>
+                      <RiskLevelBadge level={riskData.level} />
+                      <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                        Score generated from 3 weighted factor groups. Updated daily.
+                      </p>
+                    </div>
+                  </div>
 
-              <XAIFactorBreakdown
-                factors={riskData.factors}
-                attendancePct={student.attendancePercentage}
-                gpa={student.gpa}
-                engagementPct={student.engagementScore ?? 50}
-                explanation={riskData.explanation}
-              />
+                  <XAIFactorBreakdown
+                    factors={riskData.factors}
+                  />
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -387,8 +490,9 @@ export default function SRUStudentProfilePage() {
                 <WhatIfSimulator
                   baseAttendance={student.attendancePercentage}
                   baseGpa={student.gpa}
-                  baseEngagement={student.engagementScore ?? 50}
+                  baseConsecutiveAbsences={student.consecutiveAbsences}
                   baseScore={riskData.score}
+                  pending={riskData.pending}
                 />
               </CardContent>
             </Card>
@@ -399,7 +503,14 @@ export default function SRUStudentProfilePage() {
                 <CardTitle className="text-sm">Recommended Interventions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {riskData.recommendedInterventions.map((intervention, i) => (
+                {(riskData.level === 'critical'
+                  ? ['Urgent attendance support meeting', 'Refer to academic tutoring', 'Re-activate LMS engagement', 'Escalate to Academic Mentor']
+                  : riskData.level === 'high'
+                  ? ['Schedule academic support session', 'Review module performance', 'Encourage regular LMS logins']
+                  : riskData.level === 'medium'
+                  ? ['Book a check-in appointment', 'Monitor attendance over next 2 weeks']
+                  : ['Continue regular attendance', 'Maintain current study habits']
+                ).map((intervention, i) => (
                   <div
                     key={i}
                     className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50 hover:bg-gray-100 transition-colors"
@@ -418,7 +529,7 @@ export default function SRUStudentProfilePage() {
                 >
                   Log an Intervention
                 </Button>
-                {riskData && riskData.score >= 60 && (
+                {riskData.score >= 60 && (
                   <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                     <p className="text-xs font-medium text-purple-900 mb-1">🧠 Mental Health Concern?</p>
                     <p className="text-xs text-purple-700 leading-relaxed mb-2">
@@ -437,8 +548,7 @@ export default function SRUStudentProfilePage() {
               </CardContent>
             </Card>
           </div>
-        </div>
-      ) : null}
+      </div>
 
       {/* Intervention History */}
       {interventions.length > 0 && (

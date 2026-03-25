@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useAuth } from '../AuthContext';
+import { runDailyAlertCheck, AlertResult } from '../services/alertService';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -39,6 +41,7 @@ const formatDate = (val: any) => {
 
 export default function SRUAlertsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [allStudents, setAllStudents] = useState<AlertStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [riskFilter, setRiskFilter] = useState('all');
@@ -46,6 +49,8 @@ export default function SRUAlertsPage() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [bulkResolving, setBulkResolving] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'critical' | 'high' | 'resolved'>('all');
+  const [manualCheckRunning, setManualCheckRunning] = useState(false);
+  const [manualCheckResult, setManualCheckResult]   = useState<AlertResult | null>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'students'), (snap) => {
@@ -138,6 +143,23 @@ export default function SRUAlertsPage() {
     }
   };
 
+  const handleManualCheck = async () => {
+    if (!user?.email) return;
+    setManualCheckRunning(true);
+    setManualCheckResult(null);
+    try {
+      const result = await runDailyAlertCheck(
+        user.email,
+        user.name ?? 'Student Support Advisor'
+      );
+      setManualCheckResult(result);
+    } catch (err) {
+      console.error('Manual check failed:', err);
+    } finally {
+      setManualCheckRunning(false);
+    }
+  };
+
   const openIntervention = (student: AlertStudent) => {
     navigate('/sru/interventions');
     // student param available for future pre-fill logic
@@ -153,10 +175,38 @@ export default function SRUAlertsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Student Alerts</h1>
-        <p className="text-muted-foreground text-sm mt-1">Students flagged for immediate attention</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Student Alerts</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Students flagged as high risk — action required within 24 hours
+          </p>
+        </div>
+        <Button
+          onClick={handleManualCheck}
+          disabled={manualCheckRunning}
+          variant="outline"
+          className="flex items-center gap-2 flex-shrink-0"
+        >
+          {manualCheckRunning ? (
+            <><span className="animate-spin">⏳</span> Checking...</>
+          ) : (
+            <><span>🔄</span> Run Risk Check Now</>
+          )}
+        </Button>
       </div>
+
+      {manualCheckResult && (
+        <div className={`rounded-lg p-3 text-sm ${
+          manualCheckResult.alertsSent > 0
+            ? 'bg-red-50 border border-red-200 text-red-700'
+            : 'bg-green-50 border border-green-200 text-green-700'
+        }`}>
+          {manualCheckResult.alertsSent > 0
+            ? `⚠️ ${manualCheckResult.alertsSent} high risk student${manualCheckResult.alertsSent > 1 ? 's' : ''} found — alert email sent`
+            : '✅ No new high risk students detected today'}
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

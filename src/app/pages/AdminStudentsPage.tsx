@@ -62,38 +62,12 @@ interface StudentRecord {
   level: string;
   status: string;
   accountActivated: boolean;
-  riskLevel: string;
-  riskScore: number;
-  gpa: number;
 }
 
 const LEVEL_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 const STATUS_OPTIONS = ['active', 'inactive', 'pending', 'withdrawn', 'deferred', 'suspended', 'graduated'];
 const STUDENTS_PER_PAGE = 20;
 
-const formatDate = (dateStr?: string) => {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  } catch {
-    return dateStr;
-  }
-};
-
-const getRiskBadge = (level: string) => {
-  switch (level?.toLowerCase()) {
-    case 'critical':
-      return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Critical</Badge>;
-    case 'high':
-      return <Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">High</Badge>;
-    case 'medium':
-      return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">Medium</Badge>;
-    case 'low':
-      return <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Low</Badge>;
-    default:
-      return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-xs">—</Badge>;
-  }
-};
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -151,9 +125,6 @@ export default function AdminStudentsPage() {
           level: d.data().level ?? '',
           status: d.data().status ?? 'active',
           accountActivated: d.data().accountActivated ?? false,
-          riskLevel: d.data().riskLevel ?? '',
-          riskScore: d.data().riskScore ?? 0,
-          gpa: d.data().gpa ?? 0,
         }))
       );
       setLoading(false);
@@ -575,10 +546,7 @@ export default function AdminStudentsPage() {
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Faculty</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Account</th>
                       <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
                     </tr>
                   </thead>
@@ -591,28 +559,17 @@ export default function AdminStudentsPage() {
                         <td className="px-4 py-3 text-muted-foreground text-xs max-w-[120px] truncate">{student.faculty || '—'}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs max-w-[140px] truncate">{student.programme || '—'}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{student.level || '—'}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">
-                          {student.gpa ? student.gpa.toFixed(2) : '—'}
-                        </td>
-                        <td className="px-4 py-3">{getRiskBadge(student.riskLevel)}</td>
                         <td className="px-4 py-3">
-                          <Badge
-                            className={
-                              student.status === 'active'
-                                ? 'bg-green-100 text-green-800 border-green-200 text-xs'
-                                : student.status === 'inactive'
-                                ? 'bg-gray-100 text-gray-600 border-gray-200 text-xs'
-                                : 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
-                            }
-                          >
-                            {student.status || '—'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          {student.accountActivated ? (
-                            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Activated</Badge>
+                          {student.status === 'active' && student.accountActivated ? (
+                            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Active</Badge>
+                          ) : student.status === 'active' && !student.accountActivated ? (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Pending Activation</Badge>
+                          ) : student.status === 'inactive' ? (
+                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-xs">Inactive</Badge>
                           ) : (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Pending</Badge>
+                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-xs capitalize">
+                              {student.status || '—'}
+                            </Badge>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -822,24 +779,6 @@ export default function AdminStudentsPage() {
               <Input id="edit-email" type="email" autoComplete="off" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-faculty">Faculty</Label>
-              <Input
-                id="edit-faculty"
-                value={editingStudent?.faculty || '—'}
-                readOnly
-                className="bg-gray-50 text-muted-foreground cursor-default"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-programme">Programme</Label>
-              <Input
-                id="edit-programme"
-                value={editingStudent?.programme || '—'}
-                readOnly
-                className="bg-gray-50 text-muted-foreground cursor-default"
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="edit-level">Level / Year</Label>
               <Select value={editLevel} onValueChange={setEditLevel}>
                 <SelectTrigger id="edit-level"><SelectValue placeholder="Select year" /></SelectTrigger>
@@ -855,11 +794,8 @@ export default function AdminStudentsPage() {
               <Select value={editStatus} onValueChange={setEditStatus}>
                 <SelectTrigger id="edit-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s} className="capitalize">
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
             </div>

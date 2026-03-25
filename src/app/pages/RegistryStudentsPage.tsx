@@ -291,10 +291,8 @@ export default function RegistryStudentsPage() {
         consecutiveAbsences: 0,
         riskLevel: "low",
         riskScore: 0,
-        academicMentor: "",
         interventions: [],
         appointments: [],
-        mentorAssignmentHistory: [],
         createdAt: serverTimestamp(),
       });
       created++;

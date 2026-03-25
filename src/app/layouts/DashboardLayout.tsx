@@ -46,36 +46,12 @@ export default function DashboardLayout() {
       { label: 'Dashboard', icon: LayoutDashboard, path: `/${user.role}/dashboard` },
     ];
 
-    if (user.role === 'advisor') {
-      return [
-        ...baseItems,
-        { label: 'Attendance', icon: ClipboardList, path: '/advisor/attendance' },
-        { label: 'Performance', icon: Activity, path: '/advisor/performance' },
-        { label: 'Interventions', icon: Target, path: '/advisor/interventions' },
-        { label: 'Reports', icon: FileText, path: '/advisor/reports' },
-        { label: 'Appointments', icon: Calendar, path: '/advisor/appointments' },
-        { label: 'Profile', icon: User, path: '/advisor/settings' },
-      ];
-    } else if (user.role === 'student') {
+    if (user.role === 'student') {
       return [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/student/dashboard' },
         { label: 'My Marks', icon: FileText, path: '/student/marks' },
         { label: 'My Attendance', icon: ClipboardList, path: '/student/attendance' },
         { label: 'Appointments', icon: Calendar, path: '/student/appointments' },
-      ];
-    } else if (user.role === 'faculty') {
-      return [
-        ...baseItems,
-        { label: 'My Students', icon: Users, path: '/faculty/students' },
-        { label: 'Alerts', icon: Bell, path: '/faculty/alerts' },
-        { label: 'Profile', icon: User, path: '/faculty/settings' },
-      ];
-    } else if (user.role === 'counselor') {
-      return [
-        ...baseItems,
-        { label: 'My Cases', icon: Users, path: '/counselor/cases' },
-        { label: 'Analytics', icon: Activity, path: '/counselor/analytics' },
-        { label: 'Profile', icon: User, path: '/counselor/settings' },
       ];
     } else if (user.role === 'admin') {
       return [
@@ -96,6 +72,7 @@ export default function DashboardLayout() {
         ...baseItems,
         { label: 'Students', icon: Users, path: '/registry/students' },
         { label: 'Academic Records', icon: BookOpen, path: '/registry/academic-records' },
+        { label: 'Module Enrollment', icon: BookOpen, path: '/registry/module-enrollment' },
         { label: 'Reports', icon: ClipboardList, path: '/registry/reports' },
       ];
     } else if (user.role === 'academic_admin') {

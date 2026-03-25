@@ -4,35 +4,37 @@
 // Props come from riskScoreService (mock now, Flask later).
 // ============================================================
 
-import type { RiskFactors } from '../services/riskScoreService';
+import type { RiskResult } from '../services/riskScoreService';
+
+type FactorItem = RiskResult['factors'][number];
 
 interface XAIFactorBreakdownProps {
-  factors: RiskFactors;
-  attendancePct: number;
-  gpa: number;
-  engagementPct: number;
-  explanation: string;
+  factors: FactorItem[];
+  explanation?: string;
 }
 
-function FactorBar({
-  label, detail, threshold, contribution, colour, tag,
-}: {
-  label: string;
-  detail: string;
-  threshold: string;
-  contribution: number;
-  value: number;
-  maxVal: number;
-  colour: string;
-  tag: string;
-  tagColour: string;
-}) {
+const STATUS_COLOUR: Record<string, string> = {
+  critical: '#E24B4A',
+  warning:  '#BA7517',
+  good:     '#3B6D11',
+};
+
+const STATUS_TAG: Record<string, string> = {
+  critical: 'High risk',
+  warning:  'Monitor',
+  good:     'On track',
+};
+
+function FactorBar({ name, value, contribution, status }: FactorItem) {
+  const colour = STATUS_COLOUR[status] ?? STATUS_COLOUR.good;
+  const tag    = STATUS_TAG[status]    ?? 'On track';
+
   return (
     <div className="mb-4">
       <div className="flex items-start justify-between mb-1.5">
         <div>
-          <p className="text-sm font-medium text-gray-900">{label}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{detail}</p>
+          <p className="text-sm font-medium text-gray-900">{name}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Value: {value}</p>
         </div>
         <span className="text-sm font-semibold ml-4 flex-shrink-0" style={{ color: colour }}>
           {contribution}%
@@ -54,54 +56,21 @@ function FactorBar({
         >
           {tag}
         </span>
-        <span className="text-[10px] text-gray-400">{threshold}</span>
       </div>
     </div>
   );
 }
 
-export function XAIFactorBreakdown({
-  factors,
-  attendancePct,
-  gpa,
-  engagementPct,
-  explanation,
-}: XAIFactorBreakdownProps) {
-  const factorDetails = [
-    {
-      label: 'Attendance',
-      detail: `${attendancePct}% overall attendance rate`,
-      threshold: 'Threshold: ≥ 75%',
-      contribution: factors.attendance,
-      value: attendancePct,
-      maxVal: 100,
-      colour: factors.attendance >= 35 ? '#E24B4A' : factors.attendance >= 20 ? '#BA7517' : '#185FA5',
-      tag: factors.attendance >= 35 ? 'Highest contributor' : factors.attendance >= 20 ? 'High contributor' : 'Moderate contributor',
-      tagColour: '',
-    },
-    {
-      label: 'Academic Performance',
-      detail: `GPA ${gpa.toFixed(1)} · Based on module results`,
-      threshold: 'Threshold: GPA ≥ 2.5',
-      contribution: factors.academic,
-      value: gpa,
-      maxVal: 4,
-      colour: factors.academic >= 35 ? '#E24B4A' : factors.academic >= 20 ? '#BA7517' : '#185FA5',
-      tag: factors.academic >= 35 ? 'Highest contributor' : factors.academic >= 20 ? 'High contributor' : 'Moderate contributor',
-      tagColour: '',
-    },
-    {
-      label: 'Engagement',
-      detail: `${engagementPct}% of expected LMS activity`,
-      threshold: 'Threshold: ≥ 60% engagement',
-      contribution: factors.engagement,
-      value: engagementPct,
-      maxVal: 100,
-      colour: factors.engagement >= 35 ? '#E24B4A' : factors.engagement >= 20 ? '#BA7517' : '#185FA5',
-      tag: factors.engagement >= 35 ? 'Highest contributor' : factors.engagement >= 20 ? 'High contributor' : 'Moderate contributor',
-      tagColour: '',
-    },
-  ].sort((a, b) => b.contribution - a.contribution);
+export function XAIFactorBreakdown({ factors, explanation }: XAIFactorBreakdownProps) {
+  if (factors.length === 0) {
+    return (
+      <div className="py-4 text-center text-sm text-muted-foreground">
+        Risk factor analysis will be available once ML model is connected
+      </div>
+    );
+  }
+
+  const sorted = [...factors].sort((a, b) => b.contribution - a.contribution);
 
   return (
     <div>
@@ -109,15 +78,16 @@ export function XAIFactorBreakdown({
         Risk Factor Contributions
       </p>
 
-      {factorDetails.map((f) => (
-        <FactorBar key={f.label} {...f} />
+      {sorted.map((f) => (
+        <FactorBar key={f.name} {...f} />
       ))}
 
-      {/* Model explanation box */}
-      <div className="mt-2 bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-600 leading-relaxed border border-gray-100">
-        <span className="font-semibold text-gray-800">Model explanation: </span>
-        {explanation}
-      </div>
+      {explanation && (
+        <div className="mt-2 bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-600 leading-relaxed border border-gray-100">
+          <span className="font-semibold text-gray-800">Model explanation: </span>
+          {explanation}
+        </div>
+      )}
     </div>
   );
 }
