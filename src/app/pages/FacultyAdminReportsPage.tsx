@@ -171,6 +171,12 @@ export default function FacultyAdminReportsPage() {
   const generateLowAttendance = async () => {
     setGenerating(true);
     try {
+      const enrollSnap = await getDocs(collection(db, 'moduleEnrollments'));
+      const facultyStudentIds = new Set(
+        enrollSnap.docs
+          .filter((d) => adminModuleIds.has(d.data().moduleId))
+          .map((d) => d.data().studentId)
+      );
       const studSnap = await getDocs(collection(db, 'students'));
       const low: LowAttendanceStudent[] = studSnap.docs
         .map((d) => ({
@@ -180,7 +186,7 @@ export default function FacultyAdminReportsPage() {
           attendancePercentage: d.data().attendancePercentage ?? 100,
           riskLevel: d.data().riskLevel ?? 'low',
         }))
-        .filter((s) => s.attendancePercentage < 80)
+        .filter((s) => s.attendancePercentage < 80 && facultyStudentIds.has(s.studentId))
         .sort((a, b) => a.attendancePercentage - b.attendancePercentage);
       setLowAttendanceData(low);
       setActiveReport('low-attendance');

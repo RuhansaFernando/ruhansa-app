@@ -172,7 +172,7 @@ export default function AdminAdvisorsPage() {
           login_url: 'http://localhost:5173',
         }, 'pqfkLZ1zbahk5O2Vi');
       } catch (emailErr) {
-        console.warn('Welcome email failed:', emailErr);
+        console.warn('Welcome email could not be sent');
       }
       toast.success('Advisor account created successfully');
       setIsAddOpen(false);

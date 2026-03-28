@@ -71,8 +71,6 @@ export default function StudentDashboard() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        console.log('Auth user id:', user?.id, 'email:', user?.email);
-
         const [studentSnap, apptSnap] = await Promise.all([
           getDocs(query(collection(db, 'students'), where('uid', '==', user?.id))),
           getDocs(query(collection(db, 'appointments'), orderBy('date', 'asc'))),
@@ -99,11 +97,6 @@ export default function StudentDashboard() {
             academicMentor: d.data().academicMentor ?? '',
             email: d.data().email ?? '',
           };
-          console.log('Student academicMentor:', d.data().academicMentor);
-          console.log('Full student data:', studentData);
-          console.log('academicMentor value:', studentData.academicMentor);
-          console.log('academicMentor length:', studentData.academicMentor?.length);
-          console.log('student id:', studentData.id);
           setStudent(studentData);
 
           // Novelty 3: log that student has viewed their health profile
@@ -201,6 +194,11 @@ export default function StudentDashboard() {
             Book Appointment
           </Button>
         </div>
+      ) : riskData?.pending ? (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 text-gray-400 flex-shrink-0 animate-spin" />
+          <p className="text-sm text-gray-600">Your academic health analysis is being prepared</p>
+        </div>
       ) : (
         <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 flex items-center gap-3">
           <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
@@ -286,7 +284,6 @@ export default function StudentDashboard() {
         </Card>
       </div>
 
-      {/* TEMPORARY DEBUG - show mentor card always */}
       {student && (
         <Card className="border-l-4 border-l-green-500">
           <CardContent className="pt-4 pb-4">

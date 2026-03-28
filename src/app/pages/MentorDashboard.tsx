@@ -38,6 +38,7 @@ export default function MentorDashboard() {
   const [students, setStudents] = useState<StudentDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [calendarLink, setCalendarLink] = useState('');
+  const [profileNotConfigured, setProfileNotConfigured] = useState(false);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -45,6 +46,7 @@ export default function MentorDashboard() {
       const mentorName = user?.name ?? '';
       if (!mentorName) {
         setStudents([]);
+        setProfileNotConfigured(true);
         setLoading(false);
         return;
       }
@@ -105,6 +107,16 @@ export default function MentorDashboard() {
           {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {students.length} students assigned to you
         </p>
       </div>
+
+      {/* Profile not configured warning */}
+      {profileNotConfigured && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-900 font-medium">
+            Your mentor profile is not fully configured. Please contact Admin.
+          </p>
+        </div>
+      )}
 
       {/* Recently assigned notification */}
       {!loading && recentlyAssigned.length > 0 && (
@@ -174,7 +186,7 @@ export default function MentorDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-green-500">
+        <Card className="border-l-4 border-l-red-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">At-Risk Students</CardTitle>
             <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center">
@@ -230,8 +242,11 @@ export default function MentorDashboard() {
                       variant="outline"
                       className="flex-shrink-0 h-7 text-xs"
                       onClick={() => {
-                        const link = calendarLink || 'https://calendar.google.com';
-                        window.open(link, '_blank');
+                        if (!calendarLink) {
+                          toast.error('No calendar link configured. Please add your Google Calendar link in Settings.');
+                          return;
+                        }
+                        window.open(calendarLink, '_blank');
                       }}
                     >
                       Book Session

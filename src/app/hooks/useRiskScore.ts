@@ -1,8 +1,8 @@
 // ============================================================
 // useRiskScore.ts  —  Novelty 1
 // React hook that computes the ML risk score for a student.
-// Collects 6 academic features from Firestore and calls the
-// ML model (currently a pending stub until Flask is ready).
+// Collects academic features from Firestore and calls the
+// ML model API; falls back to pending:true if unavailable.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -15,6 +15,9 @@ interface StudentRiskData {
   gpa?: number;
   studentId?: string;
   consecutiveAbsences?: number;
+  age?: number;
+  gender?: string;
+  major?: string;
 }
 
 export function useRiskScore(studentData: StudentRiskData): RiskResult {
@@ -31,22 +34,15 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
       if (!studentData.studentId) return;
 
       try {
-        // Fetch intervention count
-        const intSnap = await getDocs(
-          query(
-            collection(db, 'interventions'),
-            where('studentId', '==', studentData.studentId)
-          )
-        );
-        const interventionCount = intSnap.size;
+        // Fetch intervention count and appointment count in parallel
+        const [intSnap, apptSnap, resultsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'interventions'), where('studentId', '==', studentData.studentId))),
+          getDocs(query(collection(db, 'appointments'), where('studentId', '==', studentData.studentId))),
+          getDocs(query(collection(db, 'results'), where('studentId', '==', studentData.studentId))),
+        ]);
 
-        // Fetch results for failed modules and credits
-        const resultsSnap = await getDocs(
-          query(
-            collection(db, 'results'),
-            where('studentId', '==', studentData.studentId)
-          )
-        );
+        const interventionCount = intSnap.size;
+        const appointmentCount = apptSnap.size;
 
         const results = resultsSnap.docs.map((d) => d.data());
         const failedModules = results.filter(
@@ -77,7 +73,13 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           gpaHistory: semesterGPAs,
         });
 
-        const riskResult = await callMLModel(features);
+        const riskResult = await callMLModel(features, {
+          age: studentData.age,
+          gender: studentData.gender,
+          major: studentData.major,
+          advisorMeetingCount: appointmentCount,
+          hasCounseling: interventionCount > 0 ? 1 : 0,
+        });
         setResult(riskResult);
       } catch (err) {
         console.error('Risk calculation error:', err);

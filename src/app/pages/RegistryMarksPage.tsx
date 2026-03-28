@@ -413,7 +413,7 @@ export default function RegistryMarksPage() {
 
             await updateDoc(studentDocRef, { gpa, riskLevel, riskScore });
           } catch (err) {
-            console.error(`Failed to update student ${student.studentId}:`, err);
+            console.error('Failed to update student marks:', (err as Error).message);
           }
         })
       );

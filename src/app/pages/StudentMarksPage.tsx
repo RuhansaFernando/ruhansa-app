@@ -79,16 +79,18 @@ export default function StudentMarksPage() {
               rawName ||
               (rawCode ? (moduleByCode.get(rawCode) ?? '') : '') ||
               (data.moduleId ? (moduleById.get(data.moduleId) ?? '') : '');
-            const overall = data.overall ?? 0;
+            const overallMark = data.overall ?? data.finalMark ?? data.mark ?? 0;
+            const c1Mark = data.component1 ?? data.courseworkMark ?? data.assessmentMark ?? 0;
+            const c2Mark = data.component2 ?? data.examMark ?? data.finalExamMark ?? 0;
             return {
               id: d.id,
               studentId: data.studentId ?? '',
               moduleCode: rawCode,
               moduleName: resolvedName,
-              component1: data.component1 ?? 0,
-              component2: data.component2 ?? 0,
-              overall,
-              moduleStatus: data.moduleStatus ?? (overall >= 40 ? 'pass' : 'fail'),
+              component1: c1Mark,
+              component2: c2Mark,
+              overall: overallMark,
+              moduleStatus: data.moduleStatus ?? (overallMark >= 40 ? 'pass' : 'fail'),
               semester: data.semester ?? '',
               academicYear: data.academicYear ?? '',
             };

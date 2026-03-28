@@ -60,32 +60,55 @@ export default function StudentAttendancePage() {
   const { user } = useAuth();
   const [student, setStudent] = useState<StudentDoc | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     const fetchStudent = async () => {
       setLoading(true);
+      setNotFound(false);
       try {
-        const snap = await getDocs(
+        let snap = await getDocs(
           query(collection(db, 'students'), where('uid', '==', user?.id))
         );
+        if (snap.empty && user?.email) {
+          snap = await getDocs(
+            query(collection(db, 'students'), where('email', '==', user?.email))
+          );
+        }
         if (!snap.empty) {
           const d = snap.docs[0].data();
           setStudent({
             attendancePercentage: d.attendancePercentage ?? 100,
             consecutiveAbsences: d.consecutiveAbsences ?? 0,
           });
+        } else {
+          setNotFound(true);
         }
       } finally {
         setLoading(false);
       }
     };
     fetchStudent();
-  }, [user?.id]);
+  }, [user?.id, user?.email]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground text-sm">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">My Attendance</h1>
+          <p className="text-muted-foreground text-sm mt-1">View your attendance records</p>
+        </div>
+        <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+          No attendance data found.
+        </div>
       </div>
     );
   }

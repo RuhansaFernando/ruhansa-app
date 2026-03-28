@@ -143,7 +143,7 @@ export default function AdminCourseLeadersPage() {
           login_url: 'http://localhost:5173',
         }, 'pqfkLZ1zbahk5O2Vi');
       } catch (emailErr) {
-        console.warn('Welcome email failed:', emailErr);
+        console.warn('Welcome email could not be sent');
       }
       toast.success('Programme Leader account created successfully');
       setIsAddDialogOpen(false);
@@ -237,7 +237,7 @@ export default function AdminCourseLeadersPage() {
             login_url: 'http://localhost:5173',
           }, 'pqfkLZ1zbahk5O2Vi');
         } catch (emailErr) {
-          console.warn('Welcome email failed:', emailErr);
+          console.warn('Welcome email could not be sent');
         }
         success++;
       } catch (err: any) {

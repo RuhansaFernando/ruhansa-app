@@ -78,6 +78,18 @@ export default function SRUStudentProfilePage() {
   const [ssaFollowUpDate, setSsaFollowUpDate]       = useState('');
   const [ssaInterventionStatus, setSsaInterventionStatus] = useState('open');
 
+  // Module attendance breakdown
+  const [moduleAttendance, setModuleAttendance] = useState<{
+    moduleId: string;
+    moduleCode: string;
+    moduleName: string;
+    total: number;
+    present: number;
+    absent: number;
+    percentage: number;
+  }[]>([]);
+  const [loadingModuleAtt, setLoadingModuleAtt] = useState(false);
+
   // Fetch SSA's calendar link
   useEffect(() => {
     if (!user?.email) return;
@@ -183,6 +195,58 @@ export default function SRUStudentProfilePage() {
       }
     };
     fetchAcademicFeatures();
+  }, [student?.studentId]);
+
+  useEffect(() => {
+    if (!student?.studentId) return;
+    setLoadingModuleAtt(true);
+    const fetchModuleAttendance = async () => {
+      try {
+        const attSnap = await getDocs(
+          query(collection(db, 'attendance'), where('studentId', '==', student.studentId))
+        );
+        const byModule: Record<string, { present: number; total: number; moduleCode: string; moduleName: string }> = {};
+        attSnap.forEach((d) => {
+          const data = d.data();
+          const mid = data.moduleId ?? '';
+          if (!mid) return;
+          if (!byModule[mid]) byModule[mid] = { present: 0, total: 0, moduleCode: data.moduleCode ?? '', moduleName: data.moduleName ?? '' };
+          byModule[mid].total++;
+          if (data.status === 'present') byModule[mid].present++;
+        });
+
+        // Backfill module names if missing from attendance records
+        const needsBackfill = Object.values(byModule).some((v) => !v.moduleCode || !v.moduleName);
+        if (needsBackfill) {
+          const modSnap = await getDocs(collection(db, 'modules'));
+          modSnap.forEach((d) => {
+            if (byModule[d.id]) {
+              byModule[d.id].moduleCode = byModule[d.id].moduleCode || (d.data().moduleCode ?? '');
+              byModule[d.id].moduleName = byModule[d.id].moduleName || (d.data().moduleName ?? d.data().name ?? '');
+            }
+          });
+        }
+
+        setModuleAttendance(
+          Object.entries(byModule)
+            .map(([moduleId, s]) => ({
+              moduleId,
+              moduleCode: s.moduleCode || moduleId,
+              moduleName: s.moduleName || 'Unknown Module',
+              total: s.total,
+              present: s.present,
+              absent: s.total - s.present,
+              percentage: s.total > 0 ? Math.round((s.present / s.total) * 100) : 0,
+            }))
+            .sort((a, b) => a.moduleCode.localeCompare(b.moduleCode))
+        );
+      } catch (err) {
+        console.error('Failed to fetch module attendance:', err);
+      } finally {
+        setLoadingModuleAtt(false);
+      }
+    };
+    fetchModuleAttendance();
   }, [student?.studentId]);
 
   useEffect(() => {
@@ -426,6 +490,60 @@ export default function SRUStudentProfilePage() {
           </span>
         </div>
       ) : null}
+
+      {/* Attendance by Module */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-blue-500" />
+            Attendance by Module
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingModuleAtt ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading attendance breakdown…
+            </div>
+          ) : moduleAttendance.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No attendance records found</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="text-left font-medium text-muted-foreground px-4 py-2">Module Code</th>
+                    <th className="text-left font-medium text-muted-foreground px-4 py-2">Module Name</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-2">Sessions</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-2">Present</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-2">Absent</th>
+                    <th className="text-center font-medium text-muted-foreground px-4 py-2">Attendance %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {moduleAttendance.map((m) => (
+                    <tr key={m.moduleId} className="border-b last:border-0 hover:bg-gray-50">
+                      <td className="px-4 py-2 font-mono text-xs font-medium">{m.moduleCode}</td>
+                      <td className="px-4 py-2">{m.moduleName}</td>
+                      <td className="px-4 py-2 text-center text-muted-foreground">{m.total}</td>
+                      <td className="px-4 py-2 text-center text-green-600 font-medium">{m.present}</td>
+                      <td className="px-4 py-2 text-center text-red-500">{m.absent}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`font-semibold ${
+                          m.percentage >= 80 ? 'text-green-600'
+                          : m.percentage >= 60 ? 'text-amber-600'
+                          : 'text-red-600'
+                        }`}>
+                          {m.percentage}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* NOVELTY 2: XAI Risk Breakdown + What-If */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

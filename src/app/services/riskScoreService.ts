@@ -87,27 +87,95 @@ export function prepareMLFeatures(studentData: {
   };
 }
 
-export async function callMLModel(_features: MLFeatures): Promise<RiskResult> {
-  // TODO: Replace with actual Flask API call when ML model is ready
-  // const response = await fetch('http://localhost:5000/predict', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify(_features)
-  // });
-  // const data = await response.json();
-  // return {
-  //   score: data.risk_score,
-  //   level: data.risk_level,
-  //   confidence: data.confidence,
-  //   factors: data.factors,
-  //   pending: false
-  // };
+export async function callMLModel(features: MLFeatures, extraData?: {
+  age?: number;
+  gender?: string;
+  major?: string;
+  advisorMeetingCount?: number;
+  hasCounseling?: number;
+  financialAid?: number;
+  enrollmentGapMonths?: number;
+  gpaLast?: number;
+  gpaTrend?: number;
+  gpaMin?: number;
+  attLast?: number;
+  attTrend?: number;
+}): Promise<RiskResult> {
+  const ML_API_URL = import.meta.env.VITE_ML_API_URL || 'http://localhost:5000/predict';
 
-  return {
-    score: 0,
-    level: 'low',
-    confidence: 0,
-    factors: [],
-    pending: true,
-  };
+  try {
+    const response = await fetch(ML_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gpa_current: features.gpaCurrent,
+        gpa_history: features.gpaHistory,
+        gpa_last: extraData?.gpaLast ?? features.gpaCurrent,
+        gpa_trend: extraData?.gpaTrend ?? 0,
+        gpa_min: extraData?.gpaMin ?? features.gpaCurrent,
+        attendance_rate: features.attendanceRate,
+        att_last: extraData?.attLast ?? features.attendanceRate,
+        att_trend: extraData?.attTrend ?? 0,
+        credits_completed: features.creditsCompleted,
+        academic_warning_count: features.academicWarningCount,
+        advisor_meeting_count: extraData?.advisorMeetingCount ?? 0,
+        enrollment_gap_months: extraData?.enrollmentGapMonths ?? 0,
+        has_counseling: extraData?.hasCounseling ?? 0,
+        financial_aid: extraData?.financialAid ?? 0,
+        age: extraData?.age ?? 20,
+        gender: extraData?.gender ?? 'Unknown',
+        major: extraData?.major ?? 'Unknown',
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+    const data = await response.json();
+
+    const score = Math.round((data.dropout_probability ?? 0) * 100);
+    const level: 'low' | 'medium' | 'high' | 'critical' =
+      data.risk_level?.toLowerCase() === 'critical' ? 'critical'
+      : data.risk_level?.toLowerCase() === 'high' ? 'high'
+      : data.risk_level?.toLowerCase() === 'medium' ? 'medium'
+      : 'low';
+
+    return {
+      score,
+      level,
+      confidence: Math.round((data.dropout_probability ?? 0) * 100),
+      factors: [
+        {
+          name: 'Attendance',
+          value: Math.round(features.attendanceRate * 100),
+          contribution: features.attendanceRate < 0.75 ? 60 : 10,
+          status: features.attendanceRate < 0.6 ? 'critical'
+            : features.attendanceRate < 0.75 ? 'warning' : 'good',
+        },
+        {
+          name: 'GPA',
+          value: features.gpaCurrent,
+          contribution: features.gpaCurrent < 2.0 ? 30 : 10,
+          status: features.gpaCurrent < 1.5 ? 'critical'
+            : features.gpaCurrent < 2.0 ? 'warning' : 'good',
+        },
+        {
+          name: 'Academic Warnings',
+          value: features.academicWarningCount,
+          contribution: features.academicWarningCount > 0 ? 10 : 0,
+          status: features.academicWarningCount > 2 ? 'critical'
+            : features.academicWarningCount > 0 ? 'warning' : 'good',
+        },
+      ],
+      pending: false,
+    };
+  } catch {
+    return {
+      score: 0,
+      level: 'low',
+      confidence: 0,
+      factors: [],
+      pending: true,
+    };
+  }
 }

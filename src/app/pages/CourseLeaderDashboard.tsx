@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Users, UserCheck, UserX, GraduationCap, Loader2, Search } from 'lucide-react';
+import { Users, UserCheck, UserX, GraduationCap, Loader2, Search, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
 const LEVEL_TO_YEAR: Record<string, string> = {
@@ -45,6 +45,7 @@ export default function CourseLeaderDashboard() {
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [mentorCount, setMentorCount] = useState(0);
   const [loadingStudents, setLoadingStudents] = useState(true);
+  const [profileNotConfigured, setProfileNotConfigured] = useState(false);
   const [search, setSearch] = useState('');
   const [dashYearFilter, setDashYearFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -78,10 +79,14 @@ export default function CourseLeaderDashboard() {
   // Load students once profile is known — scoped to this PL's programme
   useEffect(() => {
     if (profileLoading) return;
+    if (!clProgramme) {
+      setStudents([]);
+      setProfileNotConfigured(true);
+      setLoadingStudents(false);
+      return;
+    }
     setLoadingStudents(true);
-    const q = clProgramme
-      ? query(collection(db, 'students'), where('programme', '==', clProgramme))
-      : collection(db, 'students');
+    const q = query(collection(db, 'students'), where('programme', '==', clProgramme));
     const unsub = onSnapshot(q, (snap) => {
       setStudents(
         snap.docs.map((d) => ({
@@ -161,6 +166,16 @@ export default function CourseLeaderDashboard() {
           </p>
         )}
       </div>
+
+      {/* Profile not configured warning */}
+      {profileNotConfigured && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-900 font-medium">
+            Your Programme Leader profile is not configured. Please contact Admin.
+          </p>
+        </div>
+      )}
 
       {/* Quick Action */}
       <div>

@@ -309,7 +309,7 @@ export default function AdminStudentsPage() {
             password: `${student.studentId}@DropGuard`,
           }, 'pqfkLZ1zbahk5O2Vi');
         } catch (emailErr) {
-          console.warn('Welcome email failed:', emailErr);
+          console.warn('Welcome email could not be sent');
         }
         toast.success('Student account activated and welcome email sent.');
       } else {
@@ -353,7 +353,7 @@ export default function AdminStudentsPage() {
             password: tempPassword,
           }, 'pqfkLZ1zbahk5O2Vi');
         } catch (emailErr) {
-          console.warn(`Welcome email failed for ${student.studentId}:`, emailErr);
+          console.warn('Welcome email could not be sent');
         }
         succeeded++;
       } catch (err) {
@@ -364,7 +364,7 @@ export default function AdminStudentsPage() {
           });
           succeeded++;
         } else {
-          console.warn(`Failed to activate ${student.studentId}:`, err);
+          console.warn('Failed to activate student account');
         }
       }
     }

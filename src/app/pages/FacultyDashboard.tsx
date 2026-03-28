@@ -38,7 +38,6 @@ export default function FacultyDashboard() {
   const unacknowledgedAlerts = studentAlerts.filter((a) => !a.acknowledged);
 
   const handleSubmitConcern = () => {
-    console.log('Submitting concern:', { concernStudent, concernDescription });
     setIsDialogOpen(false);
     setConcernStudent('');
     setConcernDescription('');

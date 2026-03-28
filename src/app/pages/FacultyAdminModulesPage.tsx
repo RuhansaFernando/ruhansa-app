@@ -36,7 +36,7 @@ interface Programme {
   faculty: string;
 }
 
-const YEARS_OF_STUDY = ['Year 1', 'Year 2', 'Year 3', 'Year 4'];
+const YEARS_OF_STUDY = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 const YEAR_DISPLAY: Record<string, string> = {
   'Year 1': '1st Year',
   'Year 2': '2nd Year',
@@ -92,6 +92,7 @@ export default function FacultyAdminModulesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterProgramme, setFilterProgramme] = useState('all');
   const [filterYear, setFilterYear] = useState('all');
+  const [filterSemester, setFilterSemester] = useState('all');
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -184,14 +185,22 @@ export default function FacultyAdminModulesPage() {
     return () => { unsubM(); unsubP(); };
   }, [myFaculty]);
 
+  const YEAR_MAP: Record<string, string[]> = {
+    '1st Year': ['1st Year', 'Year 1', 'Level 4'],
+    '2nd Year': ['2nd Year', 'Year 2', 'Level 5'],
+    '3rd Year': ['3rd Year', 'Year 3', 'Level 6'],
+    '4th Year': ['4th Year', 'Year 4', 'Level 7'],
+  };
+
   const programmeOptions = [...new Set(modules.map((m) => m.programme).filter(Boolean))].sort();
 
   const filtered = modules.filter((m) => {
     const q = searchQuery.toLowerCase();
     const matchSearch = !q || m.moduleCode.toLowerCase().includes(q) || m.moduleName.toLowerCase().includes(q);
-    const matchProgramme = !filterProgramme || filterProgramme === 'all' || m.programme === filterProgramme;
-    const matchYear = !filterYear || filterYear === 'all' || m.yearOfStudy === filterYear;
-    return matchSearch && matchProgramme && matchYear;
+    const matchProgramme = filterProgramme === 'all' || m.programme === filterProgramme;
+    const matchYear = filterYear === 'all' || (YEAR_MAP[filterYear] ?? [filterYear]).includes(m.yearOfStudy ?? '');
+    const matchSemester = filterSemester === 'all' || m.semester === filterSemester || m.semester === 'Semester 1 & 2';
+    return matchSearch && matchProgramme && matchYear && matchSemester;
   });
 
   const activeCount = modules.filter((m) => m.status === 'active').length;
@@ -465,7 +474,7 @@ export default function FacultyAdminModulesPage() {
         <CardHeader>
           <CardTitle>Module Directory</CardTitle>
           <div className="mt-3 flex flex-wrap gap-3">
-            <Select value={filterProgramme} onValueChange={setFilterProgramme}>
+            <Select value={filterProgramme} onValueChange={(v) => { setFilterProgramme(v); setFilterYear('all'); setFilterSemester('all'); }}>
               <SelectTrigger className="w-56">
                 <SelectValue placeholder="All Programmes" />
               </SelectTrigger>
@@ -476,15 +485,25 @@ export default function FacultyAdminModulesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={filterYear} onValueChange={setFilterYear}>
+            <Select value={filterYear} onValueChange={(v) => { setFilterYear(v); setFilterSemester('all'); }}>
               <SelectTrigger className="w-36">
                 <SelectValue placeholder="All Years" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Years</SelectItem>
                 {YEARS_OF_STUDY.map((y) => (
-                  <SelectItem key={y} value={y}>{YEAR_DISPLAY[y] ?? y}</SelectItem>
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterSemester} onValueChange={setFilterSemester}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="All Semesters" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Semesters</SelectItem>
+                <SelectItem value="Semester 1">Semester 1</SelectItem>
+                <SelectItem value="Semester 2">Semester 2</SelectItem>
               </SelectContent>
             </Select>
             <div className="relative max-w-sm flex-1 min-w-[180px]">
@@ -497,6 +516,11 @@ export default function FacultyAdminModulesPage() {
               />
             </div>
           </div>
+          {(filterProgramme !== 'all' || filterYear !== 'all' || filterSemester !== 'all' || searchQuery) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {filtered.length} module{filtered.length !== 1 ? 's' : ''} found
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -592,39 +616,6 @@ export default function FacultyAdminModulesPage() {
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="mod-code">Module Code <span className="text-red-500">*</span></Label>
-                <Input
-                  id="mod-code"
-                  placeholder="e.g. CS401"
-                  value={formCode}
-                  onChange={(e) => setFormCode(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mod-credits">Credits</Label>
-                <Select value={formCredits} onValueChange={setFormCredits}>
-                  <SelectTrigger id="mod-credits"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CREDITS_OPTIONS.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="mod-name">Module Name <span className="text-red-500">*</span></Label>
-              <Input
-                id="mod-name"
-                placeholder="e.g. Software Engineering"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="mod-programme">Programme <span className="text-red-500">*</span></Label>
               <Select value={formProgramme} onValueChange={setFormProgramme}>
@@ -670,6 +661,38 @@ export default function FacultyAdminModulesPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mod-code">Module Code <span className="text-red-500">*</span></Label>
+              <Input
+                id="mod-code"
+                placeholder="e.g. CS401"
+                value={formCode}
+                onChange={(e) => setFormCode(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mod-name">Module Name <span className="text-red-500">*</span></Label>
+              <Input
+                id="mod-name"
+                placeholder="e.g. Software Engineering"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mod-credits">Credits</Label>
+              <Select value={formCredits} onValueChange={setFormCredits}>
+                <SelectTrigger id="mod-credits"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CREDITS_OPTIONS.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Assessment Components */}

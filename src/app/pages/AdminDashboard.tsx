@@ -348,6 +348,7 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {ROLE_CONFIG.map((role) => {
               const s = statsByKey[role.key];
+              const isLoading = role.key === 'students' ? !studentsLoaded : staffLoading;
               return (
                 <Card key={role.key} className={`border-l-4 ${role.borderClass}`}>
                   <CardContent className="pt-4 pb-4 px-4">
@@ -357,10 +358,10 @@ export default function AdminDashboard() {
                           {role.label}
                         </p>
                         <p className="text-2xl font-bold mt-0.5">
-                          {staffLoading ? '—' :s.total}
+                          {isLoading ? '—' : s.total}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Active: {staffLoading ? '—' :s.active}
+                          Active: {isLoading ? '—' : s.active}
                         </p>
                       </div>
                       <div className={`h-2 w-2 rounded-full mt-1 ${role.dotClass} flex-shrink-0`} />

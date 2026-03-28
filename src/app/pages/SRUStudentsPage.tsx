@@ -26,16 +26,6 @@ import { Textarea } from '../components/ui/textarea';
 import { Users, AlertTriangle, Activity, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
-const IIT_PROGRAMMES = [
-  'BSc (Hons) Business Computing',
-  'BSc (Hons) Business Data Analytics',
-  'BA (Hons) Business Management',
-  'BEng (Hons) Software Engineering',
-  'BSc (Hons) Computer Science',
-  'BSc (Hons) Artificial Intelligence And Data Science',
-];
-
-const STUDY_LEVELS = ['Level 4', 'Level 5', 'Industrial Placement', 'Level 6'];
 
 interface StudentDoc {
   id: string;
@@ -106,6 +96,10 @@ export default function SRUStudentsPage() {
     return () => unsub();
   }, []);
 
+  // Dynamic filter lists derived from loaded students
+  const programmes = useMemo(() => [...new Set(students.map(s => s.programme).filter(Boolean))].sort(), [students]);
+  const levels = useMemo(() => [...new Set(students.map(s => s.level).filter(Boolean))].sort(), [students]);
+
   // Summary counts
   const totalStudents = students.length;
   const highRisk = students.filter((s) => s.riskLevel === 'high').length;
@@ -161,7 +155,7 @@ export default function SRUStudentsPage() {
     setSubmitting(true);
     try {
       await addDoc(collection(db, 'interventions'), {
-        studentId: selectedStudent.id,
+        studentId: selectedStudent.studentId,
         studentName: selectedStudent.name,
         programme: selectedStudent.programme,
         riskLevel: selectedStudent.riskLevel,
@@ -334,7 +328,7 @@ export default function SRUStudentsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Programmes</SelectItem>
-                {IIT_PROGRAMMES.map((p) => (
+                {programmes.map((p) => (
                   <SelectItem key={p} value={p}>
                     {p}
                   </SelectItem>
@@ -347,7 +341,7 @@ export default function SRUStudentsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Levels</SelectItem>
-                {STUDY_LEVELS.map((l) => (
+                {levels.map((l) => (
                   <SelectItem key={l} value={l}>
                     {l}
                   </SelectItem>

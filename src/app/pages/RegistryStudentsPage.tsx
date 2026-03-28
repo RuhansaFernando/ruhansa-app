@@ -34,6 +34,8 @@ import {
   Search,
   Eye,
   Pencil,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   collection,
@@ -59,27 +61,6 @@ const LEVEL_TO_YEAR: Record<string, string> = {
   'Year 1': 'Year 1', 'Year 2': 'Year 2', 'Year 3': 'Year 3', 'Year 4': 'Year 4',
 };
 
-const IIT_PROGRAMMES = [
-  "BSc (Hons) Computer Science",
-  "BSc (Hons) Software Engineering",
-  "BSc (Hons) Information Technology",
-  "BSc (Hons) Cyber Security",
-  "BSc (Hons) Data Science",
-  "BSc (Hons) Artificial Intelligence",
-  "BSc (Hons) Business Information Systems",
-  "BSc (Hons) Business Computing",
-];
-
-const BUSINESS_PROGRAMMES = [
-  "BSc (Hons) Business Information Systems",
-  "BSc (Hons) Business Computing",
-];
-
-function getFacultyForProgramme(programme: string): string {
-  return BUSINESS_PROGRAMMES.includes(programme)
-    ? "Business School"
-    : "School of Computing";
-}
 
 const CSV_TEMPLATE_HEADERS =
   "StudentID,FullName,Email,Gender,DateOfBirth,ContactNumber,Faculty,Programme,YearOfStudy,Intake,EnrollmentDate,StudentType,Address,EmergencyContactName,EmergencyContactNumber,EmergencyContactRelationship,Nationality,Religion";
@@ -117,6 +98,7 @@ interface StudentRecord {
 export default function RegistryStudentsPage() {
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -176,6 +158,10 @@ export default function RegistryStudentsPage() {
             accountActivated: d.data().accountActivated ?? false,
           }))
         );
+        setLoading(false);
+      },
+      () => {
+        setLoadError(true);
         setLoading(false);
       }
     );
@@ -314,12 +300,7 @@ export default function RegistryStudentsPage() {
   const openEdit = (student: StudentRecord) => {
     setEditStudent(student);
     setEdProgramme(student.programme);
-    setEdFaculty(student.faculty || programmeFacultyMap.get(student.programme) || (student.programme ? getFacultyForProgramme(student.programme) : ""));
-    const LEVEL_TO_YEAR: Record<string, string> = {
-      'Level 4': 'Year 1', 'Level 5': 'Year 2', 'Level 6': 'Year 3', 'Level 7': 'Year 4',
-      '1st Year': 'Year 1', '2nd Year': 'Year 2', '3rd Year': 'Year 3', '4th Year': 'Year 4',
-      'Year 1': 'Year 1', 'Year 2': 'Year 2', 'Year 3': 'Year 3', 'Year 4': 'Year 4',
-    };
+    setEdFaculty(student.faculty || (programmeFacultyMap.get(student.programme) ?? ''));
     setEdLevel(LEVEL_TO_YEAR[student.level] ?? student.level);
     setEdIntake(student.intake);
     setEdEnrollmentDate(student.enrollmentDate);
@@ -431,6 +412,16 @@ export default function RegistryStudentsPage() {
           />
         </div>
       </div>
+
+      {/* Load error */}
+      {loadError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+          <p className="text-sm text-red-900 font-medium">
+            Failed to load students. Please refresh the page.
+          </p>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -584,6 +575,15 @@ export default function RegistryStudentsPage() {
                           >
                             <Pencil className="h-4 w-4 text-muted-foreground" />
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            title="Delete"
+                            onClick={() => openDelete(student)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -669,7 +669,7 @@ export default function RegistryStudentsPage() {
               <Label htmlFor="ed-programme">Programme <span className="text-red-500">*</span></Label>
               <Select value={edProgramme} onValueChange={(v) => {
                 setEdProgramme(v);
-                setEdFaculty(programmeFacultyMap.get(v) || getFacultyForProgramme(v));
+                setEdFaculty(programmeFacultyMap.get(v) ?? '');
               }}>
                 <SelectTrigger id="ed-programme"><SelectValue placeholder="— Select Programme —" /></SelectTrigger>
                 <SelectContent>
