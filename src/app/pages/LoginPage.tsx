@@ -34,185 +34,108 @@ export default function LoginPage() {
       const firebaseEmail = credential.user.email ?? "";
       const firebaseUid = credential.user.uid;
 
-      // 1. Check "admin" collection — by UID as document ID, then by "fb-admin" + email fallback
-      let adminData: { id: string; name: string } | null = null;
-
+      // 1. admin — by UID doc ID, then "fb-admin" email fallback
       const adminByUid = await getDoc(doc(db, "admin", firebaseUid));
       if (adminByUid.exists() && adminByUid.data()?.role === "admin") {
-        adminData = { id: adminByUid.id, name: adminByUid.data()?.name ?? firebaseEmail };
-      } else {
-        const adminFallback = await getDoc(doc(db, "admin", "fb-admin"));
-        if (adminFallback.exists() && adminFallback.data()?.email === firebaseEmail) {
-          adminData = { id: adminFallback.id, name: adminFallback.data()?.name ?? firebaseEmail };
-        }
+        login({ id: adminByUid.id, name: adminByUid.data()?.name ?? firebaseEmail, role: "admin", email: firebaseEmail }, rememberMe);
+        navigate("/admin/dashboard");
+        return;
+      }
+      const adminFallback = await getDoc(doc(db, "admin", "fb-admin"));
+      if (adminFallback.exists() && adminFallback.data()?.email === firebaseEmail) {
+        login({ id: adminFallback.id, name: adminFallback.data()?.name ?? firebaseEmail, role: "admin", email: firebaseEmail }, rememberMe);
+        navigate("/admin/dashboard");
+        return;
       }
 
-      if (adminData) {
-        login({
-          id: adminData.id,
-          name: adminData.name,
-          role: "admin",
-          email: firebaseEmail,
-        });
-        navigate("/admin/dashboard");
-      } else {
-        // 2. Check "student_support_advisors" collection by email
-        const sruQ = query(collection(db, "student_support_advisors"), where("email", "==", firebaseEmail));
-        const sruSnap = await getDocs(sruQ);
-        if (!sruSnap.empty) {
-          const sruDoc = sruSnap.docs[0];
-          login({
-            id: sruDoc.id,
-            name: sruDoc.data().name ?? firebaseEmail,
-            role: "sru",
-            email: firebaseEmail,
-            mustChangePassword: sruDoc.data().mustChangePassword ?? false,
-            firestoreCollection: "student_support_advisors",
-          });
-          navigate("/sru/dashboard");
-        } else {
-        // 3. Check "registry" collection by email
-        const regQ = query(collection(db, "registry"), where("email", "==", firebaseEmail));
-        const regSnap = await getDocs(regQ);
-        if (!regSnap.empty) {
-          const regDoc = regSnap.docs[0];
-          login({
-            id: regDoc.id,
-            name: regDoc.data().name ?? firebaseEmail,
-            role: "registry",
-            email: firebaseEmail,
-            mustChangePassword: regDoc.data().mustChangePassword ?? false,
-            firestoreCollection: "registry",
-          });
-          navigate("/registry/dashboard");
-        } else {
-        // 4. Check "faculty_administrators" collection by email
-        const acaQ = query(collection(db, "faculty_administrators"), where("email", "==", firebaseEmail));
-        const acaSnap = await getDocs(acaQ);
-        if (!acaSnap.empty) {
-          const acaDoc = acaSnap.docs[0];
-          login({
-            id: acaDoc.id,
-            name: acaDoc.data().name ?? firebaseEmail,
-            role: "academic_admin",
-            email: firebaseEmail,
-            mustChangePassword: acaDoc.data().mustChangePassword ?? false,
-            firestoreCollection: "faculty_administrators",
-          });
-          navigate("/academic/upload");
-        } else {
-        // 5. Check "academic_mentors" collection by email
-        const mentorQ = query(collection(db, "academic_mentors"), where("email", "==", firebaseEmail));
-        const mentorSnap = await getDocs(mentorQ);
-        if (!mentorSnap.empty) {
-          const mentorDoc = mentorSnap.docs[0];
-          login({
-            id: mentorDoc.id,
-            name: mentorDoc.data().name ?? firebaseEmail,
-            role: "academic_mentor",
-            email: firebaseEmail,
-            mustChangePassword: mentorDoc.data().mustChangePassword ?? false,
-            firestoreCollection: "academic_mentors",
-          });
-          navigate("/mentor/dashboard");
-        } else {
-        // 6. Check "course_leaders" collection by email
-        const clQ = query(collection(db, "course_leaders"), where("email", "==", firebaseEmail));
-        const clSnap = await getDocs(clQ);
-        if (!clSnap.empty) {
-          const clDoc = clSnap.docs[0];
-          login({
-            id: clDoc.id,
-            name: clDoc.data().name ?? firebaseEmail,
-            role: "course_leader",
-            email: firebaseEmail,
-            mustChangePassword: clDoc.data().mustChangePassword ?? false,
-            firestoreCollection: "course_leaders",
-          });
-          navigate("/course-leader/mentor-assignment");
-        } else {
-        // 7. Check Firestore students collection
-        const q = query(
-          collection(db, "students"),
-          where("email", "==", firebaseEmail),
-        );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const studentDoc = snapshot.docs[0];
-          const data = studentDoc.data();
-          login({
-            id: studentDoc.id,
-            name: data.name ?? firebaseEmail,
-            role: "student",
-            email: firebaseEmail,
-          });
-          navigate("/student/dashboard");
-        } else {
-          // 3. Check Firestore faculty collection
-          const fq = query(
-            collection(db, "faculty"),
-            where("email", "==", firebaseEmail),
-          );
-          const fSnapshot = await getDocs(fq);
-          if (!fSnapshot.empty) {
-            const facultyDoc = fSnapshot.docs[0];
-            const fData = facultyDoc.data();
-            login({
-              id: facultyDoc.id,
-              name: fData.name ?? firebaseEmail,
-              role: "faculty",
-              email: firebaseEmail,
-            });
-            navigate("/faculty/dashboard");
-          } else {
-            // 4. Check Firestore advisors collection
-            const aq = query(
-              collection(db, "advisors"),
-              where("email", "==", firebaseEmail),
-            );
-            const aSnapshot = await getDocs(aq);
-            if (!aSnapshot.empty) {
-              const advisorDoc = aSnapshot.docs[0];
-              const aData = advisorDoc.data();
-              login({
-                id: advisorDoc.id,
-                name: aData.name ?? firebaseEmail,
-                role: "advisor",
-                email: firebaseEmail,
-              });
-              navigate("/advisor/dashboard");
-            } else {
-              // 5. Check Firestore counselors collection
-              const cq = query(
-                collection(db, "counselors"),
-                where("email", "==", firebaseEmail),
-              );
-              const cSnapshot = await getDocs(cq);
-              if (!cSnapshot.empty) {
-                const counselorDoc = cSnapshot.docs[0];
-                const cData = counselorDoc.data();
-                login({
-                  id: counselorDoc.id,
-                  name: cData.name ?? firebaseEmail,
-                  role: "counselor",
-                  email: firebaseEmail,
-                });
-                navigate("/counselor/dashboard");
-              } else {
-                setError(
-                  "Your account is not authorised to access this system.",
-                );
-                await auth.signOut();
-              }
-            }
-          }
-        }
-        }
-        }
-        }
-        }
-        }
+      // 2. students — checked BEFORE all staff collections to prevent email collision
+      //    Primary: match by uid field (most reliable, uid is unique)
+      //    Fallback: match by email (for records without uid set)
+      const studentUidSnap = await getDocs(query(collection(db, "students"), where("uid", "==", firebaseUid)));
+      if (!studentUidSnap.empty) {
+        const d = studentUidSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "student", email: firebaseEmail }, rememberMe);
+        navigate("/student/dashboard");
+        return;
       }
+      const studentEmailSnap = await getDocs(query(collection(db, "students"), where("email", "==", firebaseEmail)));
+      if (!studentEmailSnap.empty) {
+        const d = studentEmailSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "student", email: firebaseEmail }, rememberMe);
+        navigate("/student/dashboard");
+        return;
+      }
+
+      // 3. student_support_advisors
+      const sruSnap = await getDocs(query(collection(db, "student_support_advisors"), where("email", "==", firebaseEmail)));
+      if (!sruSnap.empty) {
+        const d = sruSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "sru", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "student_support_advisors" }, rememberMe);
+        navigate("/sru/dashboard");
+        return;
+      }
+
+      // 4. registry
+      const regSnap = await getDocs(query(collection(db, "registry"), where("email", "==", firebaseEmail)));
+      if (!regSnap.empty) {
+        const d = regSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "registry", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "registry" }, rememberMe);
+        navigate("/registry/dashboard");
+        return;
+      }
+
+      // 5. faculty_administrators
+      const acaSnap = await getDocs(query(collection(db, "faculty_administrators"), where("email", "==", firebaseEmail)));
+      if (!acaSnap.empty) {
+        const d = acaSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "academic_admin", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "faculty_administrators" }, rememberMe);
+        navigate("/academic/upload");
+        return;
+      }
+
+      // 6. academic_mentors
+      const mentorSnap = await getDocs(query(collection(db, "academic_mentors"), where("email", "==", firebaseEmail)));
+      if (!mentorSnap.empty) {
+        const d = mentorSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "academic_mentor", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "academic_mentors" }, rememberMe);
+        navigate("/mentor/dashboard");
+        return;
+      }
+
+      // 7. course_leaders
+      const clSnap = await getDocs(query(collection(db, "course_leaders"), where("email", "==", firebaseEmail)));
+      if (!clSnap.empty) {
+        const d = clSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "course_leader", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "course_leaders" }, rememberMe);
+        navigate("/course-leader/mentor-assignment");
+        return;
+      }
+
+      // 8. legacy collections (faculty, advisors, counselors)
+      const fSnap = await getDocs(query(collection(db, "faculty"), where("email", "==", firebaseEmail)));
+      if (!fSnap.empty) {
+        const d = fSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "faculty", email: firebaseEmail }, rememberMe);
+        navigate("/faculty/dashboard");
+        return;
+      }
+      const aSnap = await getDocs(query(collection(db, "advisors"), where("email", "==", firebaseEmail)));
+      if (!aSnap.empty) {
+        const d = aSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "advisor", email: firebaseEmail }, rememberMe);
+        navigate("/advisor/dashboard");
+        return;
+      }
+      const cSnap = await getDocs(query(collection(db, "counselors"), where("email", "==", firebaseEmail)));
+      if (!cSnap.empty) {
+        const d = cSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "counselor", email: firebaseEmail }, rememberMe);
+        navigate("/counselor/dashboard");
+        return;
+      }
+
+      setError("Your account is not authorised to access this system.");
+      await auth.signOut();
     } catch (err) {
       if (err instanceof FirebaseError) {
         switch (err.code) {

@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Users, AlertTriangle, TrendingUp, Loader2, Flag, Calendar, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { runDailyAlertCheck, hasRunTodayCheck, markTodayCheckDone, AlertResult } from '../services/alertService';
+import { CALENDAR_LINKS } from '../config/calendarLinks';
 
 interface StudentDoc {
   id: string;
@@ -25,6 +26,7 @@ interface InterventionDoc {
   interventionType: string;
   createdAt: any;
   recordedBy: string;
+  isAcademicWarning: boolean;
 }
 
 interface AppointmentDoc {
@@ -116,6 +118,7 @@ export default function SRUDashboard() {
           interventionType: d.data().interventionType ?? d.data().type ?? '',
           createdAt: d.data().createdAt,
           recordedBy: d.data().recordedBy ?? '',
+          isAcademicWarning: d.data().isAcademicWarning ?? false,
         }))
       );
       setLoadingInterventions(false);
@@ -146,6 +149,7 @@ export default function SRUDashboard() {
     fetchTodayAppts();
   }, []);
 
+  const warningCount   = interventions.filter((i) => i.isAcademicWarning === true).length;
   const totalStudents  = students.length;
   const highRisk       = students.filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical').length;
   const mediumRisk     = students.filter((s) => s.riskLevel === 'medium').length;
@@ -415,7 +419,7 @@ export default function SRUDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-2">
-              <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => window.open('https://calendar.app.google/Qe1kXJxE1i1oifoX6', '_blank')}>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => window.open(CALENDAR_LINKS.ssa, '_blank')}>
                 + Schedule Appointment
               </Button>
               <Button variant="outline" className="w-full" onClick={() => navigate('/sru/interventions')}>
@@ -459,7 +463,7 @@ export default function SRUDashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Recent Interventions</CardTitle>
-          <p className="text-sm text-muted-foreground">5 most recent records</p>
+          <p className="text-sm text-muted-foreground">5 most recent records · {warningCount} academic warning{warningCount !== 1 ? 's' : ''}</p>
         </CardHeader>
         <CardContent>
           {loadingInterventions ? (

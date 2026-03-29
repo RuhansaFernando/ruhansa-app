@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -165,6 +165,9 @@ export default function SRUStudentsPage() {
         notes: interventionNotes.trim(),
         recordedBy: user?.name ?? 'Student Support Advisor',
         createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, 'students', selectedStudent.id), {
+        lastContact: interventionDate,
       });
       toast.success('Intervention logged successfully');
       setModalOpen(false);
@@ -467,7 +470,7 @@ export default function SRUStudentsPage() {
                       size="sm"
                       variant="outline"
                       onClick={() =>
-                        navigate(`/sru/students/${student.id}`)
+                        navigate(`/sru/students/${student.studentId}`)
                       }
                     >
                       View Profile

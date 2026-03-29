@@ -1,10 +1,13 @@
 import { createBrowserRouter, redirect } from 'react-router';
 import DashboardLayout from './layouts/DashboardLayout';
+import StudentLayout from './layouts/StudentLayout';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import StudentMarksPage from './pages/StudentMarksPage';
 import StudentAttendancePage from './pages/StudentAttendancePage';
 import StudentAppointmentsPage from './pages/StudentAppointmentsPage';
+import StudentProfilePage from './pages/StudentProfilePage';
+import StudentAlertsPage from './pages/StudentAlertsPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminStudentsPage from './pages/AdminStudentsPage';
 import AdminAdvisorsPage from './pages/AdminAdvisorsPage';
@@ -55,7 +58,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/student',
-    Component: DashboardLayout,
+    Component: StudentLayout,
     children: [
       {
         index: true,
@@ -64,6 +67,14 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         Component: StudentDashboard,
+      },
+      {
+        path: 'profile',
+        Component: StudentProfilePage,
+      },
+      {
+        path: 'alerts',
+        Component: StudentAlertsPage,
       },
       {
         path: 'marks',

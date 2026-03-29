@@ -1,5 +1,6 @@
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { NotificationBell } from '../components/NotificationBell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, BarChart2, HeartHandshake } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -49,9 +50,10 @@ export default function DashboardLayout() {
     if (user.role === 'student') {
       return [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/student/dashboard' },
+        { label: 'My Alerts', icon: Bell, path: '/student/alerts' },
         { label: 'My Marks', icon: FileText, path: '/student/marks' },
         { label: 'My Attendance', icon: ClipboardList, path: '/student/attendance' },
-        { label: 'Appointments', icon: Calendar, path: '/student/appointments' },
+        { label: 'Book Support', icon: HeartHandshake, path: '/student/appointments' },
       ];
     } else if (user.role === 'admin') {
       return [
@@ -423,6 +425,13 @@ export default function DashboardLayout() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Desktop Header — student notification bell */}
+        {user.role === 'student' && (
+          <header className="hidden lg:flex bg-white border-b px-6 py-3 items-center justify-end">
+            <NotificationBell position="down" />
+          </header>
+        )}
+
         {/* Mobile Header */}
         <header className="lg:hidden bg-white border-b px-4 py-3 flex items-center justify-between">
           <Button
@@ -435,7 +444,7 @@ export default function DashboardLayout() {
           <div className="flex items-center">
             <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '100px', height: 'auto' }} />
           </div>
-          <div className="w-10" />
+          <NotificationBell position="down" />
         </header>
 
         {/* Main Content */}

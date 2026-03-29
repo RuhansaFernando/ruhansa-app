@@ -100,6 +100,8 @@ export async function callMLModel(features: MLFeatures, extraData?: {
   gpaMin?: number;
   attLast?: number;
   attTrend?: number;
+  ethnicity?: string;
+  attendanceBySemester?: number[];
 }): Promise<RiskResult> {
   const ML_API_URL = import.meta.env.VITE_ML_API_URL || 'http://localhost:5000/predict';
 
@@ -125,6 +127,8 @@ export async function callMLModel(features: MLFeatures, extraData?: {
         age: extraData?.age ?? 20,
         gender: extraData?.gender ?? 'Unknown',
         major: extraData?.major ?? 'Unknown',
+        ethnicity: extraData?.ethnicity ?? 'Unknown',
+        attendance_by_semester: extraData?.attendanceBySemester ?? [],
       }),
       signal: AbortSignal.timeout(5000),
     });

@@ -40,7 +40,7 @@ export function HealthTrendChart({ currentScore }: HealthTrendChartProps) {
   return (
     <div>
       <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400 mb-1">
-        Health trend (simulated)
+        Health Trend
       </p>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full">
         <defs>

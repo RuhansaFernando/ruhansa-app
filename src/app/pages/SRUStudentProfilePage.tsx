@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { useRiskScore } from '../hooks/useRiskScore';
@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import {
   ArrowLeft, Calendar, AlertTriangle,
-  TrendingUp, Eye, Loader2,
+  TrendingUp, Eye, Loader2, Info,
 } from 'lucide-react';
 
 interface StudentData {
@@ -40,6 +40,9 @@ interface StudentData {
   gpa: number;
   riskLevel: string;
   engagementScore?: number;
+  enrollmentDate?: string;
+  nationality?: string;
+  attendanceBySemester?: number[];
 }
 
 export default function SRUStudentProfilePage() {
@@ -112,11 +115,17 @@ export default function SRUStudentProfilePage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const snap = await getDoc(doc(db, 'students', studentId));
-        if (snap.exists()) {
+        // Look up student by studentId field (not Firestore doc ID)
+        const studentSnap = await getDocs(
+          query(collection(db, 'students'), where('studentId', '==', studentId))
+        );
+        let firestoreDocId = '';
+        if (!studentSnap.empty) {
+          const snap = studentSnap.docs[0];
+          firestoreDocId = snap.id;
           const d = snap.data();
           setStudent({
-            id: snap.id,
+            id: firestoreDocId,
             studentId: d.studentId ?? '',
             name: d.name ?? '',
             email: d.email ?? '',
@@ -127,19 +136,24 @@ export default function SRUStudentProfilePage() {
             gpa: d.gpa ?? 0,
             riskLevel: d.riskLevel ?? 'low',
             engagementScore: d.engagementScore ?? 50,
+            enrollmentDate: d.enrollmentDate ?? '',
+            nationality: d.nationality ?? '',
+            attendanceBySemester: d.attendanceBySemester ?? [],
           });
         }
 
-        // Check if student has viewed their own health profile (Novelty 3 cross-portal)
-        const viewedSnap = await getDocs(
-          query(collection(db, 'studentProfileViews'), where('studentId', '==', studentId))
-        );
-        if (!viewedSnap.empty) {
-          const vd = viewedSnap.docs[0].data();
-          setViewedByStudent(vd.viewedAt?.toDate?.()?.toLocaleString() ?? 'Recently');
+        // studentProfileViews stores the Firestore doc ID (set by StudentDashboard)
+        if (firestoreDocId) {
+          const viewedSnap = await getDocs(
+            query(collection(db, 'studentProfileViews'), where('studentId', '==', firestoreDocId))
+          );
+          if (!viewedSnap.empty) {
+            const vd = viewedSnap.docs[0].data();
+            setViewedByStudent(vd.viewedAt?.toDate?.()?.toLocaleString() ?? 'Recently');
+          }
         }
 
-        // Fetch interventions for this student
+        // Fetch interventions for this student (interventions store the actual studentId)
         const intSnap = await getDocs(
           query(collection(db, 'interventions'), where('studentId', '==', studentId))
         );
@@ -189,7 +203,7 @@ export default function SRUStudentProfilePage() {
         const intSnap = await getDocs(
           query(collection(db, 'interventions'), where('studentId', '==', student.studentId))
         );
-        setAcademicWarnings(intSnap.size);
+        setAcademicWarnings(intSnap.docs.filter((d) => d.data().isAcademicWarning === true).length);
       } catch (err) {
         console.error('Failed to fetch academic features:', err);
       }
@@ -300,10 +314,13 @@ export default function SRUStudentProfilePage() {
   };
 
   const riskData = useRiskScore({
-    attendancePercentage: student?.attendancePercentage,
-    gpa:                  student?.gpa,
-    studentId:            student?.studentId,
-    consecutiveAbsences:  student?.consecutiveAbsences,
+    attendancePercentage:  student?.attendancePercentage,
+    gpa:                   student?.gpa,
+    studentId:             student?.studentId,
+    consecutiveAbsences:   student?.consecutiveAbsences,
+    enrollmentDate:        student?.enrollmentDate,
+    nationality:           student?.nationality,
+    attendanceBySemester:  student?.attendanceBySemester,
   });
 
   if (loading) {
@@ -554,19 +571,13 @@ export default function SRUStudentProfilePage() {
               <CardTitle className="text-sm flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 Explainable Risk Breakdown
-                <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-[10px] ml-auto">
-                  Novelty 2 · XAI
-                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
               {riskData.pending ? (
-                <div className="flex flex-col items-center justify-center p-8 text-center">
-                  <div className="text-4xl mb-3">🤖</div>
-                  <p className="font-semibold text-lg">ML Model Not Connected</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Risk analysis will be available once the AI model is integrated
-                  </p>
+                <div className="flex items-center gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2.5 text-sm text-blue-700">
+                  <Info className="h-4 w-4 flex-shrink-0 text-blue-400" />
+                  Risk analysis will be available once the ML model is connected
                 </div>
               ) : (
                 <>
@@ -599,9 +610,6 @@ export default function SRUStudentProfilePage() {
                 <CardTitle className="text-sm flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-blue-500" />
                   What-If Intervention Simulator
-                  <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] ml-auto">
-                    Novelty 2
-                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>

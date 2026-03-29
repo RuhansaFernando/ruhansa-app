@@ -12,6 +12,7 @@ import { Calendar, Clock, Users, Loader2, Search, Plus, FileText } from 'lucide-
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
+import { createNotification } from '../services/notificationService';
 
 interface AppointmentDoc {
   id: string;
@@ -19,6 +20,10 @@ interface AppointmentDoc {
   studentName: string;
   programme: string;
   advisorId: string;
+  mentorId: string;
+  counsellorId: string;
+  assignedTo: string;
+  whoToMeet: string;
   type: string;
   date: string;
   time: string;
@@ -28,6 +33,8 @@ interface AppointmentDoc {
 
 interface StudentOption {
   id: string;
+  studentId: string;
+  uid: string;
   name: string;
   programme: string;
   riskLevel: string;
@@ -139,10 +146,12 @@ export default function SRUAppointmentsPage() {
             riskLevel: d.data().riskLevel ?? 'low',
           };
           options.push({
-            id: d.id,
-            name: d.data().name ?? '',
-            programme: d.data().programme ?? '',
-            riskLevel: d.data().riskLevel ?? 'low',
+            id:         d.id,
+            studentId:  d.data().studentId ?? d.id,
+            uid:        d.data().uid ?? '',
+            name:       d.data().name ?? '',
+            programme:  d.data().programme ?? '',
+            riskLevel:  d.data().riskLevel ?? 'low',
           });
         });
         setStudentMap(map);
@@ -156,13 +165,22 @@ export default function SRUAppointmentsPage() {
               studentName: d.data().studentName ?? map[d.data().studentId]?.name ?? '',
               programme: d.data().programme ?? map[d.data().studentId]?.programme ?? '',
               advisorId: d.data().advisorId ?? '',
+              mentorId: d.data().mentorId ?? '',
+              counsellorId: d.data().counsellorId ?? '',
+              assignedTo: d.data().assignedTo ?? '',
+              whoToMeet: d.data().whoToMeet ?? '',
               type: d.data().type ?? d.data().appointmentType ?? '',
               date: d.data().date ?? '',
               time: d.data().time ?? '',
               status: d.data().status ?? 'pending',
               notes: d.data().notes ?? '',
             }))
-            .filter((a) => a.advisorId === user?.id)
+            .filter((a) =>
+              a.advisorId === user?.id ||
+              a.assignedTo === 'SSA Team' ||
+              a.whoToMeet === 'Student Support Advisor' ||
+              (!a.advisorId && !a.mentorId && !a.counsellorId)
+            )
         );
       } finally {
         setLoading(false);
@@ -212,6 +230,13 @@ export default function SRUAppointmentsPage() {
         bookedBy: 'ssa',
         advisorId: user?.id ?? '',
         createdAt: serverTimestamp(),
+      });
+      await createNotification({
+        studentId: student?.studentId ?? formStudentId,
+        uid:       student?.uid ?? '',
+        type:      'appointment',
+        title:     'New appointment scheduled',
+        message:   'A new appointment has been scheduled for you by your Student Support Advisor.',
       });
 
       setAppointments(prev => [{
@@ -302,6 +327,7 @@ export default function SRUAppointmentsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Appointments</h1>
           <p className="text-muted-foreground text-sm mt-1">Manage student appointment requests</p>
+          <p className="text-xs text-blue-600 mt-0.5">Showing your assigned appointments and all unassigned team requests</p>
         </div>
         <Button
           className="bg-blue-600 hover:bg-blue-700 gap-1.5"

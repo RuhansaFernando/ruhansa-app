@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { runDailyAlertCheck, AlertResult } from '../services/alertService';
@@ -9,13 +9,20 @@ import { Button } from '../components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../components/ui/dialog';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
 import { AlertTriangle, Flag, Activity, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
+import { createNotification } from '../services/notificationService';
 
 interface AlertStudent {
   id: string;
   studentId: string;
+  uid: string;
   name: string;
   programme: string;
   level: string;
@@ -52,6 +59,14 @@ export default function SRUAlertsPage() {
   const [manualCheckRunning, setManualCheckRunning] = useState(false);
   const [manualCheckResult, setManualCheckResult]   = useState<AlertResult | null>(null);
 
+  // Referral dialog state
+  const [referStudent, setReferStudent] = useState<AlertStudent | null>(null);
+  const [referTo,      setReferTo]      = useState('');
+  const [referReason,  setReferReason]  = useState('');
+  const [referUrgency, setReferUrgency] = useState('');
+  const [referNotes,   setReferNotes]   = useState('');
+  const [referSaving,  setReferSaving]  = useState(false);
+
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'students'), (snap) => {
       const docs: AlertStudent[] = snap.docs.map((d) => {
@@ -64,11 +79,12 @@ export default function SRUAlertsPage() {
         const alertTypes: string[] = [];
         if (attendance < 80) alertTypes.push('Low Attendance');
         if (risk === 'high' || risk === 'critical') alertTypes.push('High Risk');
-        if (absences >= 3) alertTypes.push('Missing Submission');
+        if (absences >= 3) alertTypes.push('Consecutive Absences');
 
         return {
           id: d.id,
           studentId: data.studentId ?? d.id,
+          uid: data.uid ?? '',
           name: data.name ?? '',
           programme: data.programme ?? '',
           level: data.level ?? '',
@@ -161,9 +177,53 @@ export default function SRUAlertsPage() {
   };
 
   const openIntervention = (student: AlertStudent) => {
-    navigate('/sru/interventions');
-    // student param available for future pre-fill logic
-    void student;
+    navigate(`/sru/interventions?studentId=${student.studentId}&studentName=${encodeURIComponent(student.name)}`);
+  };
+
+  const openReferDialog = (student: AlertStudent) => {
+    setReferStudent(student);
+    setReferTo('');
+    setReferReason('');
+    setReferUrgency('');
+    setReferNotes('');
+  };
+
+  const closeReferDialog = () => setReferStudent(null);
+
+  const handleReferSubmit = async () => {
+    if (!referStudent) return;
+    if (!referTo)      { toast.error('Please select who to refer to.');   return; }
+    if (!referReason.trim()) { toast.error('Please enter a reason.');     return; }
+    if (!referUrgency) { toast.error('Please select an urgency level.');  return; }
+
+    setReferSaving(true);
+    try {
+      await addDoc(collection(db, 'interventions'), {
+        type:        'Referral',
+        referredTo:  referTo,
+        reason:      referReason.trim(),
+        urgency:     referUrgency,
+        notes:       referNotes.trim(),
+        studentId:   referStudent.studentId,
+        studentName: referStudent.name,
+        createdBy:   user?.name ?? 'SSA',
+        createdAt:   serverTimestamp(),
+        status:      'open',
+      });
+      await createNotification({
+        studentId: referStudent.studentId,
+        uid:       referStudent.uid,
+        type:      'intervention',
+        title:     'Support referral logged',
+        message:   `Your Student Support Advisor has referred you to ${referTo}.`,
+      });
+      toast.success(`${referStudent.name} referred to ${referTo}.`);
+      closeReferDialog();
+    } catch {
+      toast.error('Failed to save referral. Please try again.');
+    } finally {
+      setReferSaving(false);
+    }
   };
 
   const tabs: { key: typeof activeTab; label: string }[] = [
@@ -301,7 +361,7 @@ export default function SRUAlertsPage() {
                       <SelectItem value="all">All Alert Types</SelectItem>
                       <SelectItem value="Low Attendance">Low Attendance</SelectItem>
                       <SelectItem value="High Risk">High Risk</SelectItem>
-                      <SelectItem value="Missing Submission">Missing Submission</SelectItem>
+                      <SelectItem value="Consecutive Absences">Consecutive Absences</SelectItem>
                     </SelectContent>
                   </Select>
                 </>
@@ -391,7 +451,7 @@ export default function SRUAlertsPage() {
                   <Button
                     size="sm"
                     className="bg-blue-600 hover:bg-blue-700 text-xs"
-                    onClick={() => navigate(`/sru/students/${student.id}`)}
+                    onClick={() => navigate(`/sru/students/${student.studentId}`)}
                   >
                     View Profile
                   </Button>
@@ -407,7 +467,7 @@ export default function SRUAlertsPage() {
                     size="sm"
                     variant="outline"
                     className="text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
-                    onClick={() => navigate(`/sru/students/${student.id}`)}
+                    onClick={() => openReferDialog(student)}
                   >
                     🧠 Refer
                   </Button>
@@ -428,6 +488,91 @@ export default function SRUAlertsPage() {
           )}
         </div>
       </div>
+      {/* Refer to Specialist Dialog */}
+      <Dialog open={!!referStudent} onOpenChange={(open) => { if (!open) closeReferDialog(); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Refer to Specialist</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Student — read-only */}
+            <div className="space-y-1.5">
+              <Label>Student</Label>
+              <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm text-muted-foreground">
+                {referStudent?.name ?? ''}
+              </div>
+            </div>
+
+            {/* Refer To */}
+            <div className="space-y-1.5">
+              <Label>Refer To <span className="text-red-500">*</span></Label>
+              <Select value={referTo} onValueChange={setReferTo}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select specialist…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Counsellor">Counsellor</SelectItem>
+                  <SelectItem value="Financial Aid">Financial Aid</SelectItem>
+                  <SelectItem value="Disability Support">Disability Support</SelectItem>
+                  <SelectItem value="Mental Health Services">Mental Health Services</SelectItem>
+                  <SelectItem value="Academic Support">Academic Support</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Reason */}
+            <div className="space-y-1.5">
+              <Label>Reason <span className="text-red-500">*</span></Label>
+              <Textarea
+                placeholder="Describe the reason for this referral…"
+                value={referReason}
+                onChange={(e) => setReferReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            {/* Urgency */}
+            <div className="space-y-1.5">
+              <Label>Urgency <span className="text-red-500">*</span></Label>
+              <Select value={referUrgency} onValueChange={setReferUrgency}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select urgency…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Routine">Routine</SelectItem>
+                  <SelectItem value="Urgent">Urgent</SelectItem>
+                  <SelectItem value="Emergency">Emergency</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Notes — optional */}
+            <div className="space-y-1.5">
+              <Label>Notes <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Textarea
+                placeholder="Any additional context or instructions…"
+                value={referNotes}
+                onChange={(e) => setReferNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeReferDialog} disabled={referSaving}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700"
+              onClick={handleReferSubmit}
+              disabled={referSaving}
+            >
+              {referSaving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Saving…</> : 'Submit Referral'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

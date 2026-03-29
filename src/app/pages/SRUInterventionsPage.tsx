@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, updateDoc,
+  collection, onSnapshot, query, orderBy, where, addDoc, serverTimestamp, getDocs, doc, updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
@@ -17,9 +17,10 @@ import {
 } from '../components/ui/dialog';
 import { ClipboardList, Plus, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 
 const INTERVENTION_TYPES = [
+  'Meeting',
   'Phone Call',
   'Email',
   'In-Person Meeting',
@@ -56,6 +57,7 @@ interface InterventionDoc {
 
 interface StudentOption {
   id: string;
+  studentId: string;
   name: string;
   programme: string;
   riskLevel: string;
@@ -95,6 +97,7 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 export default function SRUInterventionsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [interventions, setInterventions] = useState<InterventionDoc[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
@@ -119,6 +122,7 @@ export default function SRUInterventionsPage() {
   const [formNotes, setFormNotes] = useState('');
   const [formFollowUpDate, setFormFollowUpDate] = useState('');
   const [formOpenStatus, setFormOpenStatus] = useState('open');
+  const [formIsAcademicWarning, setFormIsAcademicWarning] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -152,14 +156,28 @@ export default function SRUInterventionsPage() {
 
   useEffect(() => {
     getDocs(collection(db, 'students')).then((snap) => {
-      setStudents(
-        snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name ?? '',
-          programme: d.data().programme ?? '',
-          riskLevel: d.data().riskLevel ?? 'low',
-        })).sort((a, b) => a.name.localeCompare(b.name))
-      );
+      const list = snap.docs.map((d) => ({
+        id: d.id,
+        studentId: d.data().studentId ?? d.id,
+        name: d.data().name ?? '',
+        programme: d.data().programme ?? '',
+        riskLevel: d.data().riskLevel ?? 'low',
+      })).sort((a, b) => a.name.localeCompare(b.name));
+      setStudents(list);
+
+      // Pre-select student if URL params are present
+      const paramStudentId = searchParams.get('studentId');
+      const paramStudentName = searchParams.get('studentName');
+      if (paramStudentId) {
+        const match = list.find((s) => s.studentId === paramStudentId);
+        if (match) {
+          setFormStudent(match.id);
+          setIsOpen(true);
+        } else if (paramStudentName) {
+          const byName = list.find((s) => s.name === decodeURIComponent(paramStudentName));
+          if (byName) { setFormStudent(byName.id); setIsOpen(true); }
+        }
+      }
     });
   }, []);
 
@@ -194,6 +212,7 @@ export default function SRUInterventionsPage() {
     setFormNotes('');
     setFormFollowUpDate('');
     setFormOpenStatus('open');
+    setFormIsAcademicWarning(false);
   };
 
   const handleToggleStatus = async (intervention: InterventionDoc) => {
@@ -229,8 +248,28 @@ export default function SRUInterventionsPage() {
         status: deriveStatus(formOutcome),
         openStatus: formOpenStatus,
         followUpDate: formFollowUpDate || null,
+        isAcademicWarning: formIsAcademicWarning,
         createdAt: serverTimestamp(),
       });
+
+      // Update academic_warning_count and advisor_meeting_count on student doc
+      const [warningSnap, meetingSnap] = await Promise.all([
+        getDocs(query(
+          collection(db, 'interventions'),
+          where('studentId', '==', selectedStudent.id),
+          where('isAcademicWarning', '==', true)
+        )),
+        getDocs(query(
+          collection(db, 'interventions'),
+          where('studentId', '==', selectedStudent.id),
+          where('interventionType', '==', 'Meeting')
+        )),
+      ]);
+      await updateDoc(doc(db, 'students', selectedStudent.id), {
+        academic_warning_count: warningSnap.size,
+        advisor_meeting_count: meetingSnap.size,
+      });
+
       toast.success('Intervention logged successfully.');
       setIsOpen(false);
       resetForm();
@@ -583,6 +622,19 @@ export default function SRUInterventionsPage() {
                   <SelectItem value="resolved">Resolved</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <input
+                type="checkbox"
+                id="isAcademicWarning"
+                checked={formIsAcademicWarning}
+                onChange={(e) => setFormIsAcademicWarning(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+              />
+              <label htmlFor="isAcademicWarning" className="text-sm font-medium text-red-700 cursor-pointer select-none">
+                Mark as Formal Academic Warning
+              </label>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

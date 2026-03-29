@@ -18,7 +18,20 @@ interface StudentRiskData {
   age?: number;
   gender?: string;
   major?: string;
+  enrollmentDate?: string;
+  nationality?: string;
+  attendanceBySemester?: number[];
 }
+
+const calcEnrollmentGap = (enrollmentDate: string): number => {
+  if (!enrollmentDate) return 0;
+  const start = new Date(enrollmentDate);
+  const now = new Date();
+  return Math.max(0,
+    (now.getFullYear() - start.getFullYear()) * 12 +
+    (now.getMonth() - start.getMonth())
+  );
+};
 
 export function useRiskScore(studentData: StudentRiskData): RiskResult {
   const [result, setResult] = useState<RiskResult>({
@@ -34,15 +47,15 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
       if (!studentData.studentId) return;
 
       try {
-        // Fetch intervention count and appointment count in parallel
-        const [intSnap, apptSnap, resultsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'interventions'), where('studentId', '==', studentData.studentId))),
-          getDocs(query(collection(db, 'appointments'), where('studentId', '==', studentData.studentId))),
+        // Fetch academic warning count, meeting count, and results in parallel
+        const [warningSnap, meetingSnap, resultsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'interventions'), where('studentId', '==', studentData.studentId), where('isAcademicWarning', '==', true))),
+          getDocs(query(collection(db, 'interventions'), where('studentId', '==', studentData.studentId), where('interventionType', '==', 'Meeting'))),
           getDocs(query(collection(db, 'results'), where('studentId', '==', studentData.studentId))),
         ]);
 
-        const interventionCount = intSnap.size;
-        const appointmentCount = apptSnap.size;
+        const interventionCount = warningSnap.size;
+        const appointmentCount = meetingSnap.size;
 
         const results = resultsSnap.docs.map((d) => d.data());
         const failedModules = results.filter(
@@ -73,12 +86,20 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           gpaHistory: semesterGPAs,
         });
 
+        const attendancePercentage = studentData.attendancePercentage ?? 0;
+        const attendanceBySemester = studentData.attendanceBySemester && studentData.attendanceBySemester.length > 0
+          ? studentData.attendanceBySemester
+          : [attendancePercentage];
+
         const riskResult = await callMLModel(features, {
           age: studentData.age,
           gender: studentData.gender,
           major: studentData.major,
           advisorMeetingCount: appointmentCount,
           hasCounseling: interventionCount > 0 ? 1 : 0,
+          enrollmentGapMonths: calcEnrollmentGap(studentData.enrollmentDate ?? ''),
+          ethnicity: studentData.nationality ?? 'Unknown',
+          attendanceBySemester,
         });
         setResult(riskResult);
       } catch (err) {

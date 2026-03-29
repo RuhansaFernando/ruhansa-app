@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { FileText, Download, X, Loader2, BarChart2, Users, ClipboardList } from 'lucide-react';
+import { FileText, Download, Loader2, BarChart2, Users, ClipboardList, ArrowLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
-type ReportType = 'summary' | 'low-attendance' | 'history' | null;
+type ReportType = 'attendance-summary' | 'low-attendance' | 'module-history' | null;
 
 interface ModuleSummary {
   moduleId: string;
@@ -106,7 +106,6 @@ export default function FacultyAdminReportsPage() {
       const attSnap = await getDocs(collection(db, 'attendance'));
       const relevant = attSnap.docs.filter((d) => adminModuleIds.has(d.data().moduleId));
 
-      // Group by moduleId + sessionKey(date+sessionType) to count unique sessions and attendance
       const sessionMap = new Map<string, { present: number; total: number }>();
       const moduleSessionSet = new Map<string, Set<string>>();
 
@@ -123,7 +122,6 @@ export default function FacultyAdminReportsPage() {
         sessionMap.set(sessionKey, cur);
       });
 
-      // Per-module: avg attendance % across sessions, students below 80%
       const studentAttMap = new Map<string, Map<string, { present: number; total: number }>>();
       relevant.forEach((d) => {
         const data = d.data();
@@ -160,7 +158,6 @@ export default function FacultyAdminReportsPage() {
       }).sort((a, b) => a.moduleCode.localeCompare(b.moduleCode));
 
       setSummaryData(summary);
-      setActiveReport('summary');
     } catch {
       toast.error('Failed to generate report');
     } finally {
@@ -189,7 +186,6 @@ export default function FacultyAdminReportsPage() {
         .filter((s) => s.attendancePercentage < 80 && facultyStudentIds.has(s.studentId))
         .sort((a, b) => a.attendancePercentage - b.attendancePercentage);
       setLowAttendanceData(low);
-      setActiveReport('low-attendance');
     } catch {
       toast.error('Failed to generate report');
     } finally {
@@ -227,7 +223,6 @@ export default function FacultyAdminReportsPage() {
         Array.from(groupMap.values()).sort((a, b) => b.date.localeCompare(a.date))
       );
       setHistoryModuleFilter('all');
-      setActiveReport('history');
     } catch {
       toast.error('Failed to generate report');
     } finally {
@@ -282,11 +277,14 @@ export default function FacultyAdminReportsPage() {
         </p>
       </div>
 
-      {/* Report Cards */}
+      {/* Cards grid — no active report */}
       {activeReport === null && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Report 1 */}
-          <Card className="hover:shadow-md transition-shadow">
+          {/* Attendance Summary card */}
+          <Card
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => setActiveReport('attendance-summary')}
+          >
             <CardHeader className="pb-3">
               <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center mb-2">
                 <BarChart2 className="h-5 w-5 text-blue-600" />
@@ -297,19 +295,17 @@ export default function FacultyAdminReportsPage() {
               <p className="text-sm text-muted-foreground">
                 Per-module breakdown: total sessions, average attendance percentage, and students below 80%.
               </p>
-              <Button
-                className="w-full gap-2"
-                disabled={generating || !modulesLoaded}
-                onClick={generateSummary}
-              >
-                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                Generate Report
-              </Button>
+              <div className="flex items-center text-sm font-medium text-primary gap-1">
+                View Report <ChevronRight className="h-4 w-4" />
+              </div>
             </CardContent>
           </Card>
 
-          {/* Report 2 */}
-          <Card className="hover:shadow-md transition-shadow">
+          {/* Low Attendance Students card */}
+          <Card
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => setActiveReport('low-attendance')}
+          >
             <CardHeader className="pb-3">
               <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center mb-2">
                 <Users className="h-5 w-5 text-red-600" />
@@ -320,19 +316,17 @@ export default function FacultyAdminReportsPage() {
               <p className="text-sm text-muted-foreground">
                 All students with attendance below 80%, sorted by attendance percentage ascending.
               </p>
-              <Button
-                className="w-full gap-2"
-                disabled={generating || !modulesLoaded}
-                onClick={generateLowAttendance}
-              >
-                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                Generate Report
-              </Button>
+              <div className="flex items-center text-sm font-medium text-primary gap-1">
+                View Report <ChevronRight className="h-4 w-4" />
+              </div>
             </CardContent>
           </Card>
 
-          {/* Report 3 */}
-          <Card className="hover:shadow-md transition-shadow">
+          {/* Module Attendance History card */}
+          <Card
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => setActiveReport('module-history')}
+          >
             <CardHeader className="pb-3">
               <div className="h-10 w-10 rounded-full bg-purple-50 flex items-center justify-center mb-2">
                 <ClipboardList className="h-5 w-5 text-purple-600" />
@@ -343,224 +337,297 @@ export default function FacultyAdminReportsPage() {
               <p className="text-sm text-muted-foreground">
                 All recorded sessions for your faculty modules, filterable by module.
               </p>
-              <Button
-                className="w-full gap-2"
-                disabled={generating || !modulesLoaded}
-                onClick={generateHistory}
-              >
-                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                Generate Report
-              </Button>
+              <div className="flex items-center text-sm font-medium text-primary gap-1">
+                View Report <ChevronRight className="h-4 w-4" />
+              </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Report 1 Results */}
-      {activeReport === 'summary' && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart2 className="h-4 w-4" />
-                Attendance Summary
-              </CardTitle>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={exportSummaryCsv}>
-                  <Download className="h-4 w-4" />Export CSV
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setActiveReport(null)}>
-                  <X className="h-4 w-4" />
-                </Button>
+      {/* Full page — Attendance Summary */}
+      {activeReport === 'attendance-summary' && (
+        <div className="space-y-6">
+          <button
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setActiveReport(null)}
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Reports
+          </button>
+
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                <BarChart2 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Attendance Summary</h2>
+                <p className="text-sm text-muted-foreground">
+                  Per-module breakdown: total sessions, average attendance percentage, and students below 80%.
+                </p>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Code</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Name</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Total Sessions</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Avg Attendance</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Below 80%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaryData.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">No data found.</td>
-                    </tr>
-                  ) : summaryData.map((r) => (
-                    <tr key={r.moduleId} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono font-medium text-blue-700">{r.moduleCode}</td>
-                      <td className="px-4 py-3">{r.moduleName}</td>
-                      <td className="px-4 py-3 text-center font-medium">{r.totalSessions}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={r.avgAttendancePct < 80 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
-                          {r.avgAttendancePct}%
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {r.belowThreshold > 0 ? (
-                          <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">{r.belowThreshold}</Badge>
-                        ) : (
-                          <span className="text-green-600 text-xs font-medium">None</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={exportSummaryCsv}
+                disabled={summaryData.length === 0}
+              >
+                <Download className="h-4 w-4" />Export CSV
+              </Button>
+              <Button
+                className="gap-2"
+                onClick={generateSummary}
+                disabled={generating || !modulesLoaded}
+              >
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                Generate Report
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
 
-      {/* Report 2 Results */}
-      {activeReport === 'low-attendance' && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Low Attendance Students
-                <Badge className="bg-red-100 text-red-800 border-red-200 text-xs ml-1">{lowAttendanceData.length} students</Badge>
-              </CardTitle>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={exportLowAttendanceCsv}>
-                  <Download className="h-4 w-4" />Export CSV
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setActiveReport(null)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Attendance %</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Risk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lowAttendanceData.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
-                        No students below 80% attendance.
-                      </td>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Code</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Module Name</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Total Sessions</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Avg Attendance</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Below 80%</th>
                     </tr>
-                  ) : lowAttendanceData.map((s) => (
-                    <tr key={s.studentId} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{s.studentId}</td>
-                      <td className="px-4 py-3 font-medium">{s.name || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate">{s.programme || '—'}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={s.attendancePercentage < 60 ? 'text-red-600 font-bold' : 'text-amber-600 font-semibold'}>
-                          {s.attendancePercentage}%
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {s.riskLevel === 'high' ? (
-                          <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">High</Badge>
-                        ) : s.riskLevel === 'medium' ? (
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Medium</Badge>
-                        ) : (
-                          <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Low</Badge>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Report 3 Results */}
-      {activeReport === 'history' && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <ClipboardList className="h-4 w-4" />
-                Module Attendance History
-              </CardTitle>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Select value={historyModuleFilter} onValueChange={setHistoryModuleFilter}>
-                  <SelectTrigger className="w-[220px] h-8 text-sm">
-                    <SelectValue placeholder="All modules" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All modules</SelectItem>
-                    {modules.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.moduleCode} — {m.moduleName}</SelectItem>
+                  </thead>
+                  <tbody>
+                    {summaryData.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
+                          Click "Generate Report" to load data.
+                        </td>
+                      </tr>
+                    ) : summaryData.map((r) => (
+                      <tr key={r.moduleId} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono font-medium text-blue-700">{r.moduleCode}</td>
+                        <td className="px-4 py-3">{r.moduleName}</td>
+                        <td className="px-4 py-3 text-center font-medium">{r.totalSessions}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={r.avgAttendancePct < 80 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                            {r.avgAttendancePct}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {r.belowThreshold > 0 ? (
+                            <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">{r.belowThreshold}</Badge>
+                          ) : (
+                            <span className="text-green-600 text-xs font-medium">None</span>
+                          )}
+                        </td>
+                      </tr>
                     ))}
-                  </SelectContent>
-                </Select>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={exportHistoryCsv}>
-                  <Download className="h-4 w-4" />Export CSV
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setActiveReport(null)}>
-                  <X className="h-4 w-4" />
-                </Button>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Full page — Low Attendance Students */}
+      {activeReport === 'low-attendance' && (
+        <div className="space-y-6">
+          <button
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setActiveReport(null)}
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Reports
+          </button>
+
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Users className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Low Attendance Students</h2>
+                <p className="text-sm text-muted-foreground">
+                  All students with attendance below 80%, sorted by attendance percentage ascending.
+                </p>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Date</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Module</th>
-                    <th className="text-left font-medium text-muted-foreground px-4 py-3">Session Type</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Present</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Absent</th>
-                    <th className="text-center font-medium text-muted-foreground px-4 py-3">Late</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted-foreground text-sm">No sessions found.</td>
-                    </tr>
-                  ) : filteredHistory.map((h, i) => (
-                    <tr key={i} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-muted-foreground">{formatDate(h.date)}</td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{h.moduleCode}</div>
-                        <div className="text-xs text-muted-foreground">{h.moduleName}</div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{h.sessionType}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="text-green-600 font-semibold">{h.present}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {h.absent > 0
-                          ? <span className="text-red-600 font-semibold">{h.absent}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {h.late > 0
-                          ? <span className="text-amber-600 font-semibold">{h.late}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={exportLowAttendanceCsv}
+                disabled={lowAttendanceData.length === 0}
+              >
+                <Download className="h-4 w-4" />Export CSV
+              </Button>
+              <Button
+                className="gap-2"
+                onClick={generateLowAttendance}
+                disabled={generating || !modulesLoaded}
+              >
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                Generate Report
+              </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          <Card>
+            <CardContent className="pt-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Attendance %</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Risk</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lowAttendanceData.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
+                          Click "Generate Report" to load data.
+                        </td>
+                      </tr>
+                    ) : lowAttendanceData.map((s) => (
+                      <tr key={s.studentId} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{s.studentId}</td>
+                        <td className="px-4 py-3 font-medium">{s.name || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate">{s.programme || '—'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={s.attendancePercentage < 60 ? 'text-red-600 font-bold' : 'text-amber-600 font-semibold'}>
+                            {s.attendancePercentage}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {s.riskLevel === 'high' ? (
+                            <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">High</Badge>
+                          ) : s.riskLevel === 'medium' ? (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Medium</Badge>
+                          ) : (
+                            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Low</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Full page — Module Attendance History */}
+      {activeReport === 'module-history' && (
+        <div className="space-y-6">
+          <button
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setActiveReport(null)}
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Reports
+          </button>
+
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-purple-50 flex items-center justify-center shrink-0">
+                <ClipboardList className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Module Attendance History</h2>
+                <p className="text-sm text-muted-foreground">
+                  All recorded sessions for your faculty modules, filterable by module.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={historyModuleFilter} onValueChange={setHistoryModuleFilter}>
+                <SelectTrigger className="w-[220px] h-9 text-sm">
+                  <SelectValue placeholder="All modules" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All modules</SelectItem>
+                  {modules.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.moduleCode} — {m.moduleName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={exportHistoryCsv}
+                disabled={historyData.length === 0}
+              >
+                <Download className="h-4 w-4" />Export CSV
+              </Button>
+              <Button
+                className="gap-2"
+                onClick={generateHistory}
+                disabled={generating || !modulesLoaded}
+              >
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                Generate Report
+              </Button>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="pt-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Date</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Module</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Session Type</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Present</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Absent</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Late</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
+                          Click "Generate Report" to load data.
+                        </td>
+                      </tr>
+                    ) : filteredHistory.map((h, i) => (
+                      <tr key={i} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-muted-foreground">{formatDate(h.date)}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{h.moduleCode}</div>
+                          <div className="text-xs text-muted-foreground">{h.moduleName}</div>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{h.sessionType}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="text-green-600 font-semibold">{h.present}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {h.absent > 0
+                            ? <span className="text-red-600 font-semibold">{h.absent}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {h.late > 0
+                            ? <span className="text-amber-600 font-semibold">{h.late}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

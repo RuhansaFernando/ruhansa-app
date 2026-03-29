@@ -192,6 +192,10 @@ export default function AcademicUploadPage() {
   const [saving, setSaving] = useState(false);
   const [overwriteConfirmPending, setOverwriteConfirmPending] = useState(false);
 
+  // Academic year and semester for attendance tagging
+  const [attAcademicYear, setAttAcademicYear] = useState('2025/2026');
+  const [attSemester, setAttSemester] = useState('Semester 1');
+
   // Faculty admin profile
   const [adminFaculty, setAdminFaculty] = useState('');
   const [loadingAdmin, setLoadingAdmin] = useState(true);
@@ -578,6 +582,8 @@ export default function AcademicUploadPage() {
             date: row.sessionDate,
             sessionType: row.sessionType,
             status: row.status,
+            semester: attSemester,
+            academicYear: attAcademicYear,
             recordedBy: user?.name ?? 'Faculty Administrator',
             createdAt: serverTimestamp(),
           }, { merge: true })
@@ -664,6 +670,8 @@ export default function AcademicUploadPage() {
             date: sessionDate,
             sessionType,
             status: attendanceMap.get(student.studentId) as 'present' | 'absent',
+            semester: attSemester,
+            academicYear: attAcademicYear,
             recordedBy: user?.name ?? 'Faculty Administrator',
             createdAt: serverTimestamp(),
           }, { merge: true });
@@ -906,6 +914,35 @@ export default function AcademicUploadPage() {
                 }
               </Button>
             )}
+          </div>
+
+          {/* Row 3 — Academic Year & Semester tagging */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Academic Year</Label>
+              <Select value={attAcademicYear} onValueChange={setAttAcademicYear}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['2023/2024', '2024/2025', '2025/2026', '2026/2027'].map((y) => (
+                    <SelectItem key={y} value={y}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Semester</Label>
+              <Select value={attSemester} onValueChange={setAttSemester}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Semester 1">Semester 1</SelectItem>
+                  <SelectItem value="Semester 2">Semester 2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>

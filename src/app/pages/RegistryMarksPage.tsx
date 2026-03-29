@@ -346,7 +346,7 @@ export default function RegistryMarksPage() {
           const existingSnap = await getDocs(query(
             collection(db, 'results'),
             where('studentId', '==', student.studentId),
-            where('moduleId', '==', mod.id),
+            where('moduleCode', '==', mod.moduleCode),
           ));
 
           const existingDoc = existingSnap.docs.find((d) =>
