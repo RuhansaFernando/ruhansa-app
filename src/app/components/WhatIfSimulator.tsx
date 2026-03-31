@@ -6,7 +6,6 @@
 // ============================================================
 
 import { useState, useCallback } from 'react';
-import { Info } from 'lucide-react';
 import { simulateRiskScore, getRiskLevelFromScore, getRiskColour } from '../services/riskScoreService';
 import type { RiskFactors } from '../services/riskScoreService';
 import { RiskScoreBadge } from './RiskScoreBadge';
@@ -26,14 +25,6 @@ export function WhatIfSimulator({
   baseScore,
   pending,
 }: WhatIfSimulatorProps) {
-  if (pending) {
-    return (
-      <div className="flex items-center gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2.5 text-sm text-blue-700">
-        <Info className="h-4 w-4 flex-shrink-0 text-blue-400" />
-        What-If simulator will be available once the ML model is connected
-      </div>
-    );
-  }
   const [attendance,   setAttendance]   = useState(baseAttendance);
   const [gpa,          setGpa]          = useState(Math.round(baseGpa * 10));  // store as int 0–40
   const [absences,     setAbsences]     = useState(baseConsecutiveAbsences);
@@ -73,7 +64,15 @@ export function WhatIfSimulator({
   };
 
   return (
-    <div>
+    <div className="relative">
+      {pending && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[2px]">
+          <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full">
+            Connect ML model to enable
+          </span>
+        </div>
+      )}
+      <div className={pending ? 'pointer-events-none select-none opacity-40' : ''}>
       <p className="text-xs font-medium uppercase tracking-wide text-gray-400 mb-1">
         What-If Intervention Simulator
       </p>
@@ -155,6 +154,7 @@ export function WhatIfSimulator({
       >
         Reset to current values
       </button>
+      </div>
     </div>
   );
 }

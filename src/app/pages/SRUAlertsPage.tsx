@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
-import { runDailyAlertCheck, AlertResult } from '../services/alertService';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -14,7 +13,7 @@ import {
 } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { AlertTriangle, Flag, Activity, Loader2 } from 'lucide-react';
+import { AlertTriangle, Flag, Activity, Loader2, Brain } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 import { createNotification } from '../services/notificationService';
@@ -29,11 +28,11 @@ interface AlertStudent {
   attendancePercentage: number;
   consecutiveAbsences: number;
   gpa: number;
-  riskLevel: string;
   flagged: boolean;
   createdAt: any;
   alertTypes: string[];
   flaggedSince?: string;
+  resolvedAt?: string | null;
 }
 
 const formatDate = (val: any) => {
@@ -51,13 +50,10 @@ export default function SRUAlertsPage() {
   const { user } = useAuth();
   const [allStudents, setAllStudents] = useState<AlertStudent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [riskFilter, setRiskFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [bulkResolving, setBulkResolving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'critical' | 'high' | 'resolved'>('all');
-  const [manualCheckRunning, setManualCheckRunning] = useState(false);
-  const [manualCheckResult, setManualCheckResult]   = useState<AlertResult | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'low_attendance' | 'consec_absences' | 'resolved'>('all');
 
   // Referral dialog state
   const [referStudent, setReferStudent] = useState<AlertStudent | null>(null);
@@ -73,12 +69,10 @@ export default function SRUAlertsPage() {
         const data = d.data();
         const attendance = data.attendancePercentage ?? 100;
         const absences = data.consecutiveAbsences ?? 0;
-        const risk = data.riskLevel ?? 'low';
         const flaggedVal = data.flagged ?? false;
 
         const alertTypes: string[] = [];
         if (attendance < 80) alertTypes.push('Low Attendance');
-        if (risk === 'high' || risk === 'critical') alertTypes.push('High Risk');
         if (absences >= 3) alertTypes.push('Consecutive Absences');
 
         return {
@@ -91,18 +85,18 @@ export default function SRUAlertsPage() {
           attendancePercentage: attendance,
           consecutiveAbsences: absences,
           gpa: data.gpa ?? 0,
-          riskLevel: risk,
           flagged: flaggedVal,
           createdAt: data.createdAt,
           alertTypes,
           flaggedSince: formatDate(data.createdAt),
+          resolvedAt: data.resolvedAt ?? null,
         };
       });
 
       // Only show students that trigger an alert condition
       setAllStudents(
         docs.filter(
-          (s) => s.flagged || s.riskLevel === 'high' || s.riskLevel === 'critical' || s.attendancePercentage < 80 || s.consecutiveAbsences >= 3
+          (s) => s.flagged || s.attendancePercentage < 80 || s.consecutiveAbsences >= 3
         )
       );
       setLoading(false);
@@ -110,28 +104,27 @@ export default function SRUAlertsPage() {
     return () => unsub();
   }, []);
 
-  const totalAlerts   = allStudents.filter((s) => s.flagged).length;
-  const highRiskCount = allStudents.filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical').length;
-  const lowAttCount   = allStudents.filter((s) => s.attendancePercentage < 80).length;
+  const totalAlerts  = allStudents.filter((s) => s.flagged).length;
+  const lowAttCount  = allStudents.filter((s) => s.attendancePercentage < 80).length;
+  const consecCount  = allStudents.filter((s) => s.consecutiveAbsences >= 3).length;
 
   const filtered = useMemo(() => {
     return allStudents.filter((s) => {
       // Tab filter
-      if (activeTab === 'critical') return s.riskLevel === 'critical';
-      if (activeTab === 'high')     return s.riskLevel === 'high';
-      if (activeTab === 'resolved') return !s.flagged;
+      if (activeTab === 'low_attendance')  return s.attendancePercentage < 80;
+      if (activeTab === 'consec_absences') return s.consecutiveAbsences >= 3;
+      if (activeTab === 'resolved')        return s.flagged === false && !!s.resolvedAt;
 
-      // "all" tab — apply the dropdown filters
-      const matchesRisk = riskFilter === 'all' || s.riskLevel === riskFilter;
+      // "all" tab — apply the alert type filter only
       const matchesType = typeFilter === 'all' || s.alertTypes.includes(typeFilter);
-      return matchesRisk && matchesType;
+      return matchesType;
     });
-  }, [allStudents, riskFilter, typeFilter, activeTab]);
+  }, [allStudents, typeFilter, activeTab]);
 
   const handleMarkResolved = async (student: AlertStudent) => {
     setResolvingId(student.id);
     try {
-      await updateDoc(doc(db, 'students', student.id), { flagged: false });
+      await updateDoc(doc(db, 'students', student.id), { flagged: false, resolvedAt: new Date().toISOString() });
       toast.success(`${student.name} marked as resolved.`);
     } catch {
       toast.error('Failed to update student. Please try again.');
@@ -149,30 +142,13 @@ export default function SRUAlertsPage() {
     setBulkResolving(true);
     try {
       await Promise.all(
-        flaggedInView.map((s) => updateDoc(doc(db, 'students', s.id), { flagged: false }))
+        flaggedInView.map((s) => updateDoc(doc(db, 'students', s.id), { flagged: false, resolvedAt: new Date().toISOString() }))
       );
       toast.success(`${flaggedInView.length} student${flaggedInView.length > 1 ? 's' : ''} acknowledged.`);
     } catch {
       toast.error('Some updates failed. Please try again.');
     } finally {
       setBulkResolving(false);
-    }
-  };
-
-  const handleManualCheck = async () => {
-    if (!user?.email) return;
-    setManualCheckRunning(true);
-    setManualCheckResult(null);
-    try {
-      const result = await runDailyAlertCheck(
-        user.email,
-        user.name ?? 'Student Support Advisor'
-      );
-      setManualCheckResult(result);
-    } catch (err) {
-      console.error('Manual check failed:', err);
-    } finally {
-      setManualCheckRunning(false);
     }
   };
 
@@ -226,47 +202,28 @@ export default function SRUAlertsPage() {
     }
   };
 
+  const tabCounts = {
+    all: allStudents.length,
+    low_attendance: lowAttCount,
+    consec_absences: consecCount,
+    resolved: allStudents.filter(s => s.flagged === false && !!s.resolvedAt).length,
+  };
+
   const tabs: { key: typeof activeTab; label: string }[] = [
-    { key: 'all',      label: 'All' },
-    { key: 'critical', label: 'Critical' },
-    { key: 'high',     label: 'High' },
-    { key: 'resolved', label: 'Resolved' },
+    { key: 'all',             label: 'All' },
+    { key: 'low_attendance',  label: 'Low Attendance' },
+    { key: 'consec_absences', label: 'Consecutive Absences' },
+    { key: 'resolved',        label: 'Resolved' },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Student Alerts</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Students flagged as high risk — action required within 24 hours
-          </p>
-        </div>
-        <Button
-          onClick={handleManualCheck}
-          disabled={manualCheckRunning}
-          variant="outline"
-          className="flex items-center gap-2 flex-shrink-0"
-        >
-          {manualCheckRunning ? (
-            <><span className="animate-spin">⏳</span> Checking...</>
-          ) : (
-            <><span>🔄</span> Run Risk Check Now</>
-          )}
-        </Button>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Student Alerts</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Students flagged for attention — review and take action
+        </p>
       </div>
-
-      {manualCheckResult && (
-        <div className={`rounded-lg p-3 text-sm ${
-          manualCheckResult.alertsSent > 0
-            ? 'bg-red-50 border border-red-200 text-red-700'
-            : 'bg-green-50 border border-green-200 text-green-700'
-        }`}>
-          {manualCheckResult.alertsSent > 0
-            ? `⚠️ ${manualCheckResult.alertsSent} high risk student${manualCheckResult.alertsSent > 1 ? 's' : ''} found — alert email sent`
-            : '✅ No new high risk students detected today'}
-        </div>
-      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -289,9 +246,9 @@ export default function SRUAlertsPage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">High Risk</p>
-                <p className="text-3xl font-bold mt-1">{loading ? '—' : highRiskCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">High risk students</p>
+                <p className="text-sm text-muted-foreground">Consecutive Absences</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : consecCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">3 or more in a row</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
                 <AlertTriangle className="h-5 w-5 text-red-600" />
@@ -327,13 +284,20 @@ export default function SRUAlertsPage() {
                 <button
                   key={t.key}
                   onClick={() => setActiveTab(t.key)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
                     activeTab === t.key
                       ? 'bg-gray-900 text-white'
                       : 'text-muted-foreground hover:text-foreground hover:bg-gray-100'
                   }`}
                 >
                   {t.label}
+                  {tabCounts[t.key] > 0 && (
+                    <span className={`inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full text-[10px] font-bold ${
+                      activeTab === t.key ? 'bg-white text-gray-900' : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {tabCounts[t.key]}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -341,30 +305,16 @@ export default function SRUAlertsPage() {
             {/* Filters + Bulk Acknowledge */}
             <div className="flex flex-wrap gap-2 items-center">
               {activeTab === 'all' && (
-                <>
-                  <Select value={riskFilter} onValueChange={setRiskFilter}>
-                    <SelectTrigger className="w-40 h-8 text-xs">
-                      <SelectValue placeholder="Risk Level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Risk Levels</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={typeFilter} onValueChange={setTypeFilter}>
-                    <SelectTrigger className="w-48 h-8 text-xs">
-                      <SelectValue placeholder="Alert Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Alert Types</SelectItem>
-                      <SelectItem value="Low Attendance">Low Attendance</SelectItem>
-                      <SelectItem value="High Risk">High Risk</SelectItem>
-                      <SelectItem value="Consecutive Absences">Consecutive Absences</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-48 h-8 text-xs">
+                    <SelectValue placeholder="Alert Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Alert Types</SelectItem>
+                    <SelectItem value="Low Attendance">Low Attendance</SelectItem>
+                    <SelectItem value="Consecutive Absences">Consecutive Absences</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
               <Button
                 size="sm"
@@ -399,17 +349,15 @@ export default function SRUAlertsPage() {
               <div
                 key={student.id}
                 className={`border rounded-xl p-4 mb-3 last:mb-0 flex gap-4 items-start bg-white
-                  ${student.riskLevel === 'critical' ? 'border-l-4 border-l-red-500' :
-                    student.riskLevel === 'high'     ? 'border-l-4 border-l-red-400' :
-                    student.riskLevel === 'medium'   ? 'border-l-4 border-l-amber-400' :
+                  ${student.attendancePercentage < 80 ? 'border-l-4 border-l-red-500' :
+                    student.consecutiveAbsences >= 3  ? 'border-l-4 border-l-amber-400' :
                     'border-l-4 border-l-blue-400'}`}
               >
                 {/* Alert icon */}
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0
-                  ${student.riskLevel === 'critical' || student.riskLevel === 'high' ? 'bg-red-50' : 'bg-amber-50'}`}>
+                  ${student.attendancePercentage < 80 ? 'bg-red-50' : 'bg-amber-50'}`}>
                   <AlertTriangle className={`h-4 w-4 ${
-                    student.riskLevel === 'critical' || student.riskLevel === 'high'
-                      ? 'text-red-500' : 'text-amber-500'
+                    student.attendancePercentage < 80 ? 'text-red-500' : 'text-amber-500'
                   }`} />
                 </div>
 
@@ -417,14 +365,6 @@ export default function SRUAlertsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <p className="font-medium text-sm">{student.name}</p>
-                    <Badge className={
-                      student.riskLevel === 'critical' ? 'bg-red-100 text-red-800 border-red-200 text-xs' :
-                      student.riskLevel === 'high'     ? 'bg-red-100 text-red-800 border-red-200 text-xs' :
-                      'bg-amber-100 text-amber-800 border-amber-200 text-xs'
-                    }>
-                      {student.riskLevel === 'critical' ? 'Critical' :
-                       student.riskLevel === 'high'     ? 'High Risk' : 'Medium Risk'}
-                    </Badge>
                     {student.flaggedSince && (
                       <span className="text-xs text-muted-foreground ml-auto">
                         Flagged {student.flaggedSince}
@@ -432,9 +372,11 @@ export default function SRUAlertsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mb-2">
-                    {student.attendancePercentage < 75
-                      ? `Attendance at ${student.attendancePercentage}% — below 75% threshold.${student.consecutiveAbsences > 0 ? ` ${student.consecutiveAbsences} consecutive absences.` : ''}`
-                      : `GPA ${student.gpa.toFixed(2)} — academic performance requires attention.`}
+                    {student.attendancePercentage < 80
+                      ? `Attendance at ${student.attendancePercentage}% — below 80% threshold.${student.consecutiveAbsences > 0 ? ` ${student.consecutiveAbsences} consecutive absences.` : ''}`
+                      : student.consecutiveAbsences >= 3
+                      ? `${student.consecutiveAbsences} consecutive absences recorded.`
+                      : `Student flagged for review.`}
                   </p>
                   <div className="flex gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{student.programme || 'Unknown programme'}</Badge>
@@ -469,7 +411,7 @@ export default function SRUAlertsPage() {
                     className="text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
                     onClick={() => openReferDialog(student)}
                   >
-                    🧠 Refer
+                    <Brain className="h-3 w-3 mr-1" /> Refer
                   </Button>
                   {student.flagged && (
                     <Button

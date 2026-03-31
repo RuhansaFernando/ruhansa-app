@@ -1,3 +1,6 @@
+// NOTE: Rule-based risk calculation has been removed from all write paths.
+// riskScore and riskLevel will be populated by the ML model once connected.
+// Until then, treat any existing riskLevel/riskScore fields in Firestore as stale.
 export interface RiskFactors {
   attendancePercentage: number;
   consecutiveAbsences: number;

@@ -92,8 +92,8 @@ export function AcademicHealthScore({ score, lastUpdated }: AcademicHealthScoreP
 
       <p className="text-[10px] text-gray-400 mt-2 text-center">
         {isPending
-          ? 'Waiting for ML model · Shared with your SSA'
-          : `${lastUpdated ? `Updated ${lastUpdated}` : 'Updated today'} · Shared with your SSA`}
+          ? 'Risk score pending · Shared with your SSA'
+          : `${lastUpdated ? `Updated ${lastUpdated}` : 'Powered by ML model · Updated on prediction'} · Shared with your SSA`}
       </p>
     </div>
   );

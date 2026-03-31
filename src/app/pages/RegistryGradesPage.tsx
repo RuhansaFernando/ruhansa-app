@@ -116,32 +116,6 @@ function getAcademicYear(): string {
   return now.getMonth() + 1 >= 9 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
 }
 
-function calculateRisk(
-  gpa: number,
-  attendancePercentage: number,
-  consecutiveAbsences: number
-): { riskScore: number; riskLevel: string } {
-  let riskScore = 0;
-
-  if (gpa < 1.5) riskScore += 40;
-  else if (gpa < 2.0) riskScore += 30;
-  else if (gpa < 2.5) riskScore += 20;
-  else if (gpa < 3.0) riskScore += 10;
-
-  if (attendancePercentage < 60) riskScore += 40;
-  else if (attendancePercentage < 70) riskScore += 30;
-  else if (attendancePercentage < 75) riskScore += 20;
-  else if (attendancePercentage < 80) riskScore += 10;
-
-  if (consecutiveAbsences >= 7) riskScore += 20;
-  else if (consecutiveAbsences >= 5) riskScore += 15;
-  else if (consecutiveAbsences >= 3) riskScore += 10;
-  else if (consecutiveAbsences >= 2) riskScore += 5;
-
-  const riskLevel = riskScore >= 50 ? "high" : riskScore >= 25 ? "medium" : "low";
-  return { riskScore, riskLevel };
-}
-
 export default function RegistryGradesPage() {
   const { user } = useAuth();
 
@@ -474,12 +448,8 @@ export default function RegistryGradesPage() {
         await updateDoc(doc(db, "results", newDoc.id), { resultId: newDoc.id });
       }
 
-      // Recalculate GPA and risk for the student
-      await recalculateStudentRisk(
-        student.id,
-        student.attendancePercentage,
-        student.consecutiveAbsences
-      );
+      // Recalculate GPA for the student
+      await recalculateStudentRisk(student.id);
 
       toast.success("Marks saved successfully");
       setIsMarksOpen(false);
@@ -491,9 +461,7 @@ export default function RegistryGradesPage() {
   };
 
   const recalculateStudentRisk = async (
-    studentId: string,
-    attendance: number,
-    absences: number
+    studentId: string
   ) => {
     const snap = await getDocs(
       query(collection(db, "results"), where("studentId", "==", studentId))
@@ -504,8 +472,7 @@ export default function RegistryGradesPage() {
     const avgMark =
       marks.length > 0 ? marks.reduce((a, b) => a + b, 0) / marks.length : 0;
     const gpa = Math.min(4.0, Math.round((avgMark / 25) * 100) / 100);
-    const { riskScore, riskLevel } = calculateRisk(gpa, attendance, absences);
-    await updateDoc(doc(db, "students", studentId), { gpa, riskScore, riskLevel });
+    await updateDoc(doc(db, "students", studentId), { gpa });
   };
 
   const openAssignTutor = (student: StudentRecord) => {

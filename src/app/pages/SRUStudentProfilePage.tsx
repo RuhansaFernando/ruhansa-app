@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import {
   ArrowLeft, Calendar, AlertTriangle,
-  TrendingUp, Eye, Loader2, Info,
+  TrendingUp, Eye, Loader2, Phone, Building2, ClipboardList,
 } from 'lucide-react';
 
 interface StudentData {
@@ -43,6 +43,8 @@ interface StudentData {
   enrollmentDate?: string;
   nationality?: string;
   attendanceBySemester?: number[];
+  phone?: string;
+  faculty?: string;
 }
 
 export default function SRUStudentProfilePage() {
@@ -139,6 +141,8 @@ export default function SRUStudentProfilePage() {
             enrollmentDate: d.enrollmentDate ?? '',
             nationality: d.nationality ?? '',
             attendanceBySemester: d.attendanceBySemester ?? [],
+            phone: d.phone ?? '',
+            faculty: d.faculty ?? '',
           });
         }
 
@@ -378,11 +382,29 @@ export default function SRUStudentProfilePage() {
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-semibold">{student.name}</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {student.id} · {student.programme} · {student.level}
+                {student.studentId} · {student.programme} · {student.level}
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
-                {!riskData.pending && <RiskLevelBadge level={riskData.level} />}
+                {riskData.pending ? (
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                    Risk Pending
+                  </span>
+                ) : (
+                  <RiskLevelBadge level={riskData.level} />
+                )}
                 <Badge variant="outline" className="text-xs">{student.email}</Badge>
+              </div>
+              <div className="flex flex-wrap gap-3 mt-2">
+                {student.phone && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Phone className="h-3 w-3" />{student.phone}
+                  </span>
+                )}
+                {student.faculty && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Building2 className="h-3 w-3" />{student.faculty}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex gap-2 flex-shrink-0">
@@ -490,24 +512,6 @@ export default function SRUStudentProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Stage indicator */}
-      {student.attendancePercentage !== undefined && student.attendancePercentage > 0 && student.gpa === 0 ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 flex items-center gap-2">
-          <span>⚡</span>
-          <span>
-            <strong>Stage 1 — Early Warning:</strong> Risk assessment based on attendance data only.
-            GPA will be included once marks are recorded.
-          </span>
-        </div>
-      ) : student.gpa > 0 ? (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700 flex items-center gap-2">
-          <span>🎯</span>
-          <span>
-            <strong>Stage 2 — Full Assessment:</strong> Risk assessment using all 6 academic indicators.
-          </span>
-        </div>
-      ) : null}
-
       {/* Attendance by Module */}
       <Card>
         <CardHeader className="pb-3">
@@ -574,32 +578,29 @@ export default function SRUStudentProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {riskData.pending ? (
-                <div className="flex items-center gap-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2.5 text-sm text-blue-700">
-                  <Info className="h-4 w-4 flex-shrink-0 text-blue-400" />
-                  Risk analysis will be available once the ML model is connected
+              {/* Gauge + score */}
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl mb-5">
+                <div className="flex-shrink-0">
+                  <RiskGauge score={riskData.pending ? 0 : riskData.score} size={140} />
                 </div>
-              ) : (
-                <>
-                  {/* Gauge + score */}
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl mb-5">
-                    <div className="flex-shrink-0">
-                      <RiskGauge score={riskData.score} size={140} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Dropout risk score</p>
-                      <RiskLevelBadge level={riskData.level} />
-                      <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                        Score generated from 3 weighted factor groups. Updated daily.
-                      </p>
-                    </div>
-                  </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Dropout risk score</p>
+                  {riskData.pending ? (
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                      Risk Pending
+                    </span>
+                  ) : (
+                    <RiskLevelBadge level={riskData.level} />
+                  )}
+                  <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                    {riskData.pending ? 'Connect ML model to generate score' : 'Score generated from 3 weighted factor groups. Updated daily.'}
+                  </p>
+                </div>
+              </div>
 
-                  <XAIFactorBreakdown
-                    factors={riskData.factors}
-                  />
-                </>
-              )}
+              <XAIFactorBreakdown
+                factors={riskData.factors}
+              />
             </CardContent>
           </Card>
 
@@ -626,51 +627,25 @@ export default function SRUStudentProfilePage() {
             {/* Recommended interventions */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Recommended Interventions</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                  Intervention Actions
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {(riskData.level === 'critical'
-                  ? ['Urgent attendance support meeting', 'Refer to academic tutoring', 'Re-activate LMS engagement', 'Escalate to Academic Mentor']
-                  : riskData.level === 'high'
-                  ? ['Schedule academic support session', 'Review module performance', 'Encourage regular LMS logins']
-                  : riskData.level === 'medium'
-                  ? ['Book a check-in appointment', 'Monitor attendance over next 2 weeks']
-                  : ['Continue regular attendance', 'Maintain current study habits']
-                ).map((intervention, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50 hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-[10px] font-bold text-blue-700">{i + 1}</span>
-                    </div>
-                    <p className="text-xs text-gray-700 leading-relaxed">{intervention}</p>
-                  </div>
-                ))}
+              <CardContent className="pt-0 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Review the student's risk profile and academic indicators
+                  above to determine the most appropriate intervention.
+                  Use your professional judgment to decide the best course of action.
+                </p>
                 <Button
                   variant="outline"
-                  size="sm"
-                  className="w-full mt-2 text-xs"
-                  onClick={() => navigate('/sru/interventions')}
+                  className="w-full"
+                  onClick={() => navigate(`/sru/interventions?studentId=${student.studentId}&studentName=${encodeURIComponent(student.name)}`)}
                 >
+                  <ClipboardList className="h-4 w-4 mr-2" />
                   Log an Intervention
                 </Button>
-                {riskData.score >= 60 && (
-                  <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                    <p className="text-xs font-medium text-purple-900 mb-1">🧠 Mental Health Concern?</p>
-                    <p className="text-xs text-purple-700 leading-relaxed mb-2">
-                      If this student shows signs of stress, anxiety or mental health issues, log a counsellor referral intervention.
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs border-purple-300 text-purple-700 hover:bg-purple-100 w-full"
-                      onClick={() => setReferralModalOpen(true)}
-                    >
-                      Log Counsellor Referral →
-                    </Button>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>

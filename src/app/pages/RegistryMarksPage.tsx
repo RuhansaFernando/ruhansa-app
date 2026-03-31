@@ -16,30 +16,6 @@ import { toast } from 'sonner';
 import { useAuth } from '../AuthContext';
 import { Upload, Download, Loader2, Users, Clock, BookOpen, CheckCircle } from 'lucide-react';
 
-// ─── Risk calculation ─────────────────────────────────────────────────────────
-function calculateRisk(gpa: number, attendance: number, absences: number) {
-  let score = 0;
-  if (gpa < 1.5) score += 40;
-  else if (gpa < 2.0) score += 30;
-  else if (gpa < 2.5) score += 20;
-  else if (gpa < 3.0) score += 10;
-
-  if (attendance < 60) score += 40;
-  else if (attendance < 70) score += 30;
-  else if (attendance < 75) score += 20;
-  else if (attendance < 80) score += 10;
-
-  if (absences >= 7) score += 20;
-  else if (absences >= 5) score += 15;
-  else if (absences >= 3) score += 10;
-  else if (absences >= 2) score += 5;
-
-  return {
-    riskLevel: score >= 50 ? 'high' : score >= 25 ? 'medium' : 'low',
-    riskScore: score,
-  };
-}
-
 // ─── Grade helpers ────────────────────────────────────────────────────────────
 function calculateGrade(mark: number): string {
   if (mark >= 70) return 'A';
@@ -400,18 +376,8 @@ export default function RegistryMarksPage() {
                   ) / 100
                 : 0;
 
-            // Get current attendance stats from the student doc directly
             const studentDocRef = doc(db, 'students', student.studentDocId);
-            const studentSnap = await getDocs(
-              query(collection(db, 'students'), where('studentId', '==', student.studentId))
-            );
-            const sData = studentSnap.docs[0]?.data();
-            const attendance = sData?.attendancePercentage ?? 100;
-            const absences = sData?.consecutiveAbsences ?? 0;
-
-            const { riskLevel, riskScore } = calculateRisk(gpa, attendance, absences);
-
-            await updateDoc(studentDocRef, { gpa, riskLevel, riskScore });
+            await updateDoc(studentDocRef, { gpa });
           } catch (err) {
             console.error('Failed to update student marks:', (err as Error).message);
           }

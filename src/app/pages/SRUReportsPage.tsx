@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { FileText, Download, Loader2, TrendingUp, Activity, Users, CheckCircle, Calendar } from 'lucide-react';
+import { FileText, Download, Loader2, Users, CheckCircle, AlertTriangle, CalendarDays, ClipboardList, Brain, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface StudentDoc {
@@ -20,27 +20,22 @@ interface StudentDoc {
   consecutiveAbsences: number;
   gpa: number;
   riskLevel: string;
+  flagged: boolean;
 }
 
 interface InterventionDoc {
   id: string;
+  studentId: string;
   studentName: string;
   interventionType: string;
   date: string;
   outcome: string;
   openStatus: string;
+  caseStatus: string;
   recordedBy: string;
   createdAt: any;
 }
 
-interface AppointmentDoc {
-  id: string;
-  studentName: string;
-  date: string;
-  time: string;
-  type: string;
-  status: string;
-}
 
 interface AttendanceReportRow {
   studentId: string;
@@ -101,16 +96,29 @@ export default function SRUReportsPage() {
   const [loadingInterventions, setLoadingInterventions] = useState(false);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiStudents, setKpiStudents] = useState<StudentDoc[]>([]);
+  const [kpiInterventions, setKpiInterventions] = useState<InterventionDoc[]>([]);
   const [totalInterventions, setTotalInterventions] = useState(0);
   const [interventionSuccessRate, setInterventionSuccessRate] = useState(0);
+  const [closedInterventionsCount, setClosedInterventionsCount] = useState(0);
 
-  const [appointments, setAppointments] = useState<AppointmentDoc[]>([]);
-  const [loadingAppts, setLoadingAppts] = useState(false);
-  const [showAppts, setShowAppts] = useState(false);
+  const [progressReport, setProgressReport] = useState<{
+    studentId: string;
+    studentName: string;
+    programme: string;
+    interventionDate: string;
+    interventionType: string;
+    attendanceBefore: number;
+    attendanceAfter: number;
+    gpaBefore: number;
+    gpaAfter: number;
+    improved: boolean;
+  }[]>([]);
+  const [showProgressReport, setShowProgressReport] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(false);
 
-  const [showAtRisk, setShowAtRisk] = useState(false);
+const [showAtRisk, setShowAtRisk] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
-  const [showLowAtt, setShowLowAtt] = useState(false);
+  const [showAttFilters, setShowAttFilters] = useState(false);
 
   // Attendance Analysis Report state
   const [attFaculty, setAttFaculty] = useState('');
@@ -157,11 +165,27 @@ export default function SRUReportsPage() {
             consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
             gpa: d.data().gpa ?? 0,
             riskLevel: d.data().riskLevel ?? 'low',
+            flagged: d.data().flagged ?? false,
+          }))
+        );
+        setKpiInterventions(
+          intSnap.docs.map((d) => ({
+            id: d.id,
+            studentId: d.data().studentId ?? '',
+            studentName: d.data().studentName ?? '',
+            interventionType: d.data().interventionType ?? '',
+            date: d.data().date ?? '',
+            outcome: d.data().outcome ?? '',
+            openStatus: d.data().openStatus ?? '',
+            caseStatus: d.data().caseStatus ?? 'open',
+            recordedBy: d.data().recordedBy ?? '',
+            createdAt: d.data().createdAt,
           }))
         );
         setTotalInterventions(intSnap.size);
-        const resolvedInterventions = intSnap.docs.filter(d => d.data().openStatus === 'resolved').length;
-        setInterventionSuccessRate(intSnap.size > 0 ? Math.round((resolvedInterventions / intSnap.size) * 100) : 0);
+        const closedCount = intSnap.docs.filter(d => d.data().caseStatus === 'closed').length;
+        setClosedInterventionsCount(closedCount);
+        setInterventionSuccessRate(intSnap.size > 0 ? Math.round((closedCount / intSnap.size) * 100) : 0);
       } finally {
         setKpiLoading(false);
       }
@@ -184,6 +208,7 @@ export default function SRUReportsPage() {
           consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
           gpa: d.data().gpa ?? 0,
           riskLevel: d.data().riskLevel ?? 'low',
+          flagged: d.data().flagged ?? false,
         }))
       );
     } finally {
@@ -191,24 +216,6 @@ export default function SRUReportsPage() {
     }
   };
 
-  const fetchAppointments = async () => {
-    setLoadingAppts(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'appointments'), orderBy('date', 'desc')));
-      setAppointments(
-        snap.docs.map((d) => ({
-          id: d.id,
-          studentName: d.data().studentName ?? '',
-          date: d.data().date ?? '',
-          time: d.data().time ?? '',
-          type: d.data().type ?? d.data().appointmentType ?? '',
-          status: d.data().status ?? '',
-        }))
-      );
-    } finally {
-      setLoadingAppts(false);
-    }
-  };
 
   const fetchInterventions = async () => {
     setLoadingInterventions(true);
@@ -218,10 +225,13 @@ export default function SRUReportsPage() {
       setInterventions(
         snap.docs.map((d) => ({
           id: d.id,
+          studentId: d.data().studentId ?? '',
           studentName: d.data().studentName ?? '',
           interventionType: d.data().interventionType ?? '',
           date: d.data().date ?? '',
           outcome: d.data().outcome ?? '',
+          openStatus: d.data().openStatus ?? '',
+          caseStatus: d.data().caseStatus ?? 'open',
           recordedBy: d.data().recordedBy ?? '',
           createdAt: d.data().createdAt,
         }))
@@ -340,14 +350,55 @@ export default function SRUReportsPage() {
     setShowInterventions(true);
   };
 
-  const handleGenerateAppointments = async () => {
-    if (appointments.length === 0) await fetchAppointments();
-    setShowAppts(true);
-  };
-
-  const handleGenerateLowAtt = async () => {
-    if (students.length === 0) await fetchStudents();
-    setShowLowAtt(true);
+  const handleGenerateProgress = async () => {
+    setLoadingProgress(true);
+    try {
+      const intSnap = await getDocs(
+        query(collection(db, 'interventions'), orderBy('createdAt', 'desc'))
+      );
+      const studSnap = await getDocs(collection(db, 'students'));
+      const studentMap = new Map(
+        studSnap.docs.map(d => [d.data().studentId, {
+          name: d.data().name,
+          programme: d.data().programme,
+          gpa: d.data().gpa ?? 0,
+          attendance: d.data().attendancePercentage ?? 0,
+        }])
+      );
+      const seen = new Set<string>();
+      const rows = intSnap.docs
+        .filter(d => {
+          const sid = d.data().studentId;
+          if (seen.has(sid)) return false;
+          seen.add(sid);
+          return true;
+        })
+        .map(d => {
+          const data = d.data();
+          const student = studentMap.get(data.studentId);
+          if (!student) return null;
+          const improved = student.attendance >= 80 || student.gpa >= 2.5;
+          return {
+            studentId: data.studentId,
+            studentName: data.studentName ?? student.name,
+            programme: student.programme,
+            interventionDate: data.date ?? '',
+            interventionType: data.interventionType ?? data.type ?? '',
+            attendanceBefore: 0,
+            attendanceAfter: student.attendance,
+            gpaBefore: 0,
+            gpaAfter: student.gpa,
+            improved,
+          };
+        })
+        .filter(Boolean);
+      setProgressReport(rows as any);
+      setShowProgressReport(true);
+    } catch (err) {
+      console.error('Progress report error:', err);
+    } finally {
+      setLoadingProgress(false);
+    }
   };
 
   const attFacultyOptions = [...new Set(attModuleOptions.map((m) => m.faculty).filter(Boolean))].sort();
@@ -365,15 +416,19 @@ export default function SRUReportsPage() {
     return matchFaculty && matchProgramme && matchYear && matchSemester;
   });
 
-  const atRiskStudents = students.filter((s) => s.riskLevel === 'medium' || s.riskLevel === 'high');
-  const lowAttStudents = students.filter((s) => s.attendancePercentage < 80);
+  const atRiskStudents = students.filter((s) => s.attendancePercentage < 80 || s.consecutiveAbsences >= 3);
 
   // KPI calculations
+  const ML_CONNECTED = !!(import.meta.env.VITE_ML_API_URL);
   const totalStudents = kpiStudents.length;
-  const highRiskCount = kpiStudents.filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical').length;
-  const retentionRate = Math.round(((totalStudents - highRiskCount) / Math.max(totalStudents, 1)) * 100);
-  const avgAttendance = kpiStudents.length > 0
-    ? Math.round(kpiStudents.reduce((sum, s) => sum + s.attendancePercentage, 0) / kpiStudents.length)
+  const studentsAtRisk = ML_CONNECTED
+    ? kpiStudents.filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical').length
+    : 0;
+  const flaggedStudents = kpiStudents.filter((s) => s.flagged === true);
+  const interventionStudentIds = new Set(kpiInterventions.map((i) => i.studentId));
+  const respondedCount = flaggedStudents.filter((s) => interventionStudentIds.has(s.studentId)).length;
+  const alertResponseRate = flaggedStudents.length > 0
+    ? Math.round((respondedCount / flaggedStudents.length) * 100)
     : 0;
 
   return (
@@ -385,18 +440,18 @@ export default function SRUReportsPage() {
 
       {/* KPI Summary Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-green-500">
+        <Card className="border-l-4 border-l-red-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Retention Rate</p>
-                <p className="text-3xl font-bold mt-1 text-green-600">
-                  {kpiLoading ? '—' : `${retentionRate}%`}
+                <p className="text-sm text-muted-foreground">Students at Risk</p>
+                <p className="text-3xl font-bold mt-1 text-red-600">
+                  {kpiLoading ? '—' : studentsAtRisk}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Non-high-risk students</p>
+                <p className="text-xs text-muted-foreground mt-1">{ML_CONNECTED ? 'High or critical risk' : 'ML not connected yet'}</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-green-600" />
+              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
               </div>
             </div>
           </CardContent>
@@ -410,7 +465,7 @@ export default function SRUReportsPage() {
                 <p className="text-3xl font-bold mt-1 text-blue-600">
                   {kpiLoading ? '—' : `${interventionSuccessRate}%`}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Resolved outcomes</p>
+                <p className="text-xs text-muted-foreground mt-1">{kpiLoading ? '—' : `${closedInterventionsCount} of ${totalInterventions} cases closed`}</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
                 <CheckCircle className="h-5 w-5 text-blue-600" />
@@ -419,18 +474,22 @@ export default function SRUReportsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-blue-400">
+        <Card className="border-l-4 border-l-blue-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Avg Attendance</p>
+                <p className="text-sm text-muted-foreground">Alert Response Rate</p>
                 <p className="text-3xl font-bold mt-1 text-blue-600">
-                  {kpiLoading ? '—' : `${avgAttendance}%`}
+                  {kpiLoading ? '—' : `${alertResponseRate}%`}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Across all students</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {kpiLoading ? '—' : flaggedStudents.length > 0
+                    ? `${respondedCount} of ${flaggedStudents.length} alerts actioned`
+                    : 'No alerts raised yet'}
+                </p>
               </div>
               <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
-                <Activity className="h-5 w-5 text-blue-500" />
+                <CheckCircle className="h-5 w-5 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -460,200 +519,199 @@ export default function SRUReportsPage() {
 
           {/* Report 0: Attendance Analysis Report */}
           <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-              <Calendar className="h-5 w-5 text-blue-600" />
-            </div>
+            <CalendarDays className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <div className="flex-1">
               <p className="font-medium text-sm">Attendance Analysis Report</p>
               <p className="text-xs text-muted-foreground mt-0.5">Detailed attendance breakdown by module and date range</p>
               <div className="flex gap-2 mt-2">
-                <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">On-demand</Badge>
                 <Badge variant="outline" className="text-xs">CSV</Badge>
               </div>
             </div>
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-xs flex-shrink-0"
-              onClick={generateAttendanceReport}
-              disabled={attLoading}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
+              onClick={() => { setShowAttFilters((v) => !v); }}
             >
               {attLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Generate Report'}
             </Button>
           </div>
 
-          {/* Attendance Analysis — filters + expanded table */}
-          <div className="px-1 space-y-4">
-            {/* Filters — row 1: Faculty / Programme / Year / Semester */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Faculty</Label>
-                <Select value={attFaculty || 'all'} onValueChange={(v) => { setAttFaculty(v === 'all' ? '' : v); setAttProgramme(''); setAttYear(''); setAttSemester(''); setAttModule(''); }}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Faculties" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Faculties</SelectItem>
-                    {attFacultyOptions.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Programme</Label>
-                <Select value={attProgramme || 'all'} onValueChange={(v) => { setAttProgramme(v === 'all' ? '' : v); setAttYear(''); setAttSemester(''); setAttModule(''); }}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Programmes" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Programmes</SelectItem>
-                    {filteredProgrammeOptions.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Year</Label>
-                <Select value={attYear || 'all'} onValueChange={(v) => { setAttYear(v === 'all' ? '' : v); setAttSemester(''); setAttModule(''); }}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Years" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Years</SelectItem>
-                    <SelectItem value="1st Year">1st Year</SelectItem>
-                    <SelectItem value="2nd Year">2nd Year</SelectItem>
-                    <SelectItem value="3rd Year">3rd Year</SelectItem>
-                    <SelectItem value="4th Year">4th Year</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Semester</Label>
-                <Select value={attSemester || 'all'} onValueChange={(v) => { setAttSemester(v === 'all' ? '' : v); setAttModule(''); }}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Semesters" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Semesters</SelectItem>
-                    <SelectItem value="Semester 1">Semester 1</SelectItem>
-                    <SelectItem value="Semester 2">Semester 2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {/* Filters — row 2: Module / Date From / Date To */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Module</Label>
-                <Select value={attModule || 'all'} onValueChange={(v) => setAttModule(v === 'all' ? '' : v)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Modules" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Modules</SelectItem>
-                    {filteredModuleOptions.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.code} — {m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Date From</Label>
-                <Input type="date" className="h-8 text-xs" value={attDateFrom} onChange={(e) => setAttDateFrom(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Date To</Label>
-                <Input type="date" className="h-8 text-xs" value={attDateTo} onChange={(e) => setAttDateTo(e.target.value)} />
-              </div>
-            </div>
-
-            {/* Results table */}
-            {showAttReport && (
-              <>
-                <div className="flex justify-end">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      downloadCSV(
-                        ['Student ID', 'Student Name', 'Programme', 'Year', 'Faculty', 'Module Code', 'Module Name', 'Semester', 'Sessions', 'Present', 'Absent', 'Attendance %', 'Status'],
-                        attReport.map((r) => [r.studentId, r.studentName, r.programme, r.studentYear, r.faculty, r.moduleCode, r.moduleName, r.moduleSemester, String(r.total), String(r.present), String(r.absent), `${r.percentage}%`, r.status]),
-                        'attendance-analysis.csv'
-                      )
-                    }
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Export CSV
-                  </Button>
+          {/* Attendance Analysis — filters (hidden until toggled) + table */}
+          {showAttFilters && (
+            <div className="px-1 space-y-4">
+              {/* Filters — row 1: Faculty / Programme / Year / Semester */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Faculty</Label>
+                  <Select value={attFaculty || 'all'} onValueChange={(v) => { setAttFaculty(v === 'all' ? '' : v); setAttProgramme(''); setAttYear(''); setAttSemester(''); setAttModule(''); }}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Faculties" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Faculties</SelectItem>
+                      {attFacultyOptions.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Year</th>
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Semester</th>
-                        <th className="text-left font-medium text-muted-foreground px-4 py-3">Module</th>
-                        <th className="text-center font-medium text-muted-foreground px-4 py-3">Sessions</th>
-                        <th className="text-center font-medium text-muted-foreground px-4 py-3">Present</th>
-                        <th className="text-center font-medium text-muted-foreground px-4 py-3">Absent</th>
-                        <th className="text-center font-medium text-muted-foreground px-4 py-3">%</th>
-                        <th className="text-center font-medium text-muted-foreground px-4 py-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {attReport.length === 0 ? (
-                        <tr>
-                          <td colSpan={11} className="text-center py-8 text-muted-foreground text-sm">
-                            No records found for the selected filters.
-                          </td>
-                        </tr>
-                      ) : attReport.map((r, i) => (
-                        <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
-                          <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{r.studentId}</td>
-                          <td className="px-4 py-3 font-medium">{r.studentName}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground max-w-[140px]"><span className="truncate block">{r.programme || '—'}</span></td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{r.studentYear || '—'}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{r.moduleSemester || '—'}</td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-xs">{r.moduleCode}</div>
-                            <div className="text-xs text-muted-foreground">{r.moduleName}</div>
-                          </td>
-                          <td className="px-4 py-3 text-center text-muted-foreground">{r.total}</td>
-                          <td className="px-4 py-3 text-center text-green-600 font-medium">{r.present}</td>
-                          <td className="px-4 py-3 text-center text-red-500">{r.absent}</td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`font-semibold ${
-                              r.percentage >= 80 ? 'text-green-600'
-                              : r.percentage >= 60 ? 'text-amber-600'
-                              : 'text-red-600'
-                            }`}>
-                              {r.percentage}%
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {r.status === 'Good' ? (
-                              <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Good</Badge>
-                            ) : r.status === 'At Risk' ? (
-                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">At Risk</Badge>
-                            ) : (
-                              <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Critical</Badge>
-                            )}
-                          </td>
-                        </tr>
+                <div className="space-y-1">
+                  <Label className="text-xs">Programme</Label>
+                  <Select value={attProgramme || 'all'} onValueChange={(v) => { setAttProgramme(v === 'all' ? '' : v); setAttYear(''); setAttSemester(''); setAttModule(''); }}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Programmes" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programmes</SelectItem>
+                      {filteredProgrammeOptions.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Year</Label>
+                  <Select value={attYear || 'all'} onValueChange={(v) => { setAttYear(v === 'all' ? '' : v); setAttSemester(''); setAttModule(''); }}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Years" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Years</SelectItem>
+                      <SelectItem value="1st Year">1st Year</SelectItem>
+                      <SelectItem value="2nd Year">2nd Year</SelectItem>
+                      <SelectItem value="3rd Year">3rd Year</SelectItem>
+                      <SelectItem value="4th Year">4th Year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Semester</Label>
+                  <Select value={attSemester || 'all'} onValueChange={(v) => { setAttSemester(v === 'all' ? '' : v); setAttModule(''); }}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Semesters" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
+                      <SelectItem value="Semester 1">Semester 1</SelectItem>
+                      <SelectItem value="Semester 2">Semester 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {/* Filters — row 2: Module / Date From / Date To */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Module</Label>
+                  <Select value={attModule || 'all'} onValueChange={(v) => setAttModule(v === 'all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Modules" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Modules</SelectItem>
+                      {filteredModuleOptions.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.code} — {m.name}</SelectItem>
                       ))}
-                    </tbody>
-                  </table>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </>
-            )}
-          </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date From</Label>
+                  <Input type="date" className="h-8 text-xs" value={attDateFrom} onChange={(e) => setAttDateFrom(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date To</Label>
+                  <Input type="date" className="h-8 text-xs" value={attDateTo} onChange={(e) => setAttDateTo(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => { setShowAttFilters(false); setShowAttReport(false); }}>
+                  ← Back
+                </Button>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={generateAttendanceReport} disabled={attLoading}>
+                  {attLoading ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Generating…</> : 'Run Report'}
+                </Button>
+              </div>
 
-          {/* Report 1: At-Risk Students */}
-          <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
-              <FileText className="h-5 w-5 text-red-600" />
+              {/* Results table */}
+              {showAttReport && (
+                <>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        downloadCSV(
+                          ['Student ID', 'Student Name', 'Programme', 'Year', 'Faculty', 'Module Code', 'Module Name', 'Semester', 'Sessions', 'Present', 'Absent', 'Attendance %', 'Status'],
+                          attReport.map((r) => [r.studentId, r.studentName, r.programme, r.studentYear, r.faculty, r.moduleCode, r.moduleName, r.moduleSemester, String(r.total), String(r.present), String(r.absent), `${r.percentage}%`, r.status]),
+                          'attendance-analysis.csv'
+                        )
+                      }
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Export CSV
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
+                          <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+                          <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
+                          <th className="text-left font-medium text-muted-foreground px-4 py-3">Year</th>
+                          <th className="text-left font-medium text-muted-foreground px-4 py-3">Semester</th>
+                          <th className="text-left font-medium text-muted-foreground px-4 py-3">Module</th>
+                          <th className="text-center font-medium text-muted-foreground px-4 py-3">Sessions</th>
+                          <th className="text-center font-medium text-muted-foreground px-4 py-3">Present</th>
+                          <th className="text-center font-medium text-muted-foreground px-4 py-3">Absent</th>
+                          <th className="text-center font-medium text-muted-foreground px-4 py-3">%</th>
+                          <th className="text-center font-medium text-muted-foreground px-4 py-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {attReport.length === 0 ? (
+                          <tr>
+                            <td colSpan={11} className="text-center py-8 text-muted-foreground text-sm">
+                              No records found for the selected filters.
+                            </td>
+                          </tr>
+                        ) : attReport.map((r, i) => (
+                          <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{r.studentId}</td>
+                            <td className="px-4 py-3 font-medium">{r.studentName}</td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground max-w-[140px]"><span className="truncate block">{r.programme || '—'}</span></td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground">{r.studentYear || '—'}</td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground">{r.moduleSemester || '—'}</td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-xs">{r.moduleCode}</div>
+                              <div className="text-xs text-muted-foreground">{r.moduleName}</div>
+                            </td>
+                            <td className="px-4 py-3 text-center text-muted-foreground">{r.total}</td>
+                            <td className="px-4 py-3 text-center text-green-600 font-medium">{r.present}</td>
+                            <td className="px-4 py-3 text-center text-red-500">{r.absent}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`font-semibold ${r.percentage >= 80 ? 'text-green-600' : r.percentage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {r.percentage}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {r.status === 'Good' ? (
+                                <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Good</Badge>
+                              ) : r.status === 'At Risk' ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">At Risk</Badge>
+                              ) : (
+                                <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Critical</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
+          )}
+
+          {/* Report 1: Students Needing Attention */}
+          <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
+            <Users className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="font-medium text-sm">At-Risk Students Report</p>
-              <p className="text-xs text-muted-foreground mt-0.5">All students with medium or high risk levels</p>
+              <p className="font-medium text-sm">Students Needing Attention</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Students with low attendance or consecutive absences</p>
               <div className="flex gap-2 mt-2">
-                <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">Weekly</Badge>
-                <Badge variant="outline" className="text-xs">PDF · CSV</Badge>
+                <Badge variant="outline" className="text-xs">CSV</Badge>
               </div>
             </div>
             <Button
               size="sm"
-              className="bg-red-600 hover:bg-red-700 text-xs flex-shrink-0"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
               onClick={handleGenerateAtRisk}
               disabled={loadingStudents}
             >
@@ -664,15 +722,18 @@ export default function SRUReportsPage() {
           {/* Report 1 expanded table */}
           {showAtRisk && (
             <div className="px-1">
-              <div className="flex justify-end mb-3">
+              <div className="flex items-center justify-between mb-3">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowAtRisk(false)}>
+                  ← Back
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() =>
                     downloadCSV(
-                      ['Student ID', 'Name', 'Programme', 'Level', 'Attendance %', 'GPA', 'Risk Level'],
-                      atRiskStudents.map((s) => [s.studentId, s.name, s.programme, s.level, String(s.attendancePercentage), String(s.gpa), s.riskLevel]),
-                      'at-risk-students.csv'
+                      ['Student ID', 'Name', 'Programme', 'Level', 'Attendance %', 'Consecutive Absences', 'GPA'],
+                      atRiskStudents.map((s) => [s.studentId, s.name, s.programme, s.level, String(s.attendancePercentage), String(s.consecutiveAbsences), String(s.gpa)]),
+                      'students-needing-attention.csv'
                     )
                   }
                 >
@@ -689,14 +750,14 @@ export default function SRUReportsPage() {
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Attendance %</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Consec. Absences</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk Level</th>
                     </tr>
                   </thead>
                   <tbody>
                     {atRiskStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">No at-risk students found.</td>
+                        <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">No students needing attention found.</td>
                       </tr>
                     ) : atRiskStudents.map((s) => (
                       <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
@@ -707,8 +768,10 @@ export default function SRUReportsPage() {
                         <td className="px-4 py-3">
                           <span className={`font-medium text-sm ${s.attendancePercentage < 80 ? 'text-red-600' : ''}`}>{s.attendancePercentage}%</span>
                         </td>
+                        <td className="px-4 py-3 text-center text-sm">
+                          <span className={s.consecutiveAbsences >= 3 ? 'text-red-600 font-medium' : ''}>{s.consecutiveAbsences}</span>
+                        </td>
                         <td className="px-4 py-3 text-sm">{s.gpa.toFixed(2)}</td>
-                        <td className="px-4 py-3">{getRiskBadge(s.riskLevel)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -719,20 +782,17 @@ export default function SRUReportsPage() {
 
           {/* Report 2: Intervention Summary */}
           <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-              <FileText className="h-5 w-5 text-blue-600" />
-            </div>
+            <ClipboardList className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <div className="flex-1">
               <p className="font-medium text-sm">Intervention Summary Report</p>
               <p className="text-xs text-muted-foreground mt-0.5">Summary of all interventions logged this semester</p>
               <div className="flex gap-2 mt-2">
-                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Monthly</Badge>
-                <Badge variant="outline" className="text-xs">PDF</Badge>
+                <Badge variant="outline" className="text-xs">CSV</Badge>
               </div>
             </div>
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-xs flex-shrink-0"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
               onClick={handleGenerateInterventions}
               disabled={loadingInterventions}
             >
@@ -743,7 +803,10 @@ export default function SRUReportsPage() {
           {/* Report 2 expanded table */}
           {showInterventions && (
             <div className="px-1">
-              <div className="flex justify-end mb-3">
+              <div className="flex items-center justify-between mb-3">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowInterventions(false)}>
+                  ← Back
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -790,146 +853,69 @@ export default function SRUReportsPage() {
             </div>
           )}
 
-          {/* Report 3: Low Attendance */}
+          {/* Report 3: ML Risk Score Report */}
           <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-              <FileText className="h-5 w-5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-sm">Low Attendance Report</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Students with attendance below 80%</p>
-              <div className="flex gap-2 mt-2">
-                <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">Weekly</Badge>
-                <Badge variant="outline" className="text-xs">PDF · CSV</Badge>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              className="bg-amber-600 hover:bg-amber-700 text-xs flex-shrink-0"
-              onClick={handleGenerateLowAtt}
-              disabled={loadingStudents}
-            >
-              {loadingStudents ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Generate Report'}
-            </Button>
-          </div>
-
-          {/* Report 3 expanded table */}
-          {showLowAtt && (
-            <div className="px-1">
-              <div className="flex justify-end mb-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    downloadCSV(
-                      ['Student ID', 'Name', 'Programme', 'Attendance %', 'Consecutive Absences', 'Risk Level'],
-                      lowAttStudents.map((s) => [s.studentId, s.name, s.programme, String(s.attendancePercentage), String(s.consecutiveAbsences), s.riskLevel]),
-                      'low-attendance.csv'
-                    )
-                  }
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export CSV
-                </Button>
-              </div>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Attendance %</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Consecutive Absences</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk Level</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lowAttStudents.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="text-center py-8 text-muted-foreground text-sm">No low attendance students found.</td>
-                      </tr>
-                    ) : lowAttStudents.sort((a, b) => a.attendancePercentage - b.attendancePercentage).map((s) => (
-                      <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{s.studentId}</td>
-                        <td className="px-4 py-3 font-medium">{s.name}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[160px]"><span className="truncate block">{s.programme || '—'}</span></td>
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-sm text-red-600">{s.attendancePercentage}%</span>
-                        </td>
-                        <td className="px-4 py-3 text-center text-sm">{s.consecutiveAbsences}</td>
-                        <td className="px-4 py-3">{getRiskBadge(s.riskLevel)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Report 4: ML Risk Score Report */}
-          <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-purple-600 text-lg">🤖</span>
-            </div>
+            <Brain className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <div className="flex-1">
               <p className="font-medium text-sm">ML Risk Score Report</p>
               <p className="text-xs text-muted-foreground mt-0.5">Predicted dropout probabilities and key risk factor contributions per student</p>
               <div className="flex gap-2 mt-2">
-                <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs">Real-time</Badge>
-                <Badge variant="outline" className="text-xs">PDF · JSON</Badge>
+                <Badge variant="outline" className="text-xs">JSON</Badge>
               </div>
             </div>
             <Button
               size="sm"
-              className="bg-purple-600 hover:bg-purple-700 text-xs flex-shrink-0"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
               onClick={() => toast.info('ML Risk Score report will be available once AI model is connected')}
             >
               Generate Report
             </Button>
           </div>
 
-          {/* Report 5: Appointment & Caseload Summary */}
+          {/* Report 4: Student Progress Report */}
           <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-              <Calendar className="h-5 w-5 text-green-600" />
-            </div>
+            <TrendingUp className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="font-medium text-sm">Appointment & Caseload Summary</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Session notes completion, follow-up compliance and student contact frequency</p>
+              <p className="font-medium text-sm">Student Progress Report</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Students who received interventions and their current academic standing</p>
               <div className="flex gap-2 mt-2">
-                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Monthly</Badge>
                 <Badge variant="outline" className="text-xs">CSV</Badge>
               </div>
             </div>
             <Button
               size="sm"
-              className="bg-green-600 hover:bg-green-700 text-xs flex-shrink-0"
-              onClick={handleGenerateAppointments}
-              disabled={loadingAppts}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
+              onClick={handleGenerateProgress}
+              disabled={loadingProgress}
             >
-              {loadingAppts ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Generate Report'}
+              {loadingProgress ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Generate Report'}
             </Button>
           </div>
 
-          {/* Report 5 expanded table */}
-          {showAppts && (
-            <div className="px-1">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex gap-4 text-sm">
-                  <span className="text-muted-foreground">Total: <span className="font-semibold text-foreground">{appointments.length}</span></span>
-                  <span className="text-blue-600">Scheduled: <span className="font-semibold">{appointments.filter(a => a.status === 'scheduled').length}</span></span>
-                  <span className="text-green-600">Completed: <span className="font-semibold">{appointments.filter(a => a.status === 'completed').length}</span></span>
-                  <span className="text-red-600">Cancelled: <span className="font-semibold">{appointments.filter(a => a.status === 'cancelled').length}</span></span>
-                </div>
+          {/* Report 4 expanded table */}
+          {showProgressReport && (
+            <div className="px-1 space-y-3">
+              <div className="flex items-center justify-between">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowProgressReport(false)}>
+                  ← Back
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() =>
                     downloadCSV(
-                      ['Student Name', 'Date', 'Time', 'Type', 'Status'],
-                      appointments.map((a) => [a.studentName, a.date, a.time, a.type, a.status]),
-                      'appointment-caseload.csv'
+                      ['Student ID', 'Student Name', 'Programme', 'Intervention Date', 'Intervention Type', 'Current Attendance %', 'Current GPA', 'Status'],
+                      progressReport.map((r) => [
+                        r.studentId,
+                        r.studentName,
+                        r.programme,
+                        r.interventionDate,
+                        r.interventionType,
+                        String(r.attendanceAfter),
+                        String(r.gpaAfter),
+                        r.improved ? 'Improving' : 'Monitoring',
+                      ]),
+                      'student-progress.csv'
                     )
                   }
                 >
@@ -937,29 +923,49 @@ export default function SRUReportsPage() {
                   Export CSV
                 </Button>
               </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">
+                Note: Historical attendance and GPA before intervention are not yet tracked. Future enhancement will show before/after comparison.
+              </div>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-gray-50">
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Student Name</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Date</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Time</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Student</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Intervention Date</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Type</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Current Attendance</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Current GPA</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {appointments.length === 0 ? (
+                    {progressReport.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center py-8 text-muted-foreground text-sm">No appointments found.</td>
+                        <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">No intervention records found.</td>
                       </tr>
-                    ) : appointments.map((a) => (
-                      <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium">{a.studentName || '—'}</td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">{a.date || '—'}</td>
-                        <td className="px-4 py-3 text-sm">{a.time || '—'}</td>
-                        <td className="px-4 py-3 text-sm">{a.type || '—'}</td>
-                        <td className="px-4 py-3 text-sm capitalize">{a.status || '—'}</td>
+                    ) : progressReport.map((r, i) => (
+                      <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-sm">{r.studentName}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{r.studentId}</div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[160px]"><span className="truncate block">{r.programme || '—'}</span></td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">{r.interventionDate || '—'}</td>
+                        <td className="px-4 py-3 text-sm">{r.interventionType || '—'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`font-medium text-sm ${r.attendanceAfter < 80 ? 'text-red-600' : 'text-green-600'}`}>
+                            {r.attendanceAfter}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm">{r.gpaAfter.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-center">
+                          {r.improved ? (
+                            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Improving</Badge>
+                          ) : (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Monitoring</Badge>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

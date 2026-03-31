@@ -53,6 +53,7 @@ interface InterventionDoc {
   status: 'active' | 'pending' | 'completed';
   openStatus: 'open' | 'resolved' | '';
   followUpDate: string | null;
+  caseStatus: 'open' | 'in_progress' | 'closed';
 }
 
 interface StudentOption {
@@ -109,6 +110,7 @@ export default function SRUInterventionsPage() {
   const [outcomeFilter, setOutcomeFilter] = useState('all');
   const [riskFilter, setRiskFilter] = useState('all');
   const [openStatusFilter, setOpenStatusFilter] = useState('all');
+  const [caseStatusFilter, setCaseStatusFilter] = useState('all');
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'active' | 'pending' | 'completed'>('active');
@@ -121,7 +123,7 @@ export default function SRUInterventionsPage() {
   const [formOutcome, setFormOutcome] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formFollowUpDate, setFormFollowUpDate] = useState('');
-  const [formOpenStatus, setFormOpenStatus] = useState('open');
+  const [formStatus, setFormStatus] = useState<'open' | 'in_progress' | 'closed'>('open');
   const [formIsAcademicWarning, setFormIsAcademicWarning] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -146,6 +148,7 @@ export default function SRUInterventionsPage() {
             status: d.data().status ?? deriveStatus(outcome),
             openStatus: d.data().openStatus ?? '',
             followUpDate: d.data().followUpDate ?? null,
+            caseStatus: d.data().caseStatus ?? 'open',
           };
         })
       );
@@ -188,7 +191,7 @@ export default function SRUInterventionsPage() {
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
   }).length;
 
-  const highRiskCount = interventions.filter((i) => i.riskLevel === 'high').length;
+  const openCaseCount = interventions.filter((i) => i.caseStatus === 'open').length;
 
   const filtered = useMemo(() => {
     return interventions.filter((i) => {
@@ -200,9 +203,10 @@ export default function SRUInterventionsPage() {
       const matchesOutcome    = outcomeFilter === 'all' || i.outcome === outcomeFilter;
       const matchesRisk       = riskFilter === 'all' || i.riskLevel === riskFilter;
       const matchesOpenStatus = openStatusFilter === 'all' || i.openStatus === openStatusFilter;
-      return matchesSearch && matchesType && matchesOutcome && matchesRisk && matchesOpenStatus;
+      const matchesCaseStatus = caseStatusFilter === 'all' || i.caseStatus === caseStatusFilter;
+      return matchesSearch && matchesType && matchesOutcome && matchesRisk && matchesOpenStatus && matchesCaseStatus;
     });
-  }, [interventions, search, typeFilter, outcomeFilter, riskFilter, activeTab, openStatusFilter]);
+  }, [interventions, search, typeFilter, outcomeFilter, riskFilter, activeTab, openStatusFilter, caseStatusFilter]);
 
   const resetForm = () => {
     setFormStudent('');
@@ -211,7 +215,7 @@ export default function SRUInterventionsPage() {
     setFormOutcome('');
     setFormNotes('');
     setFormFollowUpDate('');
-    setFormOpenStatus('open');
+    setFormStatus('open');
     setFormIsAcademicWarning(false);
   };
 
@@ -246,7 +250,7 @@ export default function SRUInterventionsPage() {
         notes: formNotes.trim(),
         recordedBy: user?.name ?? 'Staff',
         status: deriveStatus(formOutcome),
-        openStatus: formOpenStatus,
+        caseStatus: formStatus,
         followUpDate: formFollowUpDate || null,
         isAcademicWarning: formIsAcademicWarning,
         createdAt: serverTimestamp(),
@@ -339,9 +343,9 @@ export default function SRUInterventionsPage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">High Risk Interventions</p>
-                <p className="text-3xl font-bold mt-1">{loading ? '—' : highRiskCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">High risk students</p>
+                <p className="text-sm text-muted-foreground">Open Cases</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : openCaseCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Awaiting resolution</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
                 <ClipboardList className="h-5 w-5 text-red-600" />
@@ -427,6 +431,17 @@ export default function SRUInterventionsPage() {
                   <SelectItem value="resolved">Resolved</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={caseStatusFilter} onValueChange={setCaseStatusFilter}>
+                <SelectTrigger className="w-36 h-8 text-xs">
+                  <SelectValue placeholder="Case Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Cases</SelectItem>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -476,6 +491,13 @@ export default function SRUInterventionsPage() {
                           {intervention.openStatus}
                         </Badge>
                       )}
+                      <Badge className={
+                        intervention.caseStatus === 'closed'      ? 'bg-green-100 text-green-800 border-green-200 text-xs' :
+                        intervention.caseStatus === 'in_progress' ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs' :
+                                                                     'bg-red-100 text-red-800 border-red-200 text-xs'
+                      }>
+                        {intervention.caseStatus === 'in_progress' ? 'In Progress' : intervention.caseStatus === 'closed' ? 'Closed' : 'Open'}
+                      </Badge>
                       <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs capitalize">
                         {intervention.status}
                       </Badge>
@@ -495,7 +517,22 @@ export default function SRUInterventionsPage() {
                       <Badge variant="outline" className="text-xs">{intervention.interventionType || '—'}</Badge>
                       <Badge variant="outline" className="text-xs">{intervention.programme || 'Unknown programme'}</Badge>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                    <div className="flex gap-2 flex-shrink-0 flex-wrap items-center">
+                      <Select
+                        value={intervention.caseStatus ?? 'open'}
+                        onValueChange={async (newStatus) => {
+                          await updateDoc(doc(db, 'interventions', intervention.id), { caseStatus: newStatus });
+                        }}
+                      >
+                        <SelectTrigger className="w-32 h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="closed">Closed</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Button
                         size="sm"
                         variant="outline"
@@ -530,11 +567,12 @@ export default function SRUInterventionsPage() {
 
       {/* Log Intervention Modal */}
       <Dialog open={isOpen} onOpenChange={(o) => { if (!o) resetForm(); setIsOpen(o); }}>
-        <DialogContent className="max-w-md" autoComplete="off">
+        <DialogContent className="max-w-2xl" autoComplete="off">
           <DialogHeader>
             <DialogTitle>Log Intervention</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-3 pt-2">
+            {/* Row 1 — Student (full width) */}
             <div className="space-y-1.5">
               <Label>Student <span className="text-red-500">*</span></Label>
               <Select value={formStudent} onValueChange={setFormStudent}>
@@ -549,44 +587,61 @@ export default function SRUInterventionsPage() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Intervention Type <span className="text-red-500">*</span></Label>
-              <Select value={formType} onValueChange={setFormType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {INTERVENTION_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Row 2 — Intervention Type + Case Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Intervention Type <span className="text-red-500">*</span></Label>
+                <Select value={formType} onValueChange={setFormType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERVENTION_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Case Status</Label>
+                <Select value={formStatus} onValueChange={(v: any) => setFormStatus(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Date <span className="text-red-500">*</span></Label>
-              <Input
-                type="date"
-                value={formDate}
-                onChange={(e) => setFormDate(e.target.value)}
-                autoComplete="off"
-              />
+            {/* Row 3 — Date + Outcome */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Date <span className="text-red-500">*</span></Label>
+                <Input
+                  type="date"
+                  value={formDate}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Outcome <span className="text-red-500">*</span></Label>
+                <Select value={formOutcome} onValueChange={setFormOutcome}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select outcome..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OUTCOME_OPTIONS.map((o) => (
+                      <SelectItem key={o} value={o}>{o}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Outcome <span className="text-red-500">*</span></Label>
-              <Select value={formOutcome} onValueChange={setFormOutcome}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select outcome..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {OUTCOME_OPTIONS.map((o) => (
-                    <SelectItem key={o} value={o}>{o}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+            {/* Row 4 — Notes (full width) */}
             <div className="space-y-1.5">
               <Label>Notes</Label>
               <textarea
@@ -599,42 +654,31 @@ export default function SRUInterventionsPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Follow-up Date</Label>
-              <Input
-                type="date"
-                value={formFollowUpDate}
-                onChange={(e) => setFormFollowUpDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                autoComplete="off"
-              />
-              <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={formOpenStatus} onValueChange={setFormOpenStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="checkbox"
-                id="isAcademicWarning"
-                checked={formIsAcademicWarning}
-                onChange={(e) => setFormIsAcademicWarning(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-              />
-              <label htmlFor="isAcademicWarning" className="text-sm font-medium text-red-700 cursor-pointer select-none">
-                Mark as Formal Academic Warning
-              </label>
+            {/* Row 5 — Follow-up Date + Academic Warning */}
+            <div className="grid grid-cols-2 gap-4 items-start">
+              <div className="space-y-1.5">
+                <Label>Follow-up Date</Label>
+                <Input
+                  type="date"
+                  value={formFollowUpDate}
+                  onChange={(e) => setFormFollowUpDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
+              </div>
+              <div className="flex items-center gap-3 pt-6">
+                <input
+                  type="checkbox"
+                  id="isAcademicWarning"
+                  checked={formIsAcademicWarning}
+                  onChange={(e) => setFormIsAcademicWarning(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <label htmlFor="isAcademicWarning" className="text-sm font-medium text-red-700 cursor-pointer select-none">
+                  Mark as Formal Academic Warning
+                </label>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

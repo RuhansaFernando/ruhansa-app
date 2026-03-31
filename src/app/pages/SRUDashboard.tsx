@@ -1,32 +1,19 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Users, AlertTriangle, TrendingUp, Loader2, Flag, Calendar, Clock } from 'lucide-react';
+import { Users, Loader2, Flag, Calendar, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { runDailyAlertCheck, hasRunTodayCheck, markTodayCheckDone, AlertResult } from '../services/alertService';
-import { CALENDAR_LINKS } from '../config/calendarLinks';
 
 interface StudentDoc {
   id: string;
+  studentId: string;
   name: string;
   programme: string;
-  riskLevel: string;
-  riskScore: number;
   attendancePercentage: number;
   flagged: boolean;
-}
-
-interface InterventionDoc {
-  id: string;
-  studentName: string;
-  interventionType: string;
-  createdAt: any;
-  recordedBy: string;
-  isAcademicWarning: boolean;
 }
 
 interface AppointmentDoc {
@@ -37,91 +24,26 @@ interface AppointmentDoc {
   status: string;
 }
 
-const getRiskBadge = (riskLevel: string) => {
-  if (riskLevel === 'critical')
-    return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Critical</Badge>;
-  if (riskLevel === 'high')
-    return <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">High Risk</Badge>;
-  if (riskLevel === 'medium')
-    return <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">Medium Risk</Badge>;
-  return <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Low Risk</Badge>;
-};
-
-const formatDate = (val: any) => {
-  if (!val) return '—';
-  try {
-    const d = val?.toDate ? val.toDate() : new Date(val);
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  } catch {
-    return '—';
-  }
-};
-
 export default function SRUDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [students, setStudents] = useState<StudentDoc[]>([]);
-  const [interventions, setInterventions] = useState<InterventionDoc[]>([]);
   const [todayAppts, setTodayAppts] = useState<AppointmentDoc[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
-  const [loadingInterventions, setLoadingInterventions] = useState(true);
-  const [alertResult, setAlertResult] = useState<AlertResult | null>(null);
-  const [alertChecking, setAlertChecking] = useState(false);
-
-  useEffect(() => {
-    const runCheck = async () => {
-      if (!user?.email) return;
-      try {
-        const alreadyRan = await hasRunTodayCheck();
-        if (alreadyRan) return;
-        setAlertChecking(true);
-        const result = await runDailyAlertCheck(
-          user.email,
-          user.name ?? 'Student Support Advisor'
-        );
-        markTodayCheckDone();
-        if (result.alertsSent > 0) setAlertResult(result);
-      } catch (err) {
-        console.error('Daily alert check failed:', err);
-      } finally {
-        setAlertChecking(false);
-      }
-    };
-    runCheck();
-  }, [user?.email]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'students'), (snap) => {
       setStudents(
         snap.docs.map((d) => ({
           id: d.id,
+          studentId: d.data().studentId ?? d.id,
           name: d.data().name ?? '',
           programme: d.data().programme ?? '',
-          riskLevel: d.data().riskLevel ?? 'low',
-          riskScore: d.data().riskScore ?? 0,
           attendancePercentage: d.data().attendancePercentage ?? 100,
           flagged: d.data().flagged ?? false,
         }))
       );
       setLoadingStudents(false);
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const q = query(collection(db, 'interventions'), orderBy('createdAt', 'desc'), limit(5));
-    const unsub = onSnapshot(q, (snap) => {
-      setInterventions(
-        snap.docs.map((d) => ({
-          id: d.id,
-          studentName: d.data().studentName ?? '',
-          interventionType: d.data().interventionType ?? d.data().type ?? '',
-          createdAt: d.data().createdAt,
-          recordedBy: d.data().recordedBy ?? '',
-          isAcademicWarning: d.data().isAcademicWarning ?? false,
-        }))
-      );
-      setLoadingInterventions(false);
     });
     return () => unsub();
   }, []);
@@ -149,21 +71,8 @@ export default function SRUDashboard() {
     fetchTodayAppts();
   }, []);
 
-  const warningCount   = interventions.filter((i) => i.isAcademicWarning === true).length;
-  const totalStudents  = students.length;
-  const highRisk       = students.filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical').length;
-  const mediumRisk     = students.filter((s) => s.riskLevel === 'medium').length;
-  const flagged        = students.filter((s) => s.flagged).length;
-
-  const criticalCount  = students.filter((s) => s.riskLevel === 'critical').length;
-  const highCount      = students.filter((s) => s.riskLevel === 'high').length;
-  const mediumCount    = students.filter((s) => s.riskLevel === 'medium').length;
-  const lowCount       = students.filter((s) => s.riskLevel === 'low').length;
-
-  const highRiskStudents = [...students]
-    .filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical')
-    .sort((a, b) => b.riskScore - a.riskScore)
-    .slice(0, 5);
+  const totalStudents = students.length;
+  const flagged       = students.filter((s) => s.flagged).length;
 
   if (loadingStudents) {
     return (
@@ -173,95 +82,23 @@ export default function SRUDashboard() {
     );
   }
 
-  const riskRows = [
-    { label: 'Critical', count: criticalCount, colour: 'bg-red-500',   text: 'text-red-700'   },
-    { label: 'High',     count: highCount,     colour: 'bg-orange-500', text: 'text-orange-700' },
-    { label: 'Medium',   count: mediumCount,   colour: 'bg-amber-500',  text: 'text-amber-700'  },
-    { label: 'Low',      count: lowCount,      colour: 'bg-green-500',  text: 'text-green-700'  },
-  ];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
     <div className="space-y-6">
       {/* Greeting */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
-          Good morning, {user?.name} 👋
+          {greeting}, {user?.name} 👋
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
           {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {totalStudents} students assigned
         </p>
       </div>
 
-      {/* Daily alert check — running indicator */}
-      {alertChecking && (
-        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4">
-          <span className="animate-spin">⏳</span>
-          Running daily risk check across all students...
-        </div>
-      )}
-
-      {/* Daily alert check — result banner */}
-      {alertResult && alertResult.alertsSent > 0 && (
-        <div className="bg-red-50 border border-red-300 rounded-lg p-4 mb-6">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">⚠️</span>
-              <div>
-                <p className="font-semibold text-red-800 text-base">
-                  {alertResult.alertsSent} new high risk student{alertResult.alertsSent > 1 ? 's' : ''} detected today
-                </p>
-                <p className="text-sm text-red-600 mt-0.5">
-                  Alert email sent to {user?.email} — Action required within 24 hours
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setAlertResult(null)}
-              className="text-red-400 hover:text-red-600 text-lg font-bold ml-4"
-            >✕</button>
-          </div>
-          <div className="mt-3 divide-y divide-red-100">
-            {alertResult.highRiskStudents.slice(0, 3).map((s) => (
-              <div key={s.studentId} className="py-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                <span className="font-medium text-red-800">{s.name}</span>
-                <span className="text-red-600">Risk: {s.riskScore}/100</span>
-                <span className="text-red-600">Attendance: {s.attendancePercentage}%</span>
-                {s.gpa ? (
-                  <span className="text-red-600">GPA: {s.gpa}</span>
-                ) : (
-                  <span className="text-amber-600">GPA: Pending</span>
-                )}
-                {s.dataAvailable === 'attendance_only' && (
-                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                    Attendance only
-                  </span>
-                )}
-              </div>
-            ))}
-            {alertResult.highRiskStudents.length > 3 && (
-              <p className="pt-2 text-sm text-red-600 font-medium">
-                +{alertResult.highRiskStudents.length - 3} more students — view Alerts page
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Critical alert banner */}
-      {highRisk > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
-          <p className="text-sm text-red-900 font-medium flex-1">
-            {highRisk} high risk student{highRisk > 1 ? 's' : ''} require immediate attention.
-          </p>
-          <Button size="sm" className="bg-red-600 hover:bg-red-700 text-xs" onClick={() => navigate('/sru/alerts')}>
-            View Alerts →
-          </Button>
-        </div>
-      )}
-
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
@@ -272,36 +109,6 @@ export default function SRUDashboard() {
               </div>
               <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
                 <Users className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-red-500">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">High Risk</p>
-                <p className="text-3xl font-bold mt-1">{highRisk}</p>
-                <p className="text-xs text-muted-foreground mt-1">Immediate attention</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-amber-500">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Medium Risk</p>
-                <p className="text-3xl font-bold mt-1">{mediumRisk}</p>
-                <p className="text-xs text-muted-foreground mt-1">Active monitoring</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
@@ -323,50 +130,21 @@ export default function SRUDashboard() {
         </Card>
       </div>
 
-      {/* Two column: High Risk + Today's Appointments */}
+      {/* Two column: Risk Pending notice + Today's Appointments */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* High Risk Students */}
+        {/* Risk Scores Pending */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">High Risk Students</CardTitle>
-            <p className="text-sm text-muted-foreground">Top 5 by risk score</p>
+            <CardTitle className="text-base">Student Risk Scores</CardTitle>
           </CardHeader>
           <CardContent>
-            {highRiskStudents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-                <AlertTriangle className="h-8 w-8 mb-2 opacity-30" />
-                <p className="text-sm">No high risk students</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {highRiskStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
-                  >
-                    <div className="flex-1 min-w-0 mr-3">
-                      <p className="font-medium text-sm truncate">{student.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{student.programme || '—'}</p>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className={`text-xs font-medium ${student.attendancePercentage < 80 ? 'text-red-600' : 'text-gray-600'}`}>
-                          Att: {student.attendancePercentage}%
-                        </span>
-                        <span className="text-xs text-muted-foreground">Score: {student.riskScore}</span>
-                        {getRiskBadge(student.riskLevel)}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs flex-shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={() => navigate('/sru/interventions')}
-                    >
-                      Log Intervention
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+              <p className="font-medium">Risk Scores Pending</p>
+              <p className="mt-1 text-blue-600">
+                Student dropout risk scores will appear here once the ML model is connected.
+                Attendance and academic data is being collected.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -410,91 +188,6 @@ export default function SRUDashboard() {
         </Card>
       </div>
 
-      {/* Two column: Quick Actions + Risk Distribution */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-2">
-              <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => window.open(CALENDAR_LINKS.ssa, '_blank')}>
-                + Schedule Appointment
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate('/sru/interventions')}>
-                + Log Intervention
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate('/sru/alerts')}>
-                Review Pending Alerts
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Risk Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Risk Distribution</CardTitle>
-            <p className="text-sm text-muted-foreground">Breakdown across all students</p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {riskRows.map((row) => (
-                <div key={row.label}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-medium ${row.text}`}>{row.label}</span>
-                    <span className="text-sm font-semibold text-gray-700">{row.count}</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${row.colour}`}
-                      style={{ width: totalStudents > 0 ? `${(row.count / totalStudents) * 100}%` : '0%' }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Interventions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent Interventions</CardTitle>
-          <p className="text-sm text-muted-foreground">5 most recent records · {warningCount} academic warning{warningCount !== 1 ? 's' : ''}</p>
-        </CardHeader>
-        <CardContent>
-          {loadingInterventions ? (
-            <div className="flex items-center justify-center h-24">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : interventions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-24 text-muted-foreground">
-              <Calendar className="h-8 w-8 mb-2 opacity-30" />
-              <p className="text-sm">No interventions recorded yet</p>
-            </div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {interventions.map((item) => (
-                <div key={item.id} className="p-3 border rounded-lg hover:bg-gray-50">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{item.studentName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.interventionType}</p>
-                      <p className="text-xs text-muted-foreground">By: {item.recordedBy}</p>
-                    </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 ml-3">
-                      {formatDate(item.createdAt)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -33,30 +33,6 @@ import {
   CheckCircle,
 } from 'lucide-react';
 
-// ─── Risk calculation ─────────────────────────────────────────────────────────
-function calculateRisk(gpa: number, attendance: number, absences: number) {
-  let score = 0;
-  if (gpa < 1.5) score += 40;
-  else if (gpa < 2.0) score += 30;
-  else if (gpa < 2.5) score += 20;
-  else if (gpa < 3.0) score += 10;
-
-  if (attendance < 60) score += 40;
-  else if (attendance < 70) score += 30;
-  else if (attendance < 80) score += 20;
-  else if (attendance < 85) score += 10;
-
-  if (absences >= 7) score += 20;
-  else if (absences >= 5) score += 15;
-  else if (absences >= 3) score += 10;
-  else if (absences >= 2) score += 5;
-
-  return {
-    riskLevel: score >= 50 ? 'high' : score >= 25 ? 'medium' : 'low',
-    riskScore: score,
-  };
-}
-
 // ─── Recalculate per-module + overall attendance + consecutive absences ────────
 async function recalculateStudentAttendance(
   studentDocId: string,
@@ -106,14 +82,10 @@ async function recalculateStudentAttendance(
     else break;
   }
 
-  const { riskLevel, riskScore } = calculateRisk(gpa, overallAttendance, consecutiveAbsences);
-
   await updateDoc(doc(db, 'students', studentDocId), {
     attendancePercentage: overallAttendance,
     [`moduleAttendance.${moduleId}`]: moduleAttendancePct,
     consecutiveAbsences,
-    riskLevel,
-    riskScore,
   });
 }
 

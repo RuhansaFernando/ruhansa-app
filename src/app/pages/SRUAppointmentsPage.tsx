@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Calendar, Clock, Users, Loader2, Search, Plus, FileText } from 'lucide-react';
@@ -110,6 +111,11 @@ export default function SRUAppointmentsPage() {
   const [showModal, setShowModal] = useState(false);
   const [formStudentId, setFormStudentId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Notes modal state
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [notesText, setNotesText] = useState('');
+  const [notesApptId, setNotesApptId] = useState('');
 
   // Fetch SSA's calendar link from student_support_advisors
   useEffect(() => {
@@ -566,7 +572,7 @@ export default function SRUAppointmentsPage() {
                             onClick={() => updateStatus(a.id, 'pending')}
                             disabled={updatingId === a.id}
                           >
-                            Reschedule
+                            Return to Pending
                           </Button>
                         )}
                         <Button
@@ -574,13 +580,9 @@ export default function SRUAppointmentsPage() {
                           variant="outline"
                           className="h-7 text-xs px-2 gap-1"
                           onClick={() => {
-                            const notes = prompt('Add notes for this appointment:');
-                            if (notes !== null) {
-                              updateDoc(doc(db, 'appointments', a.id), { notes });
-                              setAppointments((prev) =>
-                                prev.map((ap) => (ap.id === a.id ? { ...ap, notes } : ap))
-                              );
-                            }
+                            setNotesApptId(a.id);
+                            setNotesText(a.notes ?? '');
+                            setNotesModalOpen(true);
                           }}
                         >
                           <FileText className="h-3 w-3" /> Notes
@@ -594,6 +596,31 @@ export default function SRUAppointmentsPage() {
           </table>
         )}
       </div>
+
+      {/* Notes Modal */}
+      <Dialog open={notesModalOpen} onOpenChange={setNotesModalOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Notes</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={notesText}
+            onChange={e => setNotesText(e.target.value)}
+            placeholder="Enter appointment notes..."
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotesModalOpen(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              if (notesApptId) {
+                await updateDoc(doc(db, 'appointments', notesApptId), { notes: notesText });
+                setAppointments(prev => prev.map(ap => ap.id === notesApptId ? { ...ap, notes: notesText } : ap));
+                setNotesModalOpen(false);
+              }
+            }}>Save Notes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Schedule Appointment Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>

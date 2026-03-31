@@ -63,11 +63,7 @@ function FactorBar({ name, value, contribution, status }: FactorItem) {
 
 export function XAIFactorBreakdown({ factors, explanation }: XAIFactorBreakdownProps) {
   if (factors.length === 0) {
-    return (
-      <div className="py-4 text-center text-sm text-muted-foreground">
-        Risk factor analysis will be available once ML model is connected
-      </div>
-    );
+    return null;
   }
 
   const sorted = [...factors].sort((a, b) => b.contribution - a.contribution);

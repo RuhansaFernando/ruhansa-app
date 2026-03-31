@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
-import { Users, AlertTriangle, Activity, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, AlertTriangle, CheckCircle, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 
@@ -36,14 +36,12 @@ interface StudentDoc {
   level: string;
   gpa: number;
   riskLevel: string;
-  riskScore: number;
   attendancePercentage: number;
   consecutiveAbsences: number;
   status: string;
   lastContact?: string;
+  faculty: string;
 }
-
-const PAGE_SIZE = 10;
 
 export default function SRUStudentsPage() {
   const { user } = useAuth();
@@ -53,14 +51,11 @@ export default function SRUStudentsPage() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [riskFilter, setRiskFilter] = useState('all');
+  const [facultyFilter, setFacultyFilter] = useState('all');
   const [programmeFilter, setProgrammeFilter] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('risk');
-
-  // Pagination
-  const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('name');
 
   // Intervention modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,6 +66,10 @@ export default function SRUStudentsPage() {
   );
   const [interventionNotes, setInterventionNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [quickIsWarning, setQuickIsWarning] = useState(false);
+  const [quickCaseStatus, setQuickCaseStatus] = useState<'open' | 'in_progress' | 'closed'>('open');
+  const [quickOutcome, setQuickOutcome] = useState('');
+  const [quickFollowUpDate, setQuickFollowUpDate] = useState('');
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'students'), (snap) => {
@@ -84,11 +83,11 @@ export default function SRUStudentsPage() {
           level: d.data().level ?? '',
           gpa: d.data().gpa ?? 0,
           riskLevel: d.data().riskLevel ?? 'low',
-          riskScore: d.data().riskScore ?? 0,
           attendancePercentage: d.data().attendancePercentage ?? 100,
           consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
           status: d.data().status ?? 'active',
           lastContact: d.data().lastContact ?? '',
+          faculty: d.data().faculty ?? '',
         }))
       );
       setLoading(false);
@@ -97,53 +96,65 @@ export default function SRUStudentsPage() {
   }, []);
 
   // Dynamic filter lists derived from loaded students
-  const programmes = useMemo(() => [...new Set(students.map(s => s.programme).filter(Boolean))].sort(), [students]);
+  const faculties = useMemo(() => {
+    const set = new Set(students.map(s => s.faculty).filter(Boolean));
+    return Array.from(set).sort();
+  }, [students]);
+  const programmes = useMemo(() => {
+    const base = facultyFilter === 'all' ? students : students.filter(s => s.faculty === facultyFilter);
+    const set = new Set(base.map(s => s.programme).filter(Boolean));
+    return Array.from(set).sort();
+  }, [students, facultyFilter]);
   const levels = useMemo(() => [...new Set(students.map(s => s.level).filter(Boolean))].sort(), [students]);
 
   // Summary counts
+  const ML_CONNECTED  = !!(import.meta.env.VITE_ML_API_URL);
   const totalStudents = students.length;
-  const highRisk = students.filter((s) => s.riskLevel === 'high').length;
-  const mediumRisk = students.filter((s) => s.riskLevel === 'medium').length;
-  const lowAttendance = students.filter((s) => s.attendancePercentage < 80).length;
+  const highRisk      = ML_CONNECTED
+    ? students.filter((s) => s.riskLevel === 'high' || s.riskLevel === 'critical').length
+    : 0;
+  const mediumRisk    = ML_CONNECTED
+    ? students.filter((s) => s.riskLevel === 'medium').length
+    : 0;
+  const lowRisk       = ML_CONNECTED
+    ? students.filter((s) => s.riskLevel === 'low').length
+    : 0;
 
   // Filtered list
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
+    const riskOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
     return students.filter((s) => {
       const matchesSearch =
         !q ||
         s.name.toLowerCase().includes(q) ||
         s.studentId.toLowerCase().includes(q) ||
         s.email.toLowerCase().includes(q);
-      const matchesRisk = riskFilter === 'all' || s.riskLevel === riskFilter;
-      const matchesProgramme =
-        programmeFilter === 'all' || s.programme === programmeFilter;
+      const matchesFaculty = facultyFilter === 'all' || s.faculty === facultyFilter;
+      const matchesProgramme = programmeFilter === 'all' || s.programme === programmeFilter;
       const matchesLevel = levelFilter === 'all' || s.level === levelFilter;
       const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
-      return matchesSearch && matchesRisk && matchesProgramme && matchesLevel && matchesStatus;
+      return matchesSearch && matchesFaculty && matchesProgramme && matchesLevel && matchesStatus;
     }).sort((a, b) => {
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
-      if (sortBy === 'attendance') return a.attendancePercentage - b.attendancePercentage;
-      if (sortBy === 'gpa') return a.gpa - b.gpa;
-      // Default: sort by risk (high first)
-      const order = { high: 0, medium: 1, low: 2 };
-      return (order[a.riskLevel as keyof typeof order] ?? 2) - (order[b.riskLevel as keyof typeof order] ?? 2);
+      if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
+      if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
+      if (sortBy === 'gpa_asc') return a.gpa - b.gpa;
+      if (sortBy === 'gpa_desc') return b.gpa - a.gpa;
+      if (sortBy === 'risk') return (riskOrder[a.riskLevel] ?? 3) - (riskOrder[b.riskLevel] ?? 3);
+      if (sortBy === 'last_contact') return (a.lastContact ?? '').localeCompare(b.lastContact ?? '');
+      return a.name.localeCompare(b.name);
     });
-  }, [students, search, riskFilter, programmeFilter, levelFilter, statusFilter, sortBy]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  // Reset to page 1 on filter change
-  useEffect(() => {
-    setPage(1);
-  }, [search, riskFilter, programmeFilter, levelFilter, statusFilter, sortBy]);
+  }, [students, search, facultyFilter, programmeFilter, levelFilter, statusFilter, sortBy]);
 
   const openIntervention = (student: StudentDoc) => {
     setSelectedStudent(student);
     setInterventionType('');
     setInterventionDate(new Date().toISOString().split('T')[0]);
     setInterventionNotes('');
+    setQuickIsWarning(false);
+    setQuickCaseStatus('open');
+    setQuickOutcome('');
+    setQuickFollowUpDate('');
     setModalOpen(true);
   };
 
@@ -152,18 +163,25 @@ export default function SRUStudentsPage() {
       toast.error('Please select an intervention type');
       return;
     }
+    if (!quickOutcome) {
+      toast.error('Please select an outcome');
+      return;
+    }
     setSubmitting(true);
     try {
       await addDoc(collection(db, 'interventions'), {
         studentId: selectedStudent.studentId,
         studentName: selectedStudent.name,
         programme: selectedStudent.programme,
-        riskLevel: selectedStudent.riskLevel,
         interventionType,
         type: interventionType,
         date: interventionDate,
         notes: interventionNotes.trim(),
         recordedBy: user?.name ?? 'Student Support Advisor',
+        caseStatus: quickCaseStatus,
+        isAcademicWarning: quickIsWarning ?? false,
+        outcome: quickOutcome,
+        followUpDate: quickFollowUpDate || null,
         createdAt: serverTimestamp(),
       });
       await updateDoc(doc(db, 'students', selectedStudent.id), {
@@ -175,30 +193,6 @@ export default function SRUStudentsPage() {
       toast.error('Failed to log intervention. Please try again.');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const getRiskBadge = (level: string, riskScore: number) => {
-    if (!riskScore) return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-xs">Pending</Badge>;
-    switch (level) {
-      case 'high':
-        return (
-          <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">
-            High
-          </Badge>
-        );
-      case 'medium':
-        return (
-          <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">
-            Medium
-          </Badge>
-        );
-      default:
-        return (
-          <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
-            Low
-          </Badge>
-        );
     }
   };
 
@@ -266,7 +260,7 @@ export default function SRUStudentsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold text-red-600">{highRisk}</div>
-            <p className="text-xs text-muted-foreground mt-1">Require immediate attention</p>
+            <p className="text-xs text-muted-foreground mt-1">{ML_CONNECTED ? 'From ML model' : 'ML not connected yet'}</p>
           </CardContent>
         </Card>
 
@@ -281,22 +275,22 @@ export default function SRUStudentsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold text-amber-600">{mediumRisk}</div>
-            <p className="text-xs text-muted-foreground mt-1">Under monitoring</p>
+            <p className="text-xs text-muted-foreground mt-1">{ML_CONNECTED ? 'From ML model' : 'ML not connected yet'}</p>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-orange-500">
+        <Card className="border-l-4 border-l-green-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Low Attendance
+              Low Risk
             </CardTitle>
-            <div className="h-9 w-9 rounded-full bg-orange-100 flex items-center justify-center">
-              <Activity className="h-5 w-5 text-orange-600" />
+            <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle className="h-5 w-5 text-green-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-orange-600">{lowAttendance}</div>
-            <p className="text-xs text-muted-foreground mt-1">Below 80% attendance</p>
+            <div className="text-4xl font-bold text-green-600">{lowRisk}</div>
+            <p className="text-xs text-muted-foreground mt-1">{ML_CONNECTED ? 'From ML model' : 'ML not connected yet'}</p>
           </CardContent>
         </Card>
       </div>
@@ -314,15 +308,15 @@ export default function SRUStudentsPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={riskFilter} onValueChange={setRiskFilter}>
-              <SelectTrigger className="w-full sm:w-[150px]">
-                <SelectValue placeholder="Risk Level" />
+            <Select value={facultyFilter} onValueChange={(v) => { setFacultyFilter(v); setProgrammeFilter('all'); }}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="All Faculties" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Risk Levels</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="all">All Faculties</SelectItem>
+                {faculties.map((f) => (
+                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
@@ -362,14 +356,16 @@ export default function SRUStudentsPage() {
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="risk">Sort: Risk ↓</SelectItem>
-                <SelectItem value="name">Sort: Name A–Z</SelectItem>
-                <SelectItem value="attendance">Sort: Attendance ↑</SelectItem>
-                <SelectItem value="gpa">Sort: GPA ↑</SelectItem>
+                <SelectItem value="name_asc">Name A–Z</SelectItem>
+                <SelectItem value="name_desc">Name Z–A</SelectItem>
+                <SelectItem value="gpa_asc">GPA ↑ (lowest first)</SelectItem>
+                <SelectItem value="gpa_desc">GPA ↓ (highest first)</SelectItem>
+                <SelectItem value="risk">Risk Level (high first)</SelectItem>
+                <SelectItem value="last_contact">Last Contact (oldest first)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -378,7 +374,7 @@ export default function SRUStudentsPage() {
 
       {/* Student List */}
       <div className="space-y-3">
-        {paginated.length === 0 ? (
+        {filtered.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center text-muted-foreground text-sm">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -386,7 +382,7 @@ export default function SRUStudentsPage() {
             </CardContent>
           </Card>
         ) : (
-          paginated.map((student) => (
+          filtered.map((student) => (
             <Card key={student.id} className="hover:shadow-sm transition-shadow">
               <CardContent className="py-4 px-5">
                 <div className="flex items-center gap-4 flex-wrap">
@@ -414,54 +410,44 @@ export default function SRUStudentsPage() {
                     </p>
                   </div>
 
-                  {/* Attendance */}
-                  <div className="text-center min-w-[80px]">
-                    <p className={`text-lg font-bold ${getAttendanceColor(student.attendancePercentage)}`}>
-                      {student.attendancePercentage}%
-                    </p>
-                    <p className="text-xs text-muted-foreground">Attendance</p>
-                  </div>
+                  {/* Stats: GPA / Risk Level / Last Contact */}
+                  <div className="flex items-center gap-8">
+                    <div className="text-center min-w-[60px]">
+                      {student.gpa === 0 ? (
+                        <p className="text-lg font-semibold text-muted-foreground">—</p>
+                      ) : (
+                        <p className={`text-lg font-semibold ${
+                          student.gpa >= 2.5 ? 'text-green-600'
+                          : student.gpa >= 1.5 ? 'text-amber-600'
+                          : 'text-red-600'
+                        }`}>
+                          {student.gpa.toFixed(2)}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">GPA</p>
+                    </div>
 
-                  {/* GPA */}
-                  <div className="text-center min-w-[60px]">
-                    <p className={`text-lg font-bold ${getGpaColor(student.gpa)}`}>
-                      {student.gpa.toFixed(2)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">GPA</p>
-                  </div>
+                    <div className="text-center min-w-[90px]">
+                      {ML_CONNECTED && student.riskLevel ? (
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          student.riskLevel === 'high' || student.riskLevel === 'critical'
+                            ? 'bg-red-100 text-red-700'
+                            : student.riskLevel === 'medium'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}>
+                          {student.riskLevel.charAt(0).toUpperCase() + student.riskLevel.slice(1)} Risk
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">Risk Level</p>
+                    </div>
 
-                  {/* Consecutive absences */}
-                  <div className="text-center min-w-[70px]">
-                    <p
-                      className={`text-lg font-bold ${
-                        student.consecutiveAbsences >= 3
-                          ? 'text-red-600'
-                          : 'text-foreground'
-                      }`}
-                    >
-                      {student.consecutiveAbsences}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Absences</p>
-                  </div>
-
-                  {/* Risk score + badge */}
-                  <div className="text-center min-w-[70px]">
-                    <p className={`text-lg font-bold ${
-                      student.riskLevel === 'high' ? 'text-red-600' :
-                      student.riskLevel === 'medium' ? 'text-amber-600' : 'text-green-600'
-                    }`}>
-                      {student.riskLevel === 'high' ? '75+' : student.riskLevel === 'medium' ? '40-74' : '<40'}
-                    </p>
-                    {getRiskBadge(student.riskLevel, student.riskScore)}
-                    <p className="text-xs text-muted-foreground mt-1">Risk</p>
-                  </div>
-
-                  {/* Last Contact */}
-                  <div className="text-center min-w-[90px]">
-                    <p className="text-sm text-muted-foreground">
-                      {student.lastContact || 'Never'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">Last Contact</p>
+                    <div className="text-center min-w-[80px]">
+                      <p className="text-sm text-muted-foreground">{student.lastContact || 'Never'}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Last Contact</p>
+                    </div>
                   </div>
 
                   {/* Actions */}
@@ -490,41 +476,9 @@ export default function SRUStudentsPage() {
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {(page - 1) * PAGE_SIZE + 1}–
-            {Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}{' '}
-            students
-          </p>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="flex items-center text-sm px-2">
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={page === totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Log Intervention Modal */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-md">
+      <Dialog open={modalOpen} onOpenChange={(open) => { setModalOpen(open); if (!open) { setQuickIsWarning(false); setQuickCaseStatus('open'); setQuickOutcome(''); setQuickFollowUpDate(''); } }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Log Intervention</DialogTitle>
             {selectedStudent && (
@@ -534,36 +488,72 @@ export default function SRUStudentsPage() {
             )}
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="intType">
-                Intervention Type <span className="text-red-500">*</span>
-              </Label>
-              <Select value={interventionType} onValueChange={setInterventionType}>
-                <SelectTrigger id="intType">
-                  <SelectValue placeholder="— Select type —" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Phone Call">Phone Call</SelectItem>
-                  <SelectItem value="Email">Email</SelectItem>
-                  <SelectItem value="In-Person Meeting">In-Person Meeting</SelectItem>
-                  <SelectItem value="Referred to Registry">Referred to Registry</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-3">
+            {/* Row 1: Type + Case Status */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="intType">
+                  Intervention Type <span className="text-red-500">*</span>
+                </Label>
+                <Select value={interventionType} onValueChange={setInterventionType}>
+                  <SelectTrigger id="intType">
+                    <SelectValue placeholder="— Select type —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Phone Call">Phone Call</SelectItem>
+                    <SelectItem value="Email">Email</SelectItem>
+                    <SelectItem value="In-Person Meeting">In-Person Meeting</SelectItem>
+                    <SelectItem value="Referred to Registry">Referred to Registry</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="quickCaseStatus">Case Status</Label>
+                <Select value={quickCaseStatus} onValueChange={(v) => setQuickCaseStatus(v as 'open' | 'in_progress' | 'closed')}>
+                  <SelectTrigger id="quickCaseStatus">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="intDate">Date</Label>
-              <Input
-                id="intDate"
-                type="date"
-                value={interventionDate}
-                onChange={(e) => setInterventionDate(e.target.value)}
-              />
+            {/* Row 2: Date + Outcome */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="intDate">Date</Label>
+                <Input
+                  id="intDate"
+                  type="date"
+                  value={interventionDate}
+                  onChange={(e) => setInterventionDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="quickOutcome">
+                  Outcome <span className="text-red-500">*</span>
+                </Label>
+                <Select value={quickOutcome} onValueChange={setQuickOutcome}>
+                  <SelectTrigger id="quickOutcome">
+                    <SelectValue placeholder="— Select outcome —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Positive Response">Positive Response</SelectItem>
+                    <SelectItem value="No Response">No Response</SelectItem>
+                    <SelectItem value="Follow Up Required">Follow Up Required</SelectItem>
+                    <SelectItem value="Resolved">Resolved</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-2">
+            {/* Row 3: Notes (full width) */}
+            <div className="space-y-1">
               <Label htmlFor="intNotes">Notes</Label>
               <Textarea
                 id="intNotes"
@@ -573,14 +563,40 @@ export default function SRUStudentsPage() {
                 onChange={(e) => setInterventionNotes(e.target.value)}
               />
             </div>
+
+            {/* Row 4: Follow-up Date + Academic Warning */}
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="space-y-1">
+                <Label htmlFor="quickFollowUpDate">Follow-up Date (optional)</Label>
+                <Input
+                  id="quickFollowUpDate"
+                  type="date"
+                  value={quickFollowUpDate}
+                  onChange={(e) => setQuickFollowUpDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div className="flex items-center gap-2 pb-1">
+                <input
+                  type="checkbox"
+                  id="quickWarning"
+                  checked={quickIsWarning ?? false}
+                  onChange={e => setQuickIsWarning(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor="quickWarning" className="text-sm text-red-600 font-medium">
+                  Mark as Formal Academic Warning
+                </label>
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
             <Button size="sm" variant="outline" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
-            <Button size="sm" disabled={submitting} onClick={handleSubmitIntervention}>
-              {submitting ? 'Saving…' : 'Submit'}
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={submitting} onClick={handleSubmitIntervention}>
+              {submitting ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
