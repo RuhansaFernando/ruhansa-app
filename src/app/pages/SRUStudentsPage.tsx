@@ -70,6 +70,7 @@ export default function SRUStudentsPage() {
   const [quickCaseStatus, setQuickCaseStatus] = useState<'open' | 'in_progress' | 'closed'>('open');
   const [quickOutcome, setQuickOutcome] = useState('');
   const [quickFollowUpDate, setQuickFollowUpDate] = useState('');
+  const [quickPriority, setQuickPriority] = useState('medium');
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'students'), (snap) => {
@@ -155,6 +156,7 @@ export default function SRUStudentsPage() {
     setQuickCaseStatus('open');
     setQuickOutcome('');
     setQuickFollowUpDate('');
+    setQuickPriority('medium');
     setModalOpen(true);
   };
 
@@ -182,6 +184,9 @@ export default function SRUStudentsPage() {
         isAcademicWarning: quickIsWarning ?? false,
         outcome: quickOutcome,
         followUpDate: quickFollowUpDate || null,
+        priority: quickPriority,
+        attendanceBefore: selectedStudent?.attendancePercentage ?? 0,
+        gpaBefore: selectedStudent?.gpa ?? 0,
         createdAt: serverTimestamp(),
       });
       await updateDoc(doc(db, 'students', selectedStudent.id), {
@@ -477,8 +482,8 @@ export default function SRUStudentsPage() {
       </div>
 
       {/* Log Intervention Modal */}
-      <Dialog open={modalOpen} onOpenChange={(open) => { setModalOpen(open); if (!open) { setQuickIsWarning(false); setQuickCaseStatus('open'); setQuickOutcome(''); setQuickFollowUpDate(''); } }}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={modalOpen} onOpenChange={(open) => { setModalOpen(open); if (!open) { setQuickIsWarning(false); setQuickCaseStatus('open'); setQuickOutcome(''); setQuickFollowUpDate(''); setQuickPriority('medium'); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Log Intervention</DialogTitle>
             {selectedStudent && (
@@ -553,6 +558,22 @@ export default function SRUStudentsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Row 2b: Priority */}
+            <div className="space-y-1.5">
+              <Label>Priority</Label>
+              <Select value={quickPriority} onValueChange={setQuickPriority}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="urgent">🔴 Urgent</SelectItem>
+                  <SelectItem value="high">🟠 High</SelectItem>
+                  <SelectItem value="medium">🟡 Medium</SelectItem>
+                  <SelectItem value="low">🟢 Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Row 3: Notes (full width) */}

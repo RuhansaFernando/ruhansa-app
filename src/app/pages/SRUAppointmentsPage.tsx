@@ -104,18 +104,31 @@ export default function SRUAppointmentsPage() {
 
   const [activeTab, setActiveTab] = useState<'upcoming' | 'pending' | 'past'>('upcoming');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
-  const [formStudentId, setFormStudentId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [showStudentResults, setShowStudentResults] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string; programme: string } | null>(null);
+  const [formType, setFormType] = useState('');
+  const [formDate, setFormDate] = useState('');
+  const [formTime, setFormTime] = useState('');
+  const [formLocation, setFormLocation] = useState('');
 
   // Notes modal state
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [notesText, setNotesText] = useState('');
   const [notesApptId, setNotesApptId] = useState('');
+
+  const studentResults = useMemo(() => {
+    if (!studentSearch || studentSearch.length < 2) return [];
+    return studentOptions.filter(s =>
+      s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.studentId?.toLowerCase().includes(studentSearch.toLowerCase())
+    ).slice(0, 8);
+  }, [studentSearch, studentOptions]);
 
   // Fetch SSA's calendar link from student_support_advisors
   useEffect(() => {
@@ -210,27 +223,42 @@ export default function SRUAppointmentsPage() {
       toast.error('No calendar link set. Please add your Google Calendar link in Settings.');
       return;
     }
-    setFormStudentId('');
+    setSelectedStudent(null);
+    setStudentSearch('');
+    setShowStudentResults(false);
+    setFormType('');
+    setFormDate('');
+    setFormTime('');
+    setFormLocation('');
     setShowModal(true);
   };
 
   const handleSchedule = async () => {
-    if (!formStudentId) {
+    if (!selectedStudent) {
       toast.error('Please select a student.');
+      return;
+    }
+    if (!formType) {
+      toast.error('Please select an appointment type.');
+      return;
+    }
+    if (!formDate) {
+      toast.error('Please select a date.');
       return;
     }
     setSaving(true);
     try {
-      const student = studentOptions.find(s => s.id === formStudentId);
+      const studentFull = studentOptions.find(s => s.id === selectedStudent.id);
       window.open(calendarLink, '_blank');
       await addDoc(collection(db, 'appointments'), {
-        studentId: formStudentId,
-        studentName: student?.name ?? '',
-        programme: student?.programme ?? '',
-        type: 'SSA Session',
-        appointmentType: 'SSA Session',
-        date: new Date().toISOString().split('T')[0],
-        time: '',
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.name,
+        programme: selectedStudent.programme,
+        type: formType,
+        appointmentType: formType,
+        date: formDate,
+        time: formTime,
+        location: formLocation,
         status: 'scheduled',
         scheduledBy: user?.name ?? '',
         bookedBy: 'ssa',
@@ -238,8 +266,8 @@ export default function SRUAppointmentsPage() {
         createdAt: serverTimestamp(),
       });
       await createNotification({
-        studentId: student?.studentId ?? formStudentId,
-        uid:       student?.uid ?? '',
+        studentId: studentFull?.studentId ?? selectedStudent.id,
+        uid:       studentFull?.uid ?? '',
         type:      'appointment',
         title:     'New appointment scheduled',
         message:   'A new appointment has been scheduled for you by your Student Support Advisor.',
@@ -247,13 +275,17 @@ export default function SRUAppointmentsPage() {
 
       setAppointments(prev => [{
         id: Math.random().toString(),
-        studentId: formStudentId,
-        studentName: student?.name ?? '',
-        programme: student?.programme ?? '',
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.name,
+        programme: selectedStudent.programme,
         advisorId: user?.id ?? '',
-        type: 'SSA Session',
-        date: new Date().toISOString().split('T')[0],
-        time: '',
+        mentorId: '',
+        counsellorId: '',
+        assignedTo: '',
+        whoToMeet: '',
+        type: formType,
+        date: formDate,
+        time: formTime,
         status: 'scheduled',
       }, ...prev]);
 
@@ -285,10 +317,6 @@ export default function SRUAppointmentsPage() {
       list = list.filter((a) => a.date < today || a.status === 'completed' || a.status === 'cancelled');
     }
 
-    if (statusFilter !== 'all') {
-      list = list.filter((a) => a.status === statusFilter);
-    }
-
     if (dateFilter === 'today') {
       list = list.filter((a) => a.date === today);
     } else if (dateFilter === 'week') {
@@ -312,7 +340,7 @@ export default function SRUAppointmentsPage() {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
       return b.time.localeCompare(a.time);
     });
-  }, [appointments, activeTab, statusFilter, dateFilter, search, studentMap, today]);
+  }, [appointments, activeTab, dateFilter, search, studentMap, today]);
 
   const resolvedName = (a: AppointmentDoc) =>
     a.studentName || studentMap[a.studentId]?.name || '—';
@@ -444,18 +472,6 @@ export default function SRUAppointmentsPage() {
                   className="pl-7 h-8 w-44 text-xs"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-36 h-8 text-xs">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
               <Select value={dateFilter} onValueChange={setDateFilter}>
                 <SelectTrigger className="w-32 h-8 text-xs">
                   <SelectValue placeholder="Date" />
@@ -564,17 +580,6 @@ export default function SRUAppointmentsPage() {
                         >
                           View Profile
                         </Button>
-                        {(a.status === 'scheduled' || a.status === 'pending') && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs px-2 gap-1"
-                            onClick={() => updateStatus(a.id, 'pending')}
-                            disabled={updatingId === a.id}
-                          >
-                            Return to Pending
-                          </Button>
-                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -623,34 +628,130 @@ export default function SRUAppointmentsPage() {
       </Dialog>
 
       {/* Schedule Appointment Modal */}
-      <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={showModal} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedStudent(null);
+          setStudentSearch('');
+          setShowStudentResults(false);
+          setFormType('');
+          setFormDate('');
+          setFormTime('');
+          setFormLocation('');
+        }
+        setShowModal(open);
+      }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Schedule Appointment</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Select a student, then your Google Calendar will open to complete the booking.
+              Fill in the details below, then your Google Calendar will open to complete the booking.
             </p>
+
+            {/* Student search */}
             <div className="space-y-1.5">
-              <Label htmlFor="appt-student">Student</Label>
-              <Select value={formStudentId} onValueChange={setFormStudentId}>
-                <SelectTrigger id="appt-student">
-                  <SelectValue placeholder="Select student..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-56">
-                  {studentOptions.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Student <span className="text-red-500">*</span></Label>
+              {selectedStudent ? (
+                <div className="flex items-center justify-between p-2 border rounded-md bg-gray-50">
+                  <div>
+                    <span className="text-sm font-medium">{selectedStudent.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{selectedStudent.programme}</span>
+                  </div>
+                  <button type="button"
+                    onClick={() => { setSelectedStudent(null); setStudentSearch(''); }}
+                    className="text-xs text-gray-400 hover:text-gray-600">
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    placeholder="Search by name or student ID..."
+                    value={studentSearch}
+                    onChange={e => { setStudentSearch(e.target.value); setShowStudentResults(true); }}
+                    onFocus={() => setShowStudentResults(true)}
+                  />
+                  {showStudentResults && studentResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {studentResults.map(s => (
+                        <button key={s.id} type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-0"
+                          onClick={() => {
+                            setSelectedStudent(s);
+                            setStudentSearch('');
+                            setShowStudentResults(false);
+                          }}>
+                          <span className="text-sm font-medium">{s.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{s.programme}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Row 1: Type + Date */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Appointment Type <span className="text-red-500">*</span></Label>
+                <Select value={formType} onValueChange={setFormType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SSA Session">SSA Session</SelectItem>
+                    <SelectItem value="Academic Review">Academic Review</SelectItem>
+                    <SelectItem value="Welfare Check">Welfare Check</SelectItem>
+                    <SelectItem value="Follow-up Meeting">Follow-up Meeting</SelectItem>
+                    <SelectItem value="Referral Meeting">Referral Meeting</SelectItem>
+                    <SelectItem value="Drop-in">Drop-in</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date <span className="text-red-500">*</span></Label>
+                <input
+                  type="date"
+                  value={formDate}
+                  onChange={e => setFormDate(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Time + Location */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Time</Label>
+                <input
+                  type="time"
+                  value={formTime}
+                  onChange={e => setFormTime(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Location</Label>
+                <Select value={formLocation} onValueChange={setFormLocation}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select location..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Online (Google Meet)">Online (Google Meet)</SelectItem>
+                    <SelectItem value="In-Person">In-Person</SelectItem>
+                    <SelectItem value="Phone Call">Phone Call</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowModal(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSchedule} disabled={saving || !formStudentId}>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSchedule} disabled={saving || !selectedStudent}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {saving ? 'Opening...' : 'Open Calendar & Book'}
             </Button>

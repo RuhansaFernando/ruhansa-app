@@ -9,6 +9,25 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { FileText, Download, Loader2, Users, CheckCircle, AlertTriangle, CalendarDays, ClipboardList, Brain, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+
+const INTERVENTION_TYPES = [
+  'Phone Call',
+  'Text Message',
+  'Email',
+  'Online Meeting',
+  'In-Person Meeting',
+  'Referral',
+  'Formal Notice',
+  'Other',
+];
+
+const OUTCOME_COLORS: Record<string, string> = {
+  'Positive Response': '#22c55e',
+  'No Response': '#ef4444',
+  'Follow Up Required': '#f59e0b',
+  'Resolved': '#3b82f6',
+};
 
 interface StudentDoc {
   id: string;
@@ -89,6 +108,24 @@ const downloadCSV = (headers: string[], rows: string[][], filename: string) => {
   URL.revokeObjectURL(url);
 };
 
+const exportPDF = async (title: string, headers: string[], rows: string[][]) => {
+  const { jsPDF } = await import('jspdf');
+  const { default: autoTable } = await import('jspdf-autotable');
+  const docPDF = new jsPDF();
+  docPDF.setFontSize(16);
+  docPDF.text(title, 14, 15);
+  docPDF.setFontSize(10);
+  docPDF.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 22);
+  autoTable(docPDF, {
+    head: [headers],
+    body: rows,
+    startY: 28,
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [59, 130, 246] },
+  });
+  docPDF.save(`${title.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+};
+
 export default function SRUReportsPage() {
   const [students, setStudents] = useState<StudentDoc[]>([]);
   const [interventions, setInterventions] = useState<InterventionDoc[]>([]);
@@ -116,9 +153,22 @@ export default function SRUReportsPage() {
   const [showProgressReport, setShowProgressReport] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(false);
 
-const [showAtRisk, setShowAtRisk] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
   const [showAttFilters, setShowAttFilters] = useState(false);
+  const [activeReport, setActiveReport] = useState('');
+  const [showMLPending, setShowMLPending] = useState(false);
+  const [interventionSemesterFilter, setInterventionSemesterFilter] = useState('all');
+  const [interventionDateFrom, setInterventionDateFrom] = useState('');
+  const [interventionDateTo, setInterventionDateTo] = useState('');
+  const [semesterComparison, setSemesterComparison] = useState<{
+    semester: string;
+    interventions: number;
+    resolved: number;
+    successRate: number;
+    flaggedStudents: number;
+  }[]>([]);
+  const [showSemesterComparison, setShowSemesterComparison] = useState(false);
+  const [loadingSemester, setLoadingSemester] = useState(false);
 
   // Attendance Analysis Report state
   const [attFaculty, setAttFaculty] = useState('');
@@ -340,9 +390,35 @@ const [showAtRisk, setShowAtRisk] = useState(false);
     }
   };
 
-  const handleGenerateAtRisk = async () => {
-    if (students.length === 0) await fetchStudents();
-    setShowAtRisk(true);
+  const handleGenerateSemesterComparison = async () => {
+    setLoadingSemester(true);
+    try {
+      const intSnap = await getDocs(
+        query(collection(db, 'interventions'), orderBy('createdAt', 'desc'))
+      );
+      const allInts = intSnap.docs.map(d => d.data());
+      const semesters = ['Semester 1', 'Semester 2', 'Semester 3'];
+      const getIntSemester = (dateStr: string) => {
+        const month = new Date(dateStr).getMonth() + 1;
+        if (month >= 9 && month <= 12) return 'Semester 1';
+        if (month >= 1 && month <= 4) return 'Semester 2';
+        return 'Semester 3';
+      };
+      const rows = semesters.map(sem => {
+        const semInts = allInts.filter(i => getIntSemester(i.date ?? '') === sem);
+        const resolved = semInts.filter(i => i.caseStatus === 'closed').length;
+        const successRate = semInts.length > 0
+          ? Math.round((resolved / semInts.length) * 100)
+          : 0;
+        return { semester: sem, interventions: semInts.length, resolved, successRate, flaggedStudents: 0 };
+      });
+      setSemesterComparison(rows);
+      setShowSemesterComparison(true);
+    } catch (err) {
+      toast.error('Failed to generate semester comparison');
+    } finally {
+      setLoadingSemester(false);
+    }
   };
 
   const handleGenerateInterventions = async () => {
@@ -377,16 +453,18 @@ const [showAtRisk, setShowAtRisk] = useState(false);
           const data = d.data();
           const student = studentMap.get(data.studentId);
           if (!student) return null;
-          const improved = student.attendance >= 80 || student.gpa >= 2.5;
+          const improved =
+            (student.attendance > (data.attendanceBefore ?? 0)) ||
+            (student.gpa > (data.gpaBefore ?? 0));
           return {
             studentId: data.studentId,
             studentName: data.studentName ?? student.name,
             programme: student.programme,
             interventionDate: data.date ?? '',
             interventionType: data.interventionType ?? data.type ?? '',
-            attendanceBefore: 0,
+            attendanceBefore: data.attendanceBefore ?? 0,
             attendanceAfter: student.attendance,
-            gpaBefore: 0,
+            gpaBefore: data.gpaBefore ?? 0,
             gpaAfter: student.gpa,
             improved,
           };
@@ -416,7 +494,20 @@ const [showAtRisk, setShowAtRisk] = useState(false);
     return matchFaculty && matchProgramme && matchYear && matchSemester;
   });
 
-  const atRiskStudents = students.filter((s) => s.attendancePercentage < 80 || s.consecutiveAbsences >= 3);
+  const getInterventionSemester = (dateStr: string) => {
+    const month = new Date(dateStr).getMonth() + 1;
+    if (month >= 9 && month <= 12) return 'Semester 1';
+    if (month >= 1 && month <= 4) return 'Semester 2';
+    return 'Semester 3';
+  };
+
+  const filteredInterventions = interventions
+    .filter(i => interventionSemesterFilter === 'all' || getInterventionSemester(i.date) === interventionSemesterFilter)
+    .filter(i => {
+      if (interventionDateFrom && i.date < interventionDateFrom) return false;
+      if (interventionDateTo && i.date > interventionDateTo) return false;
+      return true;
+    });
 
   // KPI calculations
   const ML_CONNECTED = !!(import.meta.env.VITE_ML_API_URL);
@@ -474,12 +565,12 @@ const [showAtRisk, setShowAtRisk] = useState(false);
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-blue-500">
+        <Card className="border-l-4 border-l-green-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Alert Response Rate</p>
-                <p className="text-3xl font-bold mt-1 text-blue-600">
+                <p className="text-3xl font-bold mt-1 text-green-600">
                   {kpiLoading ? '—' : `${alertResponseRate}%`}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -488,8 +579,8 @@ const [showAtRisk, setShowAtRisk] = useState(false);
                     : 'No alerts raised yet'}
                 </p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-blue-600" />
+              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
             </div>
           </CardContent>
@@ -699,93 +790,12 @@ const [showAtRisk, setShowAtRisk] = useState(false);
             </div>
           )}
 
-          {/* Report 1: Students Needing Attention */}
-          <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
-            <Users className="h-5 w-5 text-gray-400 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm">Students Needing Attention</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Students with low attendance or consecutive absences</p>
-              <div className="flex gap-2 mt-2">
-                <Badge variant="outline" className="text-xs">CSV</Badge>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
-              onClick={handleGenerateAtRisk}
-              disabled={loadingStudents}
-            >
-              {loadingStudents ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Generate Report'}
-            </Button>
-          </div>
-
-          {/* Report 1 expanded table */}
-          {showAtRisk && (
-            <div className="px-1">
-              <div className="flex items-center justify-between mb-3">
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowAtRisk(false)}>
-                  ← Back
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    downloadCSV(
-                      ['Student ID', 'Name', 'Programme', 'Level', 'Attendance %', 'Consecutive Absences', 'GPA'],
-                      atRiskStudents.map((s) => [s.studentId, s.name, s.programme, s.level, String(s.attendancePercentage), String(s.consecutiveAbsences), String(s.gpa)]),
-                      'students-needing-attention.csv'
-                    )
-                  }
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export CSV
-                </Button>
-              </div>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Student ID</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Attendance %</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Consec. Absences</th>
-                      <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {atRiskStudents.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">No students needing attention found.</td>
-                      </tr>
-                    ) : atRiskStudents.map((s) => (
-                      <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{s.studentId}</td>
-                        <td className="px-4 py-3 font-medium">{s.name}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[160px]"><span className="truncate block">{s.programme || '—'}</span></td>
-                        <td className="px-4 py-3 text-sm">{s.level || '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`font-medium text-sm ${s.attendancePercentage < 80 ? 'text-red-600' : ''}`}>{s.attendancePercentage}%</span>
-                        </td>
-                        <td className="px-4 py-3 text-center text-sm">
-                          <span className={s.consecutiveAbsences >= 3 ? 'text-red-600 font-medium' : ''}>{s.consecutiveAbsences}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm">{s.gpa.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Report 2: Intervention Summary */}
+          {/* Report 1: Intervention Summary */}
           <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
             <ClipboardList className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <div className="flex-1">
               <p className="font-medium text-sm">Intervention Summary Report</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Summary of all interventions logged this semester</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Summary of all interventions logged in the system</p>
               <div className="flex gap-2 mt-2">
                 <Badge variant="outline" className="text-xs">CSV</Badge>
               </div>
@@ -802,26 +812,114 @@ const [showAtRisk, setShowAtRisk] = useState(false);
 
           {/* Report 2 expanded table */}
           {showInterventions && (
-            <div className="px-1">
-              <div className="flex items-center justify-between mb-3">
+            <div className="px-1 space-y-4">
+              <div className="flex items-center justify-between">
                 <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowInterventions(false)}>
                   ← Back
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    downloadCSV(
-                      ['Student', 'Intervention Type', 'Date', 'Outcome', 'Recorded By'],
-                      interventions.map((i) => [i.studentName, i.interventionType, i.date || formatDate(i.createdAt), i.outcome, i.recordedBy]),
-                      'intervention-summary.csv'
-                    )
-                  }
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export CSV
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      downloadCSV(
+                        ['Student', 'Intervention Type', 'Date', 'Outcome', 'Recorded By'],
+                        filteredInterventions.map((i) => [i.studentName, i.interventionType, i.date || formatDate(i.createdAt), i.outcome, i.recordedBy]),
+                        'intervention-summary.csv'
+                      )
+                    }
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      exportPDF(
+                        'Intervention Summary Report',
+                        ['Student', 'Intervention Type', 'Date', 'Outcome', 'Recorded By'],
+                        filteredInterventions.map((i) => [i.studentName, i.interventionType, i.date || formatDate(i.createdAt), i.outcome, i.recordedBy])
+                      )
+                    }
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Export PDF
+                  </Button>
+                </div>
               </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                <Select value={interventionSemesterFilter} onValueChange={setInterventionSemesterFilter}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs">
+                    <SelectValue placeholder="All Semesters" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Semesters</SelectItem>
+                    <SelectItem value="Semester 1">Semester 1 (Sep-Dec)</SelectItem>
+                    <SelectItem value="Semester 2">Semester 2 (Jan-Apr)</SelectItem>
+                    <SelectItem value="Semester 3">Semester 3 (May-Aug)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <input
+                  type="date"
+                  value={interventionDateFrom}
+                  onChange={e => setInterventionDateFrom(e.target.value)}
+                  className="flex h-8 rounded-md border border-input bg-transparent px-3 py-1 text-xs"
+                />
+                <span className="text-sm text-muted-foreground">to</span>
+                <input
+                  type="date"
+                  value={interventionDateTo}
+                  onChange={e => setInterventionDateTo(e.target.value)}
+                  className="flex h-8 rounded-md border border-input bg-transparent px-3 py-1 text-xs"
+                />
+                <p className="text-sm text-muted-foreground">{filteredInterventions.length} interventions found</p>
+              </div>
+
+              {/* Charts */}
+              {filteredInterventions.length > 0 && (() => {
+                const typeData = INTERVENTION_TYPES.map(type => ({
+                  name: type,
+                  count: filteredInterventions.filter(i => i.interventionType === type).length,
+                })).filter(d => d.count > 0);
+                const outcomeData = Object.keys(OUTCOME_COLORS).map(outcome => ({
+                  name: outcome,
+                  value: filteredInterventions.filter(i => i.outcome === outcome).length,
+                })).filter(d => d.value > 0);
+                return (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-lg border p-4">
+                      <p className="text-sm font-medium mb-3">Interventions by Type</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={typeData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                          <YAxis allowDecimals={false} />
+                          <Tooltip />
+                          <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <p className="text-sm font-medium mb-3">Outcome Breakdown</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie data={outcomeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                            {outcomeData.map((entry, index) => (
+                              <Cell key={index} fill={OUTCOME_COLORS[entry.name] ?? '#6b7280'} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead>
@@ -834,17 +932,126 @@ const [showAtRisk, setShowAtRisk] = useState(false);
                     </tr>
                   </thead>
                   <tbody>
-                    {interventions.length === 0 ? (
+                    {filteredInterventions.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="text-center py-8 text-muted-foreground text-sm">No interventions found.</td>
                       </tr>
-                    ) : interventions.map((i) => (
+                    ) : filteredInterventions.map((i) => (
                       <tr key={i.id} className="border-b last:border-0 hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium">{i.studentName}</td>
                         <td className="px-4 py-3 text-sm">{i.interventionType}</td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">{i.date || formatDate(i.createdAt)}</td>
                         <td className="px-4 py-3 text-sm">{i.outcome}</td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{i.recordedBy}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Report 2: Semester Comparison Report */}
+          <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
+            <TrendingUp className="h-5 w-5 text-gray-400 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-sm">Semester Comparison Report</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Compare intervention activity and success rates across semesters</p>
+              <div className="flex gap-2 mt-2">
+                <Badge variant="outline" className="text-xs">CSV</Badge>
+                <Badge variant="outline" className="text-xs">PDF</Badge>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
+              onClick={handleGenerateSemesterComparison}
+              disabled={loadingSemester}
+            >
+              {loadingSemester ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Generate Report'}
+            </Button>
+          </div>
+
+          {showSemesterComparison && (
+            <div className="px-1 space-y-4">
+              <div className="flex items-center justify-between">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowSemesterComparison(false)}>
+                  ← Back
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      downloadCSV(
+                        ['Semester', 'Total Interventions', 'Resolved', 'Success Rate'],
+                        semesterComparison.map((r) => [r.semester, String(r.interventions), String(r.resolved), `${r.successRate}%`]),
+                        'semester-comparison.csv'
+                      )
+                    }
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      exportPDF(
+                        'Semester Comparison Report',
+                        ['Semester', 'Total Interventions', 'Resolved', 'Success Rate'],
+                        semesterComparison.map((r) => [r.semester, String(r.interventions), String(r.resolved), `${r.successRate}%`])
+                      )
+                    }
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Export PDF
+                  </Button>
+                </div>
+              </div>
+
+              {semesterComparison.length > 0 && (
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm font-medium mb-3">Interventions vs Resolved by Semester</p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={semesterComparison}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="semester" tick={{ fontSize: 12 }} />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="interventions" name="Interventions" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="resolved" name="Resolved" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left font-medium text-muted-foreground px-4 py-3">Semester</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Total Interventions</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Resolved</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Success Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {semesterComparison.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="text-center py-8 text-muted-foreground text-sm">No data available.</td>
+                      </tr>
+                    ) : semesterComparison.map((r, i) => (
+                      <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium">{r.semester}</td>
+                        <td className="px-4 py-3 text-center">{r.interventions}</td>
+                        <td className="px-4 py-3 text-center text-green-600 font-medium">{r.resolved}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`font-semibold ${r.successRate >= 70 ? 'text-green-600' : r.successRate >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
+                            {r.successRate}%
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -866,11 +1073,35 @@ const [showAtRisk, setShowAtRisk] = useState(false);
             <Button
               size="sm"
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
-              onClick={() => toast.info('ML Risk Score report will be available once AI model is connected')}
+              onClick={() => {
+                if (!ML_CONNECTED) {
+                  setShowMLPending(true);
+                  setActiveReport('ml_risk');
+                  return;
+                }
+              }}
             >
               Generate Report
             </Button>
           </div>
+
+          {activeReport === 'ml_risk' && showMLPending && (
+            <div className="px-1">
+              <div className="flex items-center justify-between mb-3">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => { setShowMLPending(false); setActiveReport(''); }}>
+                  ← Back
+                </Button>
+              </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-6 text-center">
+                <Brain className="h-8 w-8 text-blue-400 mx-auto mb-3" />
+                <p className="text-sm font-medium text-blue-800">ML Risk Score Report</p>
+                <p className="text-sm text-blue-600 mt-1">
+                  This report will be available once the ML model is connected. It will show predicted dropout
+                  probabilities and key risk factors for each student.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Report 4: Student Progress Report */}
           <div className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-sm transition-shadow">
@@ -899,32 +1130,61 @@ const [showAtRisk, setShowAtRisk] = useState(false);
                 <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowProgressReport(false)}>
                   ← Back
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    downloadCSV(
-                      ['Student ID', 'Student Name', 'Programme', 'Intervention Date', 'Intervention Type', 'Current Attendance %', 'Current GPA', 'Status'],
-                      progressReport.map((r) => [
-                        r.studentId,
-                        r.studentName,
-                        r.programme,
-                        r.interventionDate,
-                        r.interventionType,
-                        String(r.attendanceAfter),
-                        String(r.gpaAfter),
-                        r.improved ? 'Improving' : 'Monitoring',
-                      ]),
-                      'student-progress.csv'
-                    )
-                  }
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export CSV
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      downloadCSV(
+                        ['Student ID', 'Student Name', 'Programme', 'Intervention Date', 'Intervention Type', 'Attendance Before', 'Attendance After', 'GPA Before', 'GPA After', 'Status'],
+                        progressReport.map((r) => [
+                          r.studentId,
+                          r.studentName,
+                          r.programme,
+                          r.interventionDate,
+                          r.interventionType,
+                          `${r.attendanceBefore}%`,
+                          `${r.attendanceAfter}%`,
+                          r.gpaBefore.toFixed(2),
+                          r.gpaAfter.toFixed(2),
+                          r.improved ? 'Improving' : 'Monitoring',
+                        ]),
+                        'student-progress.csv'
+                      )
+                    }
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      exportPDF(
+                        'Student Progress Report',
+                        ['Student ID', 'Student Name', 'Programme', 'Intervention Date', 'Type', 'Att. Before', 'Att. After', 'GPA Before', 'GPA After', 'Status'],
+                        progressReport.map((r) => [
+                          r.studentId,
+                          r.studentName,
+                          r.programme,
+                          r.interventionDate,
+                          r.interventionType,
+                          `${r.attendanceBefore}%`,
+                          `${r.attendanceAfter}%`,
+                          r.gpaBefore.toFixed(2),
+                          r.gpaAfter.toFixed(2),
+                          r.improved ? 'Improving' : 'Monitoring',
+                        ])
+                      )
+                    }
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Export PDF
+                  </Button>
+                </div>
               </div>
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">
-                Note: Historical attendance and GPA before intervention are not yet tracked. Future enhancement will show before/after comparison.
+                Note: Attendance and GPA values are automatically captured when an intervention is logged. Historical data only available for interventions logged after this feature was implemented.
               </div>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
@@ -934,15 +1194,17 @@ const [showAtRisk, setShowAtRisk] = useState(false);
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Intervention Date</th>
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Type</th>
-                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Current Attendance</th>
-                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Current GPA</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Att. Before</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Att. After</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">GPA Before</th>
+                      <th className="text-center font-medium text-muted-foreground px-4 py-3">GPA After</th>
                       <th className="text-center font-medium text-muted-foreground px-4 py-3">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {progressReport.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">No intervention records found.</td>
+                        <td colSpan={9} className="text-center py-8 text-muted-foreground text-sm">No intervention records found.</td>
                       </tr>
                     ) : progressReport.map((r, i) => (
                       <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
@@ -950,14 +1212,20 @@ const [showAtRisk, setShowAtRisk] = useState(false);
                           <div className="font-medium text-sm">{r.studentName}</div>
                           <div className="text-xs text-muted-foreground font-mono">{r.studentId}</div>
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[160px]"><span className="truncate block">{r.programme || '—'}</span></td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[140px]"><span className="truncate block">{r.programme || '—'}</span></td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">{r.interventionDate || '—'}</td>
                         <td className="px-4 py-3 text-sm">{r.interventionType || '—'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`font-medium text-sm ${r.attendanceBefore < 80 ? 'text-red-600' : 'text-green-600'}`}>
+                            {r.attendanceBefore > 0 ? `${r.attendanceBefore}%` : '—'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`font-medium text-sm ${r.attendanceAfter < 80 ? 'text-red-600' : 'text-green-600'}`}>
                             {r.attendanceAfter}%
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-center text-sm text-muted-foreground">{r.gpaBefore > 0 ? r.gpaBefore.toFixed(2) : '—'}</td>
                         <td className="px-4 py-3 text-center text-sm">{r.gpaAfter.toFixed(2)}</td>
                         <td className="px-4 py-3 text-center">
                           {r.improved ? (

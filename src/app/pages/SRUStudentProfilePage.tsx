@@ -624,10 +624,13 @@ export default function SRUStudentProfilePage() {
               </CardHeader>
               <CardContent>
                 <WhatIfSimulator
-                  baseAttendance={student.attendancePercentage}
-                  baseGpa={student.gpa}
-                  baseConsecutiveAbsences={student.consecutiveAbsences}
-                  baseScore={riskData.score}
+                  studentData={{
+                    attendance_rate: student.attendancePercentage / 100,
+                    gpa_current: student.gpa,
+                    advisor_meeting_count: interventions.filter(i => i.interventionType === 'Meeting').length,
+                    academic_warning_count: academicWarnings,
+                  }}
+                  currentScore={riskData.score}
                   pending={riskData.pending}
                 />
               </CardContent>

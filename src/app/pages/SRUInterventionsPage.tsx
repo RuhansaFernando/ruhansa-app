@@ -62,6 +62,8 @@ interface StudentOption {
   studentId: string;
   name: string;
   programme: string;
+  attendancePercentage: number;
+  gpa: number;
 }
 
 const getOutcomeBadge = (outcome: string) => {
@@ -165,6 +167,8 @@ export default function SRUInterventionsPage() {
         studentId: d.data().studentId ?? d.id,
         name: d.data().name ?? '',
         programme: d.data().programme ?? '',
+        attendancePercentage: d.data().attendancePercentage ?? 0,
+        gpa: d.data().gpa ?? 0,
       })).sort((a, b) => a.name.localeCompare(b.name));
       setStudents(list);
 
@@ -276,6 +280,10 @@ export default function SRUInterventionsPage() {
       toast.error('Please fill in all required fields.');
       return;
     }
+    if (!formOutcome) {
+      toast.error('Please select an outcome.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -293,6 +301,8 @@ export default function SRUInterventionsPage() {
         followUpDate: formFollowUpDate || null,
         isAcademicWarning: formIsAcademicWarning,
         priority: formPriority,
+        attendanceBefore: selectedStudent.attendancePercentage ?? 0,
+        gpaBefore: selectedStudent.gpa ?? 0,
         createdAt: serverTimestamp(),
       });
 
@@ -584,7 +594,7 @@ export default function SRUInterventionsPage() {
 
       {/* Log Intervention Modal */}
       <Dialog open={isOpen} onOpenChange={(o) => { if (!o) resetForm(); setIsOpen(o); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Log Intervention</DialogTitle>
           </DialogHeader>
@@ -684,7 +694,7 @@ export default function SRUInterventionsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Outcome</Label>
+                <Label>Outcome <span className="text-red-500">*</span></Label>
                 <Select value={formOutcome} onValueChange={setFormOutcome}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select outcome..." />
