@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { prepareMLFeatures, callMLModel, type RiskResult } from '../services/riskScoreService';
 
@@ -102,6 +102,67 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           attendanceBySemester,
         });
         setResult(riskResult);
+
+        // Auto-flag / auto-unflag based on ML risk score
+        const studentId = studentData.studentId!;
+        if (!riskResult.pending) {
+          try {
+            const studentQuery = await getDocs(
+              query(collection(db, 'students'), where('studentId', '==', studentId))
+            );
+
+            if (!studentQuery.empty) {
+              const studentDoc = studentQuery.docs[0];
+              const currentData = studentDoc.data();
+              const previousScore = currentData.mlRiskScore ?? 0;
+              const currentScore = riskResult.score;
+
+              if (currentScore >= 60 && !currentData.flagged) {
+                // Not currently flagged + high risk → flag
+                await updateDoc(doc(db, 'students', studentDoc.id), {
+                  flagged: true,
+                  flaggedAt: new Date().toISOString(),
+                  flagReason: 'ML model: high dropout risk',
+                  mlRiskScore: currentScore,
+                  riskLevel: riskResult.level,
+                  riskScore: currentScore,
+                });
+              } else if (currentScore >= 60 && currentData.flagged === false) {
+                // Was acknowledged but risk INCREASED by 10+ points → new alert
+                const scoreIncrease = currentScore - previousScore;
+                if (scoreIncrease >= 10) {
+                  await updateDoc(doc(db, 'students', studentDoc.id), {
+                    flagged: true,
+                    flaggedAt: new Date().toISOString(),
+                    flagReason: 'ML model: risk increased significantly',
+                    mlRiskScore: currentScore,
+                    riskLevel: riskResult.level,
+                    riskScore: currentScore,
+                  });
+                }
+              } else if (currentScore < 60 && currentData.flagged === true &&
+                  currentData.flagReason?.includes('ML model')) {
+                // Risk dropped below threshold → auto-resolve
+                await updateDoc(doc(db, 'students', studentDoc.id), {
+                  flagged: false,
+                  resolvedAt: new Date().toISOString(),
+                  mlRiskScore: currentScore,
+                  riskLevel: riskResult.level,
+                  riskScore: currentScore,
+                });
+              } else {
+                // Just update the score silently
+                await updateDoc(doc(db, 'students', studentDoc.id), {
+                  mlRiskScore: currentScore,
+                  riskLevel: riskResult.level,
+                  riskScore: currentScore,
+                });
+              }
+            }
+          } catch (err) {
+            console.error('Failed to update student risk:', err);
+          }
+        }
       } catch (err) {
         console.error('Risk calculation error:', err);
       }

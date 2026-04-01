@@ -47,6 +47,17 @@ interface StudentData {
   faculty?: string;
 }
 
+const REFERRAL_DEPARTMENTS = [
+  'Counselling Services',
+  'Academic Support Centre',
+  'Financial Aid Office',
+  'Career Services',
+  'Disability Support Services',
+  'Health Services',
+  'Student Welfare Office',
+  'External Support Services',
+];
+
 export default function SRUStudentProfilePage() {
   const { studentId } = useParams<{ studentId: string }>();
   const navigate = useNavigate();
@@ -74,14 +85,13 @@ export default function SRUStudentProfilePage() {
 
   // Referral modal state
   const [referralModalOpen, setReferralModalOpen]   = useState(false);
-  const [counsellors, setCounsellors]               = useState<any[]>([]);
-  const [selectedCounsellor, setSelectedCounsellor] = useState<any>(null);
+  const [referralDept, setReferralDept]             = useState('');
   const [referralNotes, setReferralNotes]           = useState('');
   const [referralSubmitting, setReferralSubmitting] = useState(false);
+  const [referralUrgency, setReferralUrgency]       = useState('');
+  const [referralType, setReferralType]             = useState('');
   const [linkCopied, setLinkCopied]                 = useState(false);
   const [ssaCalendarLink, setSsaCalendarLink]       = useState('');
-  const [ssaFollowUpDate, setSsaFollowUpDate]       = useState('');
-  const [ssaInterventionStatus, setSsaInterventionStatus] = useState('open');
 
   // Module attendance breakdown
   const [moduleAttendance, setModuleAttendance] = useState<{
@@ -267,15 +277,6 @@ export default function SRUStudentProfilePage() {
     fetchModuleAttendance();
   }, [student?.studentId]);
 
-  useEffect(() => {
-    if (!referralModalOpen) return;
-    const fetchCounsellors = async () => {
-      const snap = await getDocs(collection(db, 'student_counsellors'));
-      setCounsellors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-    fetchCounsellors();
-  }, [referralModalOpen]);
-
   const copyLink = (link: string) => {
     navigator.clipboard.writeText(link);
     setLinkCopied(true);
@@ -283,33 +284,41 @@ export default function SRUStudentProfilePage() {
   };
 
   const handleReferral = async () => {
-    if (!selectedCounsellor || !student) return;
+    if (!referralDept || !student) return;
+    if (!referralUrgency) { toast.error('Please select an urgency level.'); return; }
     setReferralSubmitting(true);
     try {
       await addDoc(collection(db, 'interventions'), {
-        studentId: student.id,
-        studentName: student.name,
-        programme: student.programme,
-        riskLevel: riskData.level ?? 'medium',
-        interventionType: 'Referred to External Counsellor',
-        type: 'Referred to External Counsellor',
-        date: new Date().toISOString().split('T')[0],
-        notes: `Referred to ${selectedCounsellor.name} (${selectedCounsellor.specialisation}). ${referralNotes}`,
-        counsellorName: selectedCounsellor.name,
-        counsellorSpecialisation: selectedCounsellor.specialisation,
-        counsellorCalendarLink: selectedCounsellor.calendarLink ?? '',
-        recordedBy: user?.name ?? 'SSA',
-        status: 'Active',
-        openStatus: ssaInterventionStatus,
-        followUpDate: ssaFollowUpDate || null,
-        createdAt: serverTimestamp(),
+        studentId:        student.studentId,
+        studentName:      student.name,
+        programme:        student.programme,
+        riskLevel:        riskData.level ?? 'medium',
+        interventionType: 'Referral',
+        type:             'Referral',
+        referredTo:       referralDept,
+        date:             new Date().toISOString().split('T')[0],
+        notes:            referralNotes.trim(),
+        urgency:          referralUrgency,
+        referralType:     referralType,
+        recordedBy:       user?.name ?? 'SSA',
+        status:           'open',
+        createdAt:        serverTimestamp(),
       });
-      toast.success(`Student referred to ${selectedCounsellor.name} successfully`);
+      // Notify student about referral
+      await addDoc(collection(db, 'notifications'), {
+        userId:    student.studentId,
+        type:      'referral',
+        title:     'You have been referred for support',
+        message:   `Your Student Support Advisor has referred you for ${referralType.replace('_', ' ')} support. Please expect to be contacted soon.`,
+        createdAt: serverTimestamp(),
+        read:      false,
+      });
+      toast.success(`${student.name} referred to ${referralDept} successfully`);
       setReferralModalOpen(false);
-      setSelectedCounsellor(null);
+      setReferralDept('');
       setReferralNotes('');
-      setSsaFollowUpDate('');
-      setSsaInterventionStatus('open');
+      setReferralUrgency('');
+      setReferralType('');
     } catch {
       toast.error('Failed to log referral. Please try again.');
     } finally {
@@ -691,135 +700,75 @@ export default function SRUStudentProfilePage() {
         </Card>
       )}
 
-      {/* Counsellor Referral Modal */}
+      {/* Referral Modal */}
       <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Refer to External Counsellor</DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              Select an external counsellor to refer {student?.name} to. The referral will be logged as an intervention.
-            </p>
+            <DialogTitle>Refer {student?.name} to Specialist</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Counsellor list */}
-            <div>
-              <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2 block">
-                Available Counsellors
-              </Label>
-              {counsellors.length === 0 ? (
-                <div className="text-center py-6 text-muted-foreground text-sm border rounded-lg">
-                  No external counsellors found. Ask Admin to add counsellor contacts.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {counsellors.map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => setSelectedCounsellor(c)}
-                      className={`p-3 border rounded-xl cursor-pointer transition-colors ${
-                        selectedCounsellor?.id === c.id
-                          ? 'border-purple-400 bg-purple-50'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-purple-600 text-sm font-medium">
-                              {c.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{c.name}</p>
-                            <p className="text-xs text-muted-foreground">{c.specialisation}</p>
-                            {c.qualification && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{c.qualification}</p>
-                            )}
-                            <div className="flex items-center gap-2 mt-1">
-                              {c.certificationBody && (
-                                <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
-                                  ✅ {c.certificationBody}
-                                </span>
-                              )}
-                              {c.registrationNumber && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  Reg: {c.registrationNumber}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Referral notes */}
-            <div className="space-y-2">
-              <Label htmlFor="referralNotes">Referral Notes (optional)</Label>
-              <Textarea
-                id="referralNotes"
-                rows={3}
-                placeholder="Describe the reason for referral, e.g. student shows signs of anxiety and stress affecting academic performance..."
-                value={referralNotes}
-                onChange={(e) => setReferralNotes(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ssaFollowUpDate">Follow-up Date</Label>
-              <Input
-                id="ssaFollowUpDate"
-                type="date"
-                value={ssaFollowUpDate}
-                onChange={(e) => setSsaFollowUpDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
-              <p className="text-xs text-muted-foreground">Leave empty if no follow-up needed</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={ssaInterventionStatus} onValueChange={setSsaInterventionStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+          <div className="space-y-4 py-2">
+            {/* Row 1 — Refer To (full width) */}
+            <div className="space-y-1.5">
+              <Label>Refer To <span className="text-red-500">*</span></Label>
+              <Select value={referralDept} onValueChange={setReferralDept}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department..." />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
+                  {REFERRAL_DEPARTMENTS.map(dept => (
+                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Selected counsellor summary */}
-            {selectedCounsellor && (
-              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
-                <p className="font-medium text-purple-900 text-sm">
-                  Referring {student?.name} to {selectedCounsellor.name}
-                </p>
-                <p className="text-xs text-purple-700">
-                  Specialisation: {selectedCounsellor.specialisation}
-                </p>
-                {selectedCounsellor.contactEmail && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-purple-600">📧 {selectedCounsellor.contactEmail}</span>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(selectedCounsellor.contactEmail)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                )}
-                {selectedCounsellor.contactPhone && (
-                  <p className="text-xs text-purple-600">📞 {selectedCounsellor.contactPhone}</p>
-                )}
-                <p className="text-xs text-purple-500 mt-1">
-                  Contact this counsellor directly to arrange a session for the student. Then log the referral below.
-                </p>
+            {/* Row 2 — Referral Type | Urgency (2 columns) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Referral Type</Label>
+                <Select value={referralType} onValueChange={setReferralType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mental_health">Mental Health & Personal Support</SelectItem>
+                    <SelectItem value="academic">Academic Support</SelectItem>
+                    <SelectItem value="financial">Financial Support</SelectItem>
+                    <SelectItem value="career">Career Guidance</SelectItem>
+                    <SelectItem value="disability">Disability Support</SelectItem>
+                    <SelectItem value="health">Health & Wellbeing</SelectItem>
+                    <SelectItem value="welfare">Welfare Support</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+              <div className="space-y-1.5">
+                <Label>Urgency <span className="text-red-500">*</span></Label>
+                <Select value={referralUrgency} onValueChange={setReferralUrgency}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select urgency..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low — routine referral</SelectItem>
+                    <SelectItem value="medium">Medium — needs attention soon</SelectItem>
+                    <SelectItem value="high">High — needs attention this week</SelectItem>
+                    <SelectItem value="urgent">Urgent — immediate attention needed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Row 3 — Notes (full width) */}
+            <div className="space-y-1.5">
+              <Label>Notes <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Textarea
+                rows={3}
+                placeholder="Describe the reason for referral and any additional context…"
+                value={referralNotes}
+                onChange={(e) => setReferralNotes(e.target.value)}
+              />
+            </div>
           </div>
 
           <DialogFooter>
@@ -829,7 +778,7 @@ export default function SRUStudentProfilePage() {
             <Button
               size="sm"
               className="bg-purple-600 hover:bg-purple-700"
-              disabled={!selectedCounsellor || referralSubmitting}
+              disabled={!referralDept || referralSubmitting}
               onClick={handleReferral}
             >
               {referralSubmitting ? 'Logging Referral...' : 'Log Referral'}

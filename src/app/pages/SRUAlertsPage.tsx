@@ -11,12 +11,13 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { AlertTriangle, Flag, Activity, Loader2, Brain } from 'lucide-react';
+import { AlertTriangle, Flag, Loader2, Brain, CheckCircle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
-import { createNotification } from '../services/notificationService';
+
 
 interface AlertStudent {
   id: string;
@@ -32,8 +33,20 @@ interface AlertStudent {
   createdAt: any;
   alertTypes: string[];
   flaggedSince?: string;
+  flaggedAt: string;
   resolvedAt?: string | null;
 }
+
+const getDaysAgo = (dateStr: string) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const today = new Date();
+  const diffTime = Math.abs(today.getTime() - date.getTime());
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return `${diffDays} days ago`;
+};
 
 const formatDate = (val: any) => {
   if (!val) return '';
@@ -45,21 +58,31 @@ const formatDate = (val: any) => {
   }
 };
 
+const REFERRAL_DEPARTMENTS = [
+  'Counselling Services',
+  'Academic Support Centre',
+  'Financial Aid Office',
+  'Career Services',
+  'Disability Support Services',
+  'Health Services',
+  'Student Welfare Office',
+  'External Support Services',
+];
+
 export default function SRUAlertsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [allStudents, setAllStudents] = useState<AlertStudent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [alertSearch, setAlertSearch] = useState('');
   const [bulkResolving, setBulkResolving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'low_attendance' | 'consec_absences' | 'resolved'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'unacknowledged' | 'acknowledged'>('all');
 
   // Referral dialog state
   const [referStudent, setReferStudent] = useState<AlertStudent | null>(null);
   const [referTo,      setReferTo]      = useState('');
-  const [referReason,  setReferReason]  = useState('');
   const [referUrgency, setReferUrgency] = useState('');
+  const [referType,    setReferType]    = useState('');
   const [referNotes,   setReferNotes]   = useState('');
   const [referSaving,  setReferSaving]  = useState(false);
 
@@ -89,49 +112,52 @@ export default function SRUAlertsPage() {
           createdAt: data.createdAt,
           alertTypes,
           flaggedSince: formatDate(data.createdAt),
+          flaggedAt: data.flaggedAt
+            ? data.flaggedAt
+            : (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt ?? ''),
           resolvedAt: data.resolvedAt ?? null,
         };
       });
 
       // Only show students that trigger an alert condition
       setAllStudents(
-        docs.filter(
-          (s) => s.flagged || s.attendancePercentage < 80 || s.consecutiveAbsences >= 3
-        )
+        docs.filter((s) => s.flagged === true)
       );
       setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  const totalAlerts  = allStudents.filter((s) => s.flagged).length;
-  const lowAttCount  = allStudents.filter((s) => s.attendancePercentage < 80).length;
-  const consecCount  = allStudents.filter((s) => s.consecutiveAbsences >= 3).length;
+  const acknowledgedTodayCount = allStudents.filter(s => {
+    if (!s.resolvedAt) return false;
+    const resolved = new Date(s.resolvedAt);
+    const today = new Date();
+    return resolved.toDateString() === today.toDateString();
+  }).length;
+
+  const avgDaysOpen = (() => {
+    const flagged = allStudents.filter(s => s.flagged);
+    if (flagged.length === 0) return '—';
+    const total = flagged.reduce((sum, s) => {
+      const date = new Date(s.flaggedAt ?? s.createdAt);
+      const today = new Date();
+      const days = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+      return sum + days;
+    }, 0);
+    return Math.round(total / flagged.length);
+  })();
 
   const filtered = useMemo(() => {
     return allStudents.filter((s) => {
-      // Tab filter
-      if (activeTab === 'low_attendance')  return s.attendancePercentage < 80;
-      if (activeTab === 'consec_absences') return s.consecutiveAbsences >= 3;
-      if (activeTab === 'resolved')        return s.flagged === false && !!s.resolvedAt;
-
-      // "all" tab — apply the alert type filter only
-      const matchesType = typeFilter === 'all' || s.alertTypes.includes(typeFilter);
-      return matchesType;
+      if (activeTab === 'unacknowledged') return s.flagged === true;
+      if (activeTab === 'acknowledged')   return s.flagged === false && !!s.resolvedAt;
+      // 'all' tab
+      const matchesSearch = !alertSearch ||
+        s.name.toLowerCase().includes(alertSearch.toLowerCase()) ||
+        s.studentId.toLowerCase().includes(alertSearch.toLowerCase());
+      return matchesSearch;
     });
-  }, [allStudents, typeFilter, activeTab]);
-
-  const handleMarkResolved = async (student: AlertStudent) => {
-    setResolvingId(student.id);
-    try {
-      await updateDoc(doc(db, 'students', student.id), { flagged: false, resolvedAt: new Date().toISOString() });
-      toast.success(`${student.name} marked as resolved.`);
-    } catch {
-      toast.error('Failed to update student. Please try again.');
-    } finally {
-      setResolvingId(null);
-    }
-  };
+  }, [allStudents, alertSearch, activeTab]);
 
   const handleBulkAcknowledge = async () => {
     const flaggedInView = filtered.filter((s) => s.flagged);
@@ -152,6 +178,19 @@ export default function SRUAlertsPage() {
     }
   };
 
+  const handleAcknowledge = async (studentDocId: string) => {
+    try {
+      await updateDoc(doc(db, 'students', studentDocId), {
+        flagged: false,
+        resolvedAt: new Date().toISOString(),
+        acknowledgedAt: new Date().toISOString(),
+      });
+      toast.success('Alert acknowledged');
+    } catch {
+      toast.error('Failed to acknowledge alert');
+    }
+  };
+
   const openIntervention = (student: AlertStudent) => {
     navigate(`/sru/interventions?studentId=${student.studentId}&studentName=${encodeURIComponent(student.name)}`);
   };
@@ -159,17 +198,22 @@ export default function SRUAlertsPage() {
   const openReferDialog = (student: AlertStudent) => {
     setReferStudent(student);
     setReferTo('');
-    setReferReason('');
     setReferUrgency('');
+    setReferType('');
     setReferNotes('');
   };
 
-  const closeReferDialog = () => setReferStudent(null);
+  const closeReferDialog = () => {
+    setReferStudent(null);
+    setReferUrgency('');
+    setReferType('');
+    setReferNotes('');
+    setReferTo('');
+  };
 
   const handleReferSubmit = async () => {
     if (!referStudent) return;
-    if (!referTo)      { toast.error('Please select who to refer to.');   return; }
-    if (!referReason.trim()) { toast.error('Please enter a reason.');     return; }
+    if (!referTo)      { toast.error('Please select a department.');       return; }
     if (!referUrgency) { toast.error('Please select an urgency level.');  return; }
 
     setReferSaving(true);
@@ -177,21 +221,23 @@ export default function SRUAlertsPage() {
       await addDoc(collection(db, 'interventions'), {
         type:        'Referral',
         referredTo:  referTo,
-        reason:      referReason.trim(),
-        urgency:     referUrgency,
-        notes:       referNotes.trim(),
+        urgency:      referUrgency,
+        referralType: referType,
+        notes:        referNotes.trim(),
         studentId:   referStudent.studentId,
         studentName: referStudent.name,
         createdBy:   user?.name ?? 'SSA',
         createdAt:   serverTimestamp(),
         status:      'open',
       });
-      await createNotification({
-        studentId: referStudent.studentId,
-        uid:       referStudent.uid,
-        type:      'intervention',
-        title:     'Support referral logged',
-        message:   `Your Student Support Advisor has referred you to ${referTo}.`,
+      // Notify student about referral
+      await addDoc(collection(db, 'notifications'), {
+        userId:    referStudent.studentId,
+        type:      'referral',
+        title:     'You have been referred for support',
+        message:   `Your Student Support Advisor has referred you for ${referType.replace('_', ' ')} support. Please expect to be contacted soon.`,
+        createdAt: serverTimestamp(),
+        read:      false,
       });
       toast.success(`${referStudent.name} referred to ${referTo}.`);
       closeReferDialog();
@@ -203,17 +249,15 @@ export default function SRUAlertsPage() {
   };
 
   const tabCounts = {
-    all: allStudents.length,
-    low_attendance: lowAttCount,
-    consec_absences: consecCount,
-    resolved: allStudents.filter(s => s.flagged === false && !!s.resolvedAt).length,
+    all:             allStudents.length,
+    unacknowledged:  allStudents.filter(s => s.flagged === true).length,
+    acknowledged:    allStudents.filter(s => s.flagged === false && !!s.resolvedAt).length,
   };
 
   const tabs: { key: typeof activeTab; label: string }[] = [
-    { key: 'all',             label: 'All' },
-    { key: 'low_attendance',  label: 'Low Attendance' },
-    { key: 'consec_absences', label: 'Consecutive Absences' },
-    { key: 'resolved',        label: 'Resolved' },
+    { key: 'all',            label: 'All' },
+    { key: 'unacknowledged', label: 'Unacknowledged' },
+    { key: 'acknowledged',   label: 'Acknowledged' },
   ];
 
   return (
@@ -232,8 +276,8 @@ export default function SRUAlertsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Alerts</p>
-                <p className="text-3xl font-bold mt-1">{loading ? '—' : totalAlerts}</p>
-                <p className="text-xs text-muted-foreground mt-1">Flagged students</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : allStudents.length}</p>
+                <p className="text-xs text-muted-foreground mt-1">Students flagged for attention</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
                 <Flag className="h-5 w-5 text-red-600" />
@@ -242,16 +286,16 @@ export default function SRUAlertsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-green-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Consecutive Absences</p>
-                <p className="text-3xl font-bold mt-1">{loading ? '—' : consecCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">3 or more in a row</p>
+                <p className="text-sm text-muted-foreground">Acknowledged Today</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : acknowledgedTodayCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Resolved today</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-red-600" />
+              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
             </div>
           </CardContent>
@@ -261,12 +305,12 @@ export default function SRUAlertsPage() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Low Attendance</p>
-                <p className="text-3xl font-bold mt-1">{loading ? '—' : lowAttCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">Below 80%</p>
+                <p className="text-sm text-muted-foreground">Avg Days Open</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : avgDaysOpen}</p>
+                <p className="text-xs text-muted-foreground mt-1">Average days flagged</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
-                <Activity className="h-5 w-5 text-amber-600" />
+                <Clock className="h-5 w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
@@ -302,20 +346,14 @@ export default function SRUAlertsPage() {
               ))}
             </div>
 
-            {/* Filters + Bulk Acknowledge */}
+            {/* Search + Bulk Acknowledge */}
             <div className="flex flex-wrap gap-2 items-center">
-              {activeTab === 'all' && (
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="w-48 h-8 text-xs">
-                    <SelectValue placeholder="Alert Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Alert Types</SelectItem>
-                    <SelectItem value="Low Attendance">Low Attendance</SelectItem>
-                    <SelectItem value="Consecutive Absences">Consecutive Absences</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+              <Input
+                placeholder="Search student..."
+                value={alertSearch}
+                onChange={e => setAlertSearch(e.target.value)}
+                className="w-[200px] h-8 text-xs"
+              />
               <Button
                 size="sm"
                 variant="outline"
@@ -365,9 +403,9 @@ export default function SRUAlertsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <p className="font-medium text-sm">{student.name}</p>
-                    {student.flaggedSince && (
+                    {student.flaggedAt && (
                       <span className="text-xs text-muted-foreground ml-auto">
-                        Flagged {student.flaggedSince}
+                        Flagged {getDaysAgo(student.flaggedAt)}
                       </span>
                     )}
                   </div>
@@ -408,22 +446,20 @@ export default function SRUAlertsPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-full text-xs border-green-200 text-green-700 hover:bg-green-50"
+                    onClick={() => handleAcknowledge(student.id)}
+                  >
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Acknowledge
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     className="text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
                     onClick={() => openReferDialog(student)}
                   >
                     <Brain className="h-3 w-3 mr-1" /> Refer
                   </Button>
-                  {student.flagged && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs border-green-200 text-green-700 hover:bg-green-50"
-                      disabled={resolvingId === student.id}
-                      onClick={() => handleMarkResolved(student)}
-                    >
-                      {resolvingId === student.id ? 'Saving…' : 'Mark Resolved'}
-                    </Button>
-                  )}
                 </div>
               </div>
             ))
@@ -432,71 +468,71 @@ export default function SRUAlertsPage() {
       </div>
       {/* Refer to Specialist Dialog */}
       <Dialog open={!!referStudent} onOpenChange={(open) => { if (!open) closeReferDialog(); }}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Refer to Specialist</DialogTitle>
+            <DialogTitle>Refer {referStudent?.name} to Specialist</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* Student — read-only */}
-            <div className="space-y-1.5">
-              <Label>Student</Label>
-              <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm text-muted-foreground">
-                {referStudent?.name ?? ''}
-              </div>
-            </div>
-
-            {/* Refer To */}
+            {/* Row 1 — Refer To (full width) */}
             <div className="space-y-1.5">
               <Label>Refer To <span className="text-red-500">*</span></Label>
               <Select value={referTo} onValueChange={setReferTo}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select specialist…" />
+                  <SelectValue placeholder="Select department..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Counsellor">Counsellor</SelectItem>
-                  <SelectItem value="Financial Aid">Financial Aid</SelectItem>
-                  <SelectItem value="Disability Support">Disability Support</SelectItem>
-                  <SelectItem value="Mental Health Services">Mental Health Services</SelectItem>
-                  <SelectItem value="Academic Support">Academic Support</SelectItem>
+                  {REFERRAL_DEPARTMENTS.map(dept => (
+                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Reason */}
-            <div className="space-y-1.5">
-              <Label>Reason <span className="text-red-500">*</span></Label>
-              <Textarea
-                placeholder="Describe the reason for this referral…"
-                value={referReason}
-                onChange={(e) => setReferReason(e.target.value)}
-                rows={3}
-              />
+            {/* Row 2 — Referral Type | Urgency (2 columns) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Referral Type</Label>
+                <Select value={referType} onValueChange={setReferType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mental_health">Mental Health & Personal Support</SelectItem>
+                    <SelectItem value="academic">Academic Support</SelectItem>
+                    <SelectItem value="financial">Financial Support</SelectItem>
+                    <SelectItem value="career">Career Guidance</SelectItem>
+                    <SelectItem value="disability">Disability Support</SelectItem>
+                    <SelectItem value="health">Health & Wellbeing</SelectItem>
+                    <SelectItem value="welfare">Welfare Support</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Urgency <span className="text-red-500">*</span></Label>
+                <Select value={referUrgency} onValueChange={setReferUrgency}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select urgency..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low — routine referral</SelectItem>
+                    <SelectItem value="medium">Medium — needs attention soon</SelectItem>
+                    <SelectItem value="high">High — needs attention this week</SelectItem>
+                    <SelectItem value="urgent">Urgent — immediate attention needed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            {/* Urgency */}
-            <div className="space-y-1.5">
-              <Label>Urgency <span className="text-red-500">*</span></Label>
-              <Select value={referUrgency} onValueChange={setReferUrgency}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select urgency…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Routine">Routine</SelectItem>
-                  <SelectItem value="Urgent">Urgent</SelectItem>
-                  <SelectItem value="Emergency">Emergency</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Notes — optional */}
+            {/* Row 3 — Notes (full width) */}
             <div className="space-y-1.5">
               <Label>Notes <span className="text-xs text-muted-foreground">(optional)</span></Label>
               <Textarea
-                placeholder="Any additional context or instructions…"
+                placeholder="Describe the reason for this referral and any additional context…"
                 value={referNotes}
                 onChange={(e) => setReferNotes(e.target.value)}
-                rows={2}
+                rows={3}
               />
             </div>
           </div>

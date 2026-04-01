@@ -55,7 +55,7 @@ export default function SRUStudentsPage() {
   const [programmeFilter, setProgrammeFilter] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
+  const [sortBy, setSortBy] = useState('name_asc');
 
   // Intervention modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -501,9 +501,12 @@ export default function SRUStudentsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Phone Call">Phone Call</SelectItem>
+                    <SelectItem value="Text Message">Text Message</SelectItem>
                     <SelectItem value="Email">Email</SelectItem>
+                    <SelectItem value="Online Meeting">Online Meeting</SelectItem>
                     <SelectItem value="In-Person Meeting">In-Person Meeting</SelectItem>
-                    <SelectItem value="Referred to Registry">Referred to Registry</SelectItem>
+                    <SelectItem value="Referral">Referral</SelectItem>
+                    <SelectItem value="Formal Notice">Formal Notice</SelectItem>
                     <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>

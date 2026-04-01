@@ -15,19 +15,18 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../components/ui/dialog';
-import { ClipboardList, Plus, Loader2, Search } from 'lucide-react';
+import { ClipboardList, Plus, Loader2, Search, Clock, FolderOpen, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router';
 
 const INTERVENTION_TYPES = [
-  'Meeting',
   'Phone Call',
+  'Text Message',
   'Email',
+  'Online Meeting',
   'In-Person Meeting',
-  'Referred to Registry',
-  'Referred to Counsellor',
-  'Referred to External Counsellor',
-  'Referred to Academic Mentor',
+  'Referral',
+  'Formal Notice',
   'Other',
 ];
 
@@ -54,6 +53,8 @@ interface InterventionDoc {
   openStatus: 'open' | 'resolved' | '';
   followUpDate: string | null;
   caseStatus: 'open' | 'in_progress' | 'closed';
+  isAcademicWarning?: boolean;
+  priority: string;
 }
 
 interface StudentOption {
@@ -61,7 +62,6 @@ interface StudentOption {
   studentId: string;
   name: string;
   programme: string;
-  riskLevel: string;
 }
 
 const getOutcomeBadge = (outcome: string) => {
@@ -108,16 +108,14 @@ export default function SRUInterventionsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [outcomeFilter, setOutcomeFilter] = useState('all');
-  const [riskFilter, setRiskFilter] = useState('all');
   const [openStatusFilter, setOpenStatusFilter] = useState('all');
-  const [caseStatusFilter, setCaseStatusFilter] = useState('all');
-
-  // Tabs
-  const [activeTab, setActiveTab] = useState<'active' | 'pending' | 'completed'>('active');
+  const [priorityFilter, setPriorityFilter] = useState('all');
 
   // Modal
   const [isOpen, setIsOpen] = useState(false);
-  const [formStudent, setFormStudent] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState<StudentOption | null>(null);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [showStudentResults, setShowStudentResults] = useState(false);
   const [formType, setFormType] = useState('');
   const [formDate, setFormDate] = useState(todayStr());
   const [formOutcome, setFormOutcome] = useState('');
@@ -125,6 +123,7 @@ export default function SRUInterventionsPage() {
   const [formFollowUpDate, setFormFollowUpDate] = useState('');
   const [formStatus, setFormStatus] = useState<'open' | 'in_progress' | 'closed'>('open');
   const [formIsAcademicWarning, setFormIsAcademicWarning] = useState(false);
+  const [formPriority, setFormPriority] = useState('medium');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -149,6 +148,8 @@ export default function SRUInterventionsPage() {
             openStatus: d.data().openStatus ?? '',
             followUpDate: d.data().followUpDate ?? null,
             caseStatus: d.data().caseStatus ?? 'open',
+            isAcademicWarning: d.data().isAcademicWarning ?? false,
+            priority: d.data().priority ?? '',
           };
         })
       );
@@ -164,52 +165,88 @@ export default function SRUInterventionsPage() {
         studentId: d.data().studentId ?? d.id,
         name: d.data().name ?? '',
         programme: d.data().programme ?? '',
-        riskLevel: d.data().riskLevel ?? 'low',
       })).sort((a, b) => a.name.localeCompare(b.name));
       setStudents(list);
 
-      // Pre-select student if URL params are present
       const paramStudentId = searchParams.get('studentId');
       const paramStudentName = searchParams.get('studentName');
       if (paramStudentId) {
         const match = list.find((s) => s.studentId === paramStudentId);
         if (match) {
-          setFormStudent(match.id);
+          setSelectedStudent(match);
           setIsOpen(true);
         } else if (paramStudentName) {
           const byName = list.find((s) => s.name === decodeURIComponent(paramStudentName));
-          if (byName) { setFormStudent(byName.id); setIsOpen(true); }
+          if (byName) { setSelectedStudent(byName); setIsOpen(true); }
         }
       }
     });
   }, []);
 
-  const now = new Date();
-  const thisMonthCount = interventions.filter((i) => {
-    if (!i.createdAt) return false;
-    const d = i.createdAt?.toDate ? i.createdAt.toDate() : new Date(i.createdAt);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length;
+  useEffect(() => {
+    const handleClickOutside = () => setShowStudentResults(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
+  const studentResults = useMemo(() => {
+    if (!studentSearch || studentSearch.length < 2) return [];
+    return students.filter(s =>
+      s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.studentId.toLowerCase().includes(studentSearch.toLowerCase())
+    ).slice(0, 8);
+  }, [studentSearch, students]);
+
+  // KPI counts
   const openCaseCount = interventions.filter((i) => i.caseStatus === 'open').length;
+
+  const followUpsDueCount = interventions.filter((i) => {
+    if (!i.followUpDate) return false;
+    const followUp = new Date(i.followUpDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return followUp <= today && i.caseStatus !== 'closed';
+  }).length;
 
   const filtered = useMemo(() => {
     return interventions.filter((i) => {
-      // Tab filter
-      if (i.status !== activeTab) return false;
-      // Dropdown filters
       const matchesSearch     = !search || i.studentName.toLowerCase().includes(search.toLowerCase());
       const matchesType       = typeFilter === 'all' || i.interventionType === typeFilter;
       const matchesOutcome    = outcomeFilter === 'all' || i.outcome === outcomeFilter;
-      const matchesRisk       = riskFilter === 'all' || i.riskLevel === riskFilter;
-      const matchesOpenStatus = openStatusFilter === 'all' || i.openStatus === openStatusFilter;
-      const matchesCaseStatus = caseStatusFilter === 'all' || i.caseStatus === caseStatusFilter;
-      return matchesSearch && matchesType && matchesOutcome && matchesRisk && matchesOpenStatus && matchesCaseStatus;
+      const matchesOpenStatus = openStatusFilter === 'all' || i.caseStatus === openStatusFilter;
+      const matchesPriority   = priorityFilter === 'all' || i.priority === priorityFilter;
+      return matchesSearch && matchesType && matchesOutcome && matchesOpenStatus && matchesPriority;
     });
-  }, [interventions, search, typeFilter, outcomeFilter, riskFilter, activeTab, openStatusFilter, caseStatusFilter]);
+  }, [interventions, search, typeFilter, outcomeFilter, openStatusFilter, priorityFilter]);
+
+  const exportCSV = () => {
+    const headers = ['Student Name', 'Student ID', 'Type', 'Case Status', 'Priority', 'Date', 'Outcome', 'Notes', 'Follow-up Date', 'Academic Warning'];
+    const rows = filtered.map(i => [
+      i.studentName,
+      i.studentId,
+      i.interventionType,
+      i.caseStatus,
+      i.priority,
+      i.date,
+      i.outcome,
+      i.notes?.replace(/,/g, '') ?? '',
+      i.followUpDate ?? '',
+      i.isAcademicWarning ? 'Yes' : 'No',
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'interventions.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const resetForm = () => {
-    setFormStudent('');
+    setSelectedStudent(null);
+    setStudentSearch('');
+    setShowStudentResults(false);
     setFormType('');
     setFormDate(todayStr());
     setFormOutcome('');
@@ -217,33 +254,35 @@ export default function SRUInterventionsPage() {
     setFormFollowUpDate('');
     setFormStatus('open');
     setFormIsAcademicWarning(false);
+    setFormPriority('medium');
   };
 
   const handleToggleStatus = async (intervention: InterventionDoc) => {
-    const newStatus = intervention.openStatus === 'resolved' ? 'open' : 'resolved';
+    const newOpenStatus = intervention.openStatus === 'resolved' ? 'open' : 'resolved';
+    const newCaseStatus = newOpenStatus === 'resolved' ? 'closed' : 'open';
     try {
-      await updateDoc(doc(db, 'interventions', intervention.id), { openStatus: newStatus });
-      toast.success(newStatus === 'resolved' ? 'Marked as resolved' : 'Reopened');
+      await updateDoc(doc(db, 'interventions', intervention.id), {
+        openStatus: newOpenStatus,
+        caseStatus: newCaseStatus,
+      });
+      toast.success(newOpenStatus === 'resolved' ? 'Marked as resolved' : 'Reopened');
     } catch {
       toast.error('Failed to update status.');
     }
   };
 
   const handleSave = async () => {
-    if (!formStudent || !formType || !formDate || !formOutcome) {
+    if (!selectedStudent || !formType || !formDate) {
       toast.error('Please fill in all required fields.');
       return;
     }
-    const selectedStudent = students.find((s) => s.id === formStudent);
-    if (!selectedStudent) return;
 
     setSaving(true);
     try {
       await addDoc(collection(db, 'interventions'), {
-        studentId: selectedStudent.id,
+        studentId: selectedStudent.studentId,
         studentName: selectedStudent.name,
         programme: selectedStudent.programme,
-        riskLevel: selectedStudent.riskLevel,
         interventionType: formType,
         date: formDate,
         outcome: formOutcome,
@@ -253,19 +292,19 @@ export default function SRUInterventionsPage() {
         caseStatus: formStatus,
         followUpDate: formFollowUpDate || null,
         isAcademicWarning: formIsAcademicWarning,
+        priority: formPriority,
         createdAt: serverTimestamp(),
       });
 
-      // Update academic_warning_count and advisor_meeting_count on student doc
       const [warningSnap, meetingSnap] = await Promise.all([
         getDocs(query(
           collection(db, 'interventions'),
-          where('studentId', '==', selectedStudent.id),
+          where('studentId', '==', selectedStudent.studentId),
           where('isAcademicWarning', '==', true)
         )),
         getDocs(query(
           collection(db, 'interventions'),
-          where('studentId', '==', selectedStudent.id),
+          where('studentId', '==', selectedStudent.studentId),
           where('interventionType', '==', 'Meeting')
         )),
       ]);
@@ -284,12 +323,6 @@ export default function SRUInterventionsPage() {
     }
   };
 
-  const tabs: { key: typeof activeTab; label: string }[] = [
-    { key: 'active',    label: 'Active' },
-    { key: 'pending',   label: 'Pending' },
-    { key: 'completed', label: 'Completed' },
-  ];
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -298,13 +331,19 @@ export default function SRUInterventionsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Interventions</h1>
           <p className="text-muted-foreground text-sm mt-1">Log and track student interventions</p>
         </div>
-        <Button
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => { resetForm(); setIsOpen(true); }}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Log Intervention
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportCSV}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => { resetForm(); setIsOpen(true); }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Log Intervention
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -324,22 +363,22 @@ export default function SRUInterventionsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-green-500">
+        <Card className="border-l-4 border-l-amber-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">This Month</p>
-                <p className="text-3xl font-bold mt-1">{loading ? '—' : thisMonthCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">Current month</p>
+                <p className="text-sm text-muted-foreground">Follow-ups Due</p>
+                <p className="text-3xl font-bold mt-1">{loading ? '—' : followUpsDueCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Overdue or due today</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
-                <ClipboardList className="h-5 w-5 text-green-600" />
+              <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-amber-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center justify-between">
               <div>
@@ -347,102 +386,73 @@ export default function SRUInterventionsPage() {
                 <p className="text-3xl font-bold mt-1">{loading ? '—' : openCaseCount}</p>
                 <p className="text-xs text-muted-foreground mt-1">Awaiting resolution</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
-                <ClipboardList className="h-5 w-5 text-red-600" />
+              <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
+                <FolderOpen className="h-5 w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Intervention list with tabs + filters */}
+      {/* Intervention list */}
       <div className="rounded-xl border bg-white">
-        <div className="px-4 pt-4 pb-0 border-b">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-            {/* Tabs */}
-            <div className="flex gap-1">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    activeTab === t.key
-                      ? 'bg-gray-900 text-white'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-gray-100'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+        <div className="px-4 pt-4 pb-3 border-b">
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search student..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-8 text-xs w-36"
+                autoComplete="off"
+              />
             </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap gap-2 items-center">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search student..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8 h-8 text-xs w-36"
-                  autoComplete="off"
-                />
-              </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-40 h-8 text-xs">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {INTERVENTION_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={outcomeFilter} onValueChange={setOutcomeFilter}>
-                <SelectTrigger className="w-44 h-8 text-xs">
-                  <SelectValue placeholder="All Outcomes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Outcomes</SelectItem>
-                  {OUTCOME_OPTIONS.map((o) => (
-                    <SelectItem key={o} value={o}>{o}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={riskFilter} onValueChange={setRiskFilter}>
-                <SelectTrigger className="w-36 h-8 text-xs">
-                  <SelectValue placeholder="Risk Level" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Risk Levels</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={openStatusFilter} onValueChange={setOpenStatusFilter}>
-                <SelectTrigger className="w-32 h-8 text-xs">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={caseStatusFilter} onValueChange={setCaseStatusFilter}>
-                <SelectTrigger className="w-36 h-8 text-xs">
-                  <SelectValue placeholder="Case Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Cases</SelectItem>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-40 h-8 text-xs">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {INTERVENTION_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={outcomeFilter} onValueChange={setOutcomeFilter}>
+              <SelectTrigger className="w-44 h-8 text-xs">
+                <SelectValue placeholder="All Outcomes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Outcomes</SelectItem>
+                {OUTCOME_OPTIONS.map((o) => (
+                  <SelectItem key={o} value={o}>{o}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={openStatusFilter} onValueChange={setOpenStatusFilter}>
+              <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectValue placeholder="All Case Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Case Status</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue placeholder="All Priorities" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priorities</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -479,43 +489,45 @@ export default function SRUInterventionsPage() {
                       )}
                     </div>
                     <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-                      <Badge className={
-                        intervention.riskLevel === 'high'
-                          ? 'bg-red-100 text-red-800 border-red-200 text-xs'
-                          : 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
-                      }>
-                        {intervention.riskLevel === 'high' ? 'High' : 'Medium'}
-                      </Badge>
                       {intervention.openStatus && (
-                        <Badge className={intervention.openStatus === 'resolved' ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize' : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'}>
+                        <Badge className={intervention.openStatus === 'resolved'
+                          ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize'
+                          : 'bg-amber-100 text-amber-800 border-amber-200 text-xs capitalize'
+                        }>
                           {intervention.openStatus}
                         </Badge>
                       )}
-                      <Badge className={
-                        intervention.caseStatus === 'closed'      ? 'bg-green-100 text-green-800 border-green-200 text-xs' :
-                        intervention.caseStatus === 'in_progress' ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs' :
-                                                                     'bg-red-100 text-red-800 border-red-200 text-xs'
-                      }>
-                        {intervention.caseStatus === 'in_progress' ? 'In Progress' : intervention.caseStatus === 'closed' ? 'Closed' : 'Open'}
-                      </Badge>
-                      <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs capitalize">
-                        {intervention.status}
-                      </Badge>
                       {intervention.outcome && getOutcomeBadge(intervention.outcome)}
                     </div>
                   </div>
 
-                  {/* Next Best Action box */}
-                  <div className="bg-blue-50 rounded-lg px-3 py-2 mb-3 text-xs text-blue-800 border border-blue-100">
-                    <span className="font-semibold">Next Best Action: </span>
-                    {intervention.notes || 'Schedule a follow-up meeting with the student to review progress.'}
-                  </div>
+                  {/* Notes */}
+                  {intervention.notes && (
+                    <div className="bg-gray-50 rounded-lg px-3 py-2 mb-3 text-xs text-gray-700 border border-gray-100">
+                      <span className="font-semibold text-gray-500">Notes: </span>
+                      {intervention.notes}
+                    </div>
+                  )}
 
                   {/* Footer */}
                   <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap items-center">
                       <Badge variant="outline" className="text-xs">{intervention.interventionType || '—'}</Badge>
                       <Badge variant="outline" className="text-xs">{intervention.programme || 'Unknown programme'}</Badge>
+                      {(() => {
+                        const priorityConfig = {
+                          urgent: { label: 'Urgent',  className: 'bg-red-100 text-red-700' },
+                          high:   { label: 'High',    className: 'bg-orange-100 text-orange-700' },
+                          medium: { label: 'Medium',  className: 'bg-yellow-100 text-yellow-700' },
+                          low:    { label: 'Low',     className: 'bg-green-100 text-green-700' },
+                        };
+                        const p = priorityConfig[intervention.priority as keyof typeof priorityConfig];
+                        return p ? (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${p.className}`}>
+                            {p.label}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     <div className="flex gap-2 flex-shrink-0 flex-wrap items-center">
                       <Select
@@ -552,7 +564,12 @@ export default function SRUInterventionsPage() {
                       <Button
                         size="sm"
                         className="bg-blue-600 hover:bg-blue-700 text-xs"
-                        onClick={() => { resetForm(); setFormStudent(intervention.studentId); setIsOpen(true); }}
+                        onClick={() => {
+                          resetForm();
+                          const match = students.find(s => s.studentId === intervention.studentId);
+                          if (match) setSelectedStudent(match);
+                          setIsOpen(true);
+                        }}
                       >
                         Update Progress
                       </Button>
@@ -567,24 +584,64 @@ export default function SRUInterventionsPage() {
 
       {/* Log Intervention Modal */}
       <Dialog open={isOpen} onOpenChange={(o) => { if (!o) resetForm(); setIsOpen(o); }}>
-        <DialogContent className="max-w-2xl" autoComplete="off">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Log Intervention</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-2">
-            {/* Row 1 — Student (full width) */}
+            {/* Row 1 — Student (searchable) */}
             <div className="space-y-1.5">
               <Label>Student <span className="text-red-500">*</span></Label>
-              <Select value={formStudent} onValueChange={setFormStudent}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select student..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {students.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {selectedStudent ? (
+                <div className="flex items-center justify-between p-2 border rounded-md bg-gray-50">
+                  <div>
+                    <span className="text-sm font-medium">{selectedStudent.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{selectedStudent.studentId}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedStudent(null); setStudentSearch(''); }}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="relative" onClick={e => e.stopPropagation()}>
+                  <Input
+                    placeholder="Search by name or student ID..."
+                    value={studentSearch}
+                    onChange={e => { setStudentSearch(e.target.value); setShowStudentResults(true); }}
+                    onFocus={() => setShowStudentResults(true)}
+                    autoComplete="off"
+                  />
+                  {showStudentResults && studentResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {studentResults.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-0"
+                          onClick={() => {
+                            setSelectedStudent(s);
+                            setStudentSearch('');
+                            setShowStudentResults(false);
+                          }}
+                        >
+                          <span className="text-sm font-medium">{s.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{s.studentId}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{s.programme}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showStudentResults && studentSearch.length >= 2 && studentResults.length === 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg p-3">
+                      <p className="text-sm text-muted-foreground">No students found</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Row 2 — Intervention Type + Case Status */}
@@ -627,7 +684,7 @@ export default function SRUInterventionsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Outcome <span className="text-red-500">*</span></Label>
+                <Label>Outcome</Label>
                 <Select value={formOutcome} onValueChange={setFormOutcome}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select outcome..." />
@@ -639,6 +696,22 @@ export default function SRUInterventionsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Row 3b — Priority */}
+            <div className="space-y-1.5">
+              <Label>Priority</Label>
+              <Select value={formPriority} onValueChange={setFormPriority}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="urgent">🔴 Urgent</SelectItem>
+                  <SelectItem value="high">🟠 High</SelectItem>
+                  <SelectItem value="medium">🟡 Medium</SelectItem>
+                  <SelectItem value="low">🟢 Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Row 4 — Notes (full width) */}
