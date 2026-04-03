@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"dir C:\\\\Users\\\\dilsh\\\\Desktop\\\\DropGuard /b /a\")",
+      "Bash(cmd /c \"dir C:\\\\Users\\\\dilsh\\\\Desktop /b /a\")",
+      "Bash(cmd /c dir \"C:\\\\Users\\\\dilsh\\\\Desktop\" /b)",
+      "Bash(git -C \"C:/Users/dilsh/Desktop/DropGuard/ruhansa-app\" ls-files \"*.tsx\")",
+      "Bash(git -C /mnt/c/Users/dilsh/Desktop/DropGuard/ruhansa-app ls-files \"*.tsx\")",
+      "Read(//proc/**)",
+      "Read(//c//**)",
+      "Read(//c/Users/dilsh/Desktop/**)",
+      "Read(//c/Users/dilsh/**)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
