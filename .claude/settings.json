@@ -10,7 +10,14 @@
       "Read(//c//**)",
       "Read(//c/Users/dilsh/Desktop/**)",
       "Read(//c/Users/dilsh/**)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(node scripts/deleteAttendance.mjs)",
+      "Bash(node -e \"require\\('firebase-admin'\\)\")",
+      "Bash(node scripts/checkAttendance.mjs)",
+      "Bash(node scripts/checkAttendanceRemaining.mjs)",
+      "Bash(node scripts/deleteOrphanBM101.mjs)",
+      "Bash(node scripts/checkAttendanceStructure.mjs)",
+      "Bash(node scripts/uploadAttendanceSTD005_STD011.mjs)"
     ]
   }
 }

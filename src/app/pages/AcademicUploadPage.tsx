@@ -20,6 +20,7 @@ import {
   serverTimestamp,
   query,
   where,
+  limit,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { toast } from 'sonner';
@@ -897,7 +898,7 @@ export default function AcademicUploadPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {['2023/2024', '2024/2025', '2025/2026', '2026/2027'].map((y) => (
+                  {['2022/2023', '2023/2024', '2024/2025', '2025/2026', '2026/2027'].map((y) => (
                     <SelectItem key={y} value={y}>{y}</SelectItem>
                   ))}
                 </SelectContent>
