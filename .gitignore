@@ -16,4 +16,4 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
-src/scripts/serviceAccount.json.json.json
+src/scripts/serviceAccount.json.json
