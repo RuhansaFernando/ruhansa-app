@@ -21,6 +21,9 @@ interface StudentRiskData {
   enrollmentDate?: string;
   nationality?: string;
   attendanceBySemester?: number[];
+  flagged?: boolean;
+  counselingNotes?: string;
+  financial_aid_status?: string | boolean | number;
 }
 
 const calcEnrollmentGap = (enrollmentDate: string): number => {
@@ -91,15 +94,22 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           ? studentData.attendanceBySemester
           : [attendancePercentage];
 
+        const financialAidRaw = studentData.financial_aid_status;
+        const financialAid =
+          financialAidRaw === 'Yes' || financialAidRaw === true || financialAidRaw === 1 ? 1 : 0;
+
         const riskResult = await callMLModel(features, {
           age: studentData.age,
           gender: studentData.gender,
           major: studentData.major,
           advisorMeetingCount: appointmentCount,
-          hasCounseling: interventionCount > 0 ? 1 : 0,
+          hasCounseling: studentData.counselingNotes ? 1 : 0,
+          financialAid,
           enrollmentGapMonths: calcEnrollmentGap(studentData.enrollmentDate ?? ''),
           ethnicity: studentData.nationality ?? 'Unknown',
           attendanceBySemester,
+          gpaBySemester: semesterGPAs,
+          dropoutRisk: studentData.flagged ? 1 : 0,
         });
         setResult(riskResult);
 

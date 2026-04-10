@@ -94,44 +94,62 @@ export async function callMLModel(features: MLFeatures, extraData?: {
   age?: number;
   gender?: string;
   major?: string;
+  ethnicity?: string;
   advisorMeetingCount?: number;
   hasCounseling?: number;
   financialAid?: number;
   enrollmentGapMonths?: number;
-  gpaLast?: number;
-  gpaTrend?: number;
-  gpaMin?: number;
-  attLast?: number;
-  attTrend?: number;
-  ethnicity?: string;
   attendanceBySemester?: number[];
+  gpaBySemester?: number[];
+  dropoutRisk?: number;
 }): Promise<RiskResult> {
-  const ML_API_URL = import.meta.env.VITE_ML_API_URL || 'http://localhost:5000/predict';
+  const ML_API_URL = import.meta.env.VITE_ML_API_URL || 'http://127.0.0.1:5000/predict';
+
+  // ── Derive GPA fields from per-semester array ─────────────────────────────
+  const gpaSemesters = extraData?.gpaBySemester ?? [];
+  const gpaLast  = gpaSemesters.length > 0
+    ? gpaSemesters[gpaSemesters.length - 1]
+    : features.gpaCurrent;
+  const gpaTrend = gpaSemesters.length >= 2
+    ? gpaSemesters[gpaSemesters.length - 1] - gpaSemesters[0]
+    : 0;
+  const gpaMin   = gpaSemesters.length > 0
+    ? Math.min(...gpaSemesters)
+    : features.gpaCurrent;
+
+  // ── Derive attendance fields from per-semester array ──────────────────────
+  const attSemesters = extraData?.attendanceBySemester ?? [];
+  const attLast  = attSemesters.length > 0
+    ? attSemesters[attSemesters.length - 1]
+    : features.attendanceRate;
+  const attTrend = attSemesters.length >= 2
+    ? attSemesters[attSemesters.length - 1] - attSemesters[0]
+    : 0;
 
   try {
     const response = await fetch(ML_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        gpa_current: features.gpaCurrent,
-        gpa_history: features.gpaHistory,
-        gpa_last: extraData?.gpaLast ?? features.gpaCurrent,
-        gpa_trend: extraData?.gpaTrend ?? 0,
-        gpa_min: extraData?.gpaMin ?? features.gpaCurrent,
-        attendance_rate: features.attendanceRate,
-        att_last: extraData?.attLast ?? features.attendanceRate,
-        att_trend: extraData?.attTrend ?? 0,
-        credits_completed: features.creditsCompleted,
+        dropout_risk:           extraData?.dropoutRisk ?? 0,
+        age:                    extraData?.age ?? 20,
+        gender:                 extraData?.gender ?? 'Unknown',
+        ethnicity:              extraData?.ethnicity ?? 'Unknown',
+        major:                  extraData?.major ?? 'Unknown',
+        gpa_current:            features.gpaCurrent,
+        gpa_history:            features.gpaHistory,
+        credits_completed:      features.creditsCompleted,
         academic_warning_count: features.academicWarningCount,
-        advisor_meeting_count: extraData?.advisorMeetingCount ?? 0,
-        enrollment_gap_months: extraData?.enrollmentGapMonths ?? 0,
-        has_counseling: extraData?.hasCounseling ?? 0,
-        financial_aid: extraData?.financialAid ?? 0,
-        age: extraData?.age ?? 20,
-        gender: extraData?.gender ?? 'Unknown',
-        major: extraData?.major ?? 'Unknown',
-        ethnicity: extraData?.ethnicity ?? 'Unknown',
-        attendance_by_semester: extraData?.attendanceBySemester ?? [],
+        gpa_last:               gpaLast,
+        gpa_trend:              gpaTrend,
+        gpa_min:                gpaMin,
+        attendance_rate:        features.attendanceRate,
+        att_last:               attLast,
+        att_trend:              attTrend,
+        enrollment_gap_months:  extraData?.enrollmentGapMonths ?? 0,
+        advisor_meeting_count:  extraData?.advisorMeetingCount ?? 0,
+        has_counseling:         extraData?.hasCounseling ?? 0,
+        financial_aid:          extraData?.financialAid ?? 0,
       }),
       signal: AbortSignal.timeout(5000),
     });
@@ -140,11 +158,13 @@ export async function callMLModel(features: MLFeatures, extraData?: {
 
     const data = await response.json();
 
+    // API returns: dropout_probability (0–1), will_dropout (bool), risk_level ('Low'|'Medium'|'High')
     const score = Math.round((data.dropout_probability ?? 0) * 100);
+
+    const rawLevel = (data.risk_level ?? '').toLowerCase();
     const level: 'low' | 'medium' | 'high' | 'critical' =
-      data.risk_level?.toLowerCase() === 'critical' ? 'critical'
-      : data.risk_level?.toLowerCase() === 'high' ? 'high'
-      : data.risk_level?.toLowerCase() === 'medium' ? 'medium'
+      rawLevel === 'high'   ? 'high'
+      : rawLevel === 'medium' ? 'medium'
       : 'low';
 
     return {
