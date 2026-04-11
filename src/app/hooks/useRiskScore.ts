@@ -18,10 +18,13 @@ interface StudentRiskData {
   age?: number;
   gender?: string;
   major?: string;
+  programme?: string;
   enrollmentDate?: string;
   nationality?: string;
   attendanceBySemester?: number[];
   flagged?: boolean;
+  academic_warning_count?: number;
+  academicWarnings?: number;
   counselingNotes?: string;
   financial_aid_status?: string | boolean | number;
 }
@@ -30,10 +33,11 @@ const calcEnrollmentGap = (enrollmentDate: string): number => {
   if (!enrollmentDate) return 0;
   const start = new Date(enrollmentDate);
   const now = new Date();
-  return Math.max(0,
+  const months = Math.max(0,
     (now.getFullYear() - start.getFullYear()) * 12 +
     (now.getMonth() - start.getMonth())
   );
+  return Math.min(24, months);
 };
 
 export function useRiskScore(studentData: StudentRiskData): RiskResult {
@@ -57,7 +61,10 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           getDocs(query(collection(db, 'results'), where('studentId', '==', studentData.studentId))),
         ]);
 
-        const interventionCount = warningSnap.size;
+        // Prefer stored field on student doc; fall back to live intervention count
+        const interventionCount = studentData.academic_warning_count
+          ?? studentData.academicWarnings
+          ?? warningSnap.size;
         const appointmentCount = meetingSnap.size;
 
         const results = resultsSnap.docs.map((d) => d.data());
@@ -66,7 +73,7 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
         ).length;
         const creditsCompleted = results.filter(
           (r) => (r.finalMark ?? r.mark ?? 0) >= 40
-        ).length;
+        ).length * 10;
 
         // Calculate GPA history per semester
         const bySemester: Record<string, number[]> = {};
@@ -92,7 +99,7 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
         const attendancePercentage = studentData.attendancePercentage ?? 0;
         const attendanceBySemester = studentData.attendanceBySemester && studentData.attendanceBySemester.length > 0
           ? studentData.attendanceBySemester
-          : [attendancePercentage];
+          : [attendancePercentage / 100];
 
         const financialAidRaw = studentData.financial_aid_status;
         const financialAid =
@@ -101,7 +108,7 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
         const riskResult = await callMLModel(features, {
           age: studentData.age,
           gender: studentData.gender,
-          major: studentData.major,
+          major: studentData.programme ?? studentData.major,
           advisorMeetingCount: appointmentCount,
           hasCounseling: studentData.counselingNotes ? 1 : 0,
           financialAid,

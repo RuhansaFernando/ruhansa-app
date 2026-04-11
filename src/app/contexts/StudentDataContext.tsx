@@ -52,6 +52,7 @@ export interface StudentData {
   engagementScore: number;
   enrollmentDate: string;
   nationality: string;
+  gender: string;
   advisorMeetingCount: number;
   attendanceBySemester: number[];
 
@@ -224,7 +225,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         }
       });
       const attendanceBySemester = Object.values(semesterAttendance).map((s) =>
-        s.total > 0 ? Math.round((s.present / s.total) * 100) : 0
+        s.total > 0 ? Math.round((s.present / s.total) * 10000) / 10000 : 0
       );
 
       // 5. Process results
@@ -299,9 +300,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         enrollmentDate: d.enrollmentDate ?? '',
         nationality: d.nationality ?? '',
         advisorMeetingCount: d.advisor_meeting_count ?? d.advisorMeetingCount ?? 0,
+        gender: d.gender ?? '',
         attendanceBySemester: attendanceBySemester.length > 0
           ? attendanceBySemester
-          : [moduleAttendance.length > 0 ? Math.round(moduleAttendance.reduce((s, m) => s + m.percentage, 0) / moduleAttendance.length) : 0],
+          : [moduleAttendance.length > 0 ? Math.round(moduleAttendance.reduce((s, m) => s + m.percentage, 0) / moduleAttendance.length) / 100 : 0],
         moduleAttendance,
         results,
         ssaMessages,

@@ -90,6 +90,24 @@ export function prepareMLFeatures(studentData: {
   };
 }
 
+function mapEthnicity(_ethnicity: string | undefined): string {
+  // Model was trained on: Asian, Black, Hispanic, White, Other
+  // All students in this system are Sri Lankan → Asian
+  return 'Asian';
+}
+
+function mapMajor(programme: string | undefined): string {
+  if (!programme) return 'Computer Science';
+  const p = programme.toLowerCase();
+  if (p.includes('computer') || p.includes('software') || p.includes('cyber') ||
+      p.includes('data') || p.includes('information')) return 'Computer Science';
+  if (p.includes('business') || p.includes('accounting') || p.includes('finance')) return 'Business';
+  if (p.includes('engineering') || p.includes('civil')) return 'Electrical Engineering';
+  if (p.includes('psychology')) return 'Psychology';
+  if (p.includes('biology')) return 'Biology';
+  return 'Computer Science';
+}
+
 export async function callMLModel(features: MLFeatures, extraData?: {
   age?: number;
   gender?: string;
@@ -126,31 +144,34 @@ export async function callMLModel(features: MLFeatures, extraData?: {
     ? attSemesters[attSemesters.length - 1] - attSemesters[0]
     : 0;
 
+  const payload = {
+    dropout_risk:           extraData?.dropoutRisk ?? 0,
+    age:                    extraData?.age ?? 20,
+    gender:                 extraData?.gender ?? 'Unknown',
+    ethnicity:              mapEthnicity(extraData?.ethnicity),
+    major:                  mapMajor(extraData?.major),
+    gpa_current:            features.gpaCurrent,
+    gpa_history:            features.gpaHistory,
+    credits_completed:      features.creditsCompleted,
+    academic_warning_count: features.academicWarningCount,
+    gpa_last:               gpaLast,
+    gpa_trend:              gpaTrend,
+    gpa_min:                gpaMin,
+    attendance_rate:        features.attendanceRate,
+    att_last:               attLast,
+    att_trend:              attTrend,
+    enrollment_gap_months:  extraData?.enrollmentGapMonths ?? 0,
+    advisor_meeting_count:  extraData?.advisorMeetingCount ?? 0,
+    has_counseling:         extraData?.hasCounseling ?? 0,
+    financial_aid:          extraData?.financialAid ?? 0,
+  };
+  console.log('[ML API] Payload:', payload);
+
   try {
     const response = await fetch(ML_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dropout_risk:           extraData?.dropoutRisk ?? 0,
-        age:                    extraData?.age ?? 20,
-        gender:                 extraData?.gender ?? 'Unknown',
-        ethnicity:              extraData?.ethnicity ?? 'Unknown',
-        major:                  extraData?.major ?? 'Unknown',
-        gpa_current:            features.gpaCurrent,
-        gpa_history:            features.gpaHistory,
-        credits_completed:      features.creditsCompleted,
-        academic_warning_count: features.academicWarningCount,
-        gpa_last:               gpaLast,
-        gpa_trend:              gpaTrend,
-        gpa_min:                gpaMin,
-        attendance_rate:        features.attendanceRate,
-        att_last:               attLast,
-        att_trend:              attTrend,
-        enrollment_gap_months:  extraData?.enrollmentGapMonths ?? 0,
-        advisor_meeting_count:  extraData?.advisorMeetingCount ?? 0,
-        has_counseling:         extraData?.hasCounseling ?? 0,
-        financial_aid:          extraData?.financialAid ?? 0,
-      }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(5000),
     });
 

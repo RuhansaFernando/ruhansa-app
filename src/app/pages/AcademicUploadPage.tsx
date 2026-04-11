@@ -21,6 +21,7 @@ import {
   query,
   where,
   limit,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { toast } from 'sonner';
@@ -87,6 +88,9 @@ async function recalculateStudentAttendance(
     attendancePercentage: overallAttendance,
     [`moduleAttendance.${moduleId}`]: moduleAttendancePct,
     consecutiveAbsences,
+    attendance_by_semester: arrayUnion(
+      Math.round((overallAttendance / 100) * 10000) / 10000
+    ),
   });
 }
 

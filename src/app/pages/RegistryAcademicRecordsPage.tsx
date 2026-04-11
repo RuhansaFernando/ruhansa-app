@@ -28,6 +28,7 @@ import {
   serverTimestamp,
   query,
   where,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { toast } from 'sonner';
@@ -619,7 +620,11 @@ export default function RegistryAcademicRecordsPage() {
             ? Math.round((modulePoints.reduce((s, p) => s + p, 0) / modulePoints.length) * 100) / 100
             : 0;
 
-        await updateDoc(doc(db, 'students', studentDoc.id), { gpa });
+        await updateDoc(doc(db, 'students', studentDoc.id), {
+          gpa,
+          gpa_by_semester: arrayUnion(gpa),
+          gpa_history: gpa,
+        });
 
         done++;
         toast.loading(`Recalculating GPAs... ${done}/${total} done`, { id: toastId });
@@ -683,7 +688,11 @@ export default function RegistryAcademicRecordsPage() {
       const gpa = modulePoints.length > 0
         ? Math.round((modulePoints.reduce((s, p) => s + p, 0) / modulePoints.length) * 100) / 100
         : 0;
-      await updateDoc(doc(db, 'students', selectedStudent.docId), { gpa });
+      await updateDoc(doc(db, 'students', selectedStudent.docId), {
+        gpa,
+        gpa_by_semester: arrayUnion(gpa),
+        gpa_history: gpa,
+      });
 
       const updated = { ...selectedStudent, gpa };
       setSelectedStudent(updated);
@@ -818,7 +827,11 @@ export default function RegistryAcademicRecordsPage() {
         modulePoints.length > 0
           ? Math.round((modulePoints.reduce((sum, p) => sum + p, 0) / modulePoints.length) * 100) / 100
           : 0;
-      await updateDoc(doc(db, 'students', selectedStudent.docId), { gpa });
+      await updateDoc(doc(db, 'students', selectedStudent.docId), {
+        gpa,
+        gpa_by_semester: arrayUnion(gpa),
+        gpa_history: gpa,
+      });
 
       // Update local state
       const updated = { ...selectedStudent, gpa };

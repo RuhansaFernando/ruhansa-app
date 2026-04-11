@@ -133,9 +133,11 @@ export default function StudentDashboard() {
     attendancePercentage: student?.attendancePercentage,
     gpa:                  student?.gpa,
     studentId:            student?.studentId,
-    enrollmentDate:         studentData?.enrollmentDate ?? studentData?.academicYear ?? '',
-    nationality:            studentData?.nationality ?? '',
-    attendanceBySemester:   studentData?.attendanceBySemester ?? [student?.attendancePercentage ?? 0],
+    enrollmentDate:       studentData?.enrollmentDate ?? studentData?.academicYear ?? '',
+    nationality:          studentData?.nationality ?? '',
+    gender:               studentData?.gender,
+    programme:            studentData?.programme,
+    attendanceBySemester: studentData?.attendanceBySemester ?? [(student?.attendancePercentage ?? 0) / 100],
   });
 
   const failedModules = (studentData?.results ?? [])

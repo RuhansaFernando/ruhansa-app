@@ -279,6 +279,9 @@ export default function RegistryStudentsPage() {
         riskScore: 0,
         interventions: [],
         appointments: [],
+        gpa_by_semester: [0],
+        attendance_by_semester: [0],
+        gpa_history: 0,
         createdAt: serverTimestamp(),
       });
       created++;

@@ -42,6 +42,9 @@ interface StudentData {
   engagementScore?: number;
   enrollmentDate?: string;
   nationality?: string;
+  gender?: string;
+  flagged?: boolean;
+  academic_warning_count?: number;
   attendanceBySemester?: number[];
   phone?: string;
   faculty?: string;
@@ -150,7 +153,10 @@ export default function SRUStudentProfilePage() {
             engagementScore: d.engagementScore ?? 50,
             enrollmentDate: d.enrollmentDate ?? '',
             nationality: d.nationality ?? '',
-            attendanceBySemester: d.attendanceBySemester ?? [],
+            gender: d.gender ?? '',
+            flagged: d.flagged ?? false,
+            academic_warning_count: d.academic_warning_count ?? 0,
+            attendanceBySemester: d.attendance_by_semester ?? d.attendanceBySemester ?? [],
             phone: d.phone ?? '',
             faculty: d.faculty ?? '',
           });
@@ -327,13 +333,17 @@ export default function SRUStudentProfilePage() {
   };
 
   const riskData = useRiskScore({
-    attendancePercentage:  student?.attendancePercentage,
-    gpa:                   student?.gpa,
-    studentId:             student?.studentId,
-    consecutiveAbsences:   student?.consecutiveAbsences,
-    enrollmentDate:        student?.enrollmentDate,
-    nationality:           student?.nationality,
-    attendanceBySemester:  student?.attendanceBySemester,
+    attendancePercentage:    student?.attendancePercentage,
+    gpa:                     student?.gpa,
+    studentId:               student?.studentId,
+    consecutiveAbsences:     student?.consecutiveAbsences,
+    enrollmentDate:          student?.enrollmentDate,
+    nationality:             student?.nationality,
+    gender:                  student?.gender,
+    programme:               student?.programme,
+    flagged:                 student?.flagged,
+    academic_warning_count:  student?.academic_warning_count,
+    attendanceBySemester:    student?.attendanceBySemester,
   });
 
   if (loading) {
