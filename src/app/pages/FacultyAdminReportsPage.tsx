@@ -247,10 +247,10 @@ export default function FacultyAdminReportsPage() {
   };
 
   const exportHistoryCsv = () => {
-    const rows = filteredHistory.map((h) => [h.date, h.moduleCode, h.moduleName, h.sessionType, h.present, h.absent, h.late]);
+    const rows = filteredHistory.map((h) => [h.date, h.moduleCode, h.moduleName, h.sessionType, h.present, h.absent]);
     downloadCsv(
       `module_attendance_history.csv`,
-      ['Date', 'Module Code', 'Module Name', 'Session Type', 'Present', 'Absent', 'Late'],
+      ['Date', 'Module Code', 'Module Name', 'Session Type', 'Present', 'Absent'],
       rows
     );
   };
@@ -589,13 +589,12 @@ export default function FacultyAdminReportsPage() {
                       <th className="text-left font-medium text-muted-foreground px-4 py-3">Session Type</th>
                       <th className="text-center font-medium text-muted-foreground px-4 py-3">Present</th>
                       <th className="text-center font-medium text-muted-foreground px-4 py-3">Absent</th>
-                      <th className="text-center font-medium text-muted-foreground px-4 py-3">Late</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredHistory.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
+                        <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
                           Click "Generate Report" to load data.
                         </td>
                       </tr>
@@ -613,11 +612,6 @@ export default function FacultyAdminReportsPage() {
                         <td className="px-4 py-3 text-center">
                           {h.absent > 0
                             ? <span className="text-red-600 font-semibold">{h.absent}</span>
-                            : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {h.late > 0
-                            ? <span className="text-amber-600 font-semibold">{h.late}</span>
                             : <span className="text-muted-foreground">—</span>}
                         </td>
                       </tr>

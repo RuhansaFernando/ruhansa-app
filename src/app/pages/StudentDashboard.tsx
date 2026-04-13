@@ -130,17 +130,19 @@ export default function StudentDashboard() {
 
   // ── Novelty 1 + 3: ML risk score ─────────────────────────
   const riskData = useRiskScore({
-    attendancePercentage: student?.attendancePercentage,
-    gpa:                  student?.gpa,
-    studentId:            student?.studentId,
-    enrollmentDate:       studentData?.enrollmentDate ?? studentData?.academicYear ?? '',
-    nationality:          studentData?.nationality ?? '',
-    gender:               studentData?.gender,
-    programme:            studentData?.programme,
-    attendanceBySemester: studentData?.attendanceBySemester ?? [(student?.attendancePercentage ?? 0) / 100],
+    attendancePercentage:   student?.attendancePercentage,
+    gpa:                    student?.gpa,
+    studentId:              student?.studentId,
+    enrollmentDate:         studentData?.enrollmentDate ?? studentData?.academicYear ?? '',
+    nationality:            studentData?.nationality ?? '',
+    gender:                 studentData?.gender,
+    programme:              studentData?.programme,
+    flagged:                studentData?.flagged,
+    academic_warning_count: studentData?.academic_warning_count,
+    attendanceBySemester:   studentData?.attendanceBySemester ?? [(student?.attendancePercentage ?? 0) / 100],
   });
 
-  const failedModules = (studentData?.results ?? [])
+const failedModules = (studentData?.results ?? [])
     .filter((r) => r.overall < 40 && r.overall > 0).length;
   const advisorMeetings = studentData?.advisorMeetingCount ?? 0;
 

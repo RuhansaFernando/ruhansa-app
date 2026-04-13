@@ -127,8 +127,23 @@ export default function RegistryReportsPage() {
   const generateFailing = async () => {
     setLoadingFailing(true);
     try {
-      // Fetch all results — filter client-side to handle both 'status' and 'moduleStatus' field names
-      const resultsSnap = await getDocs(collection(db, "results"));
+      // Fetch students for name/programme lookup, and results in parallel
+      const [resultsSnap, studentsSnap] = await Promise.all([
+        getDocs(collection(db, "results")),
+        getDocs(collection(db, "students")),
+      ]);
+
+      const studentMap = new Map<string, { name: string; programme: string }>();
+      studentsSnap.docs.forEach((d) => {
+        const sd = d.data();
+        if (sd.studentId) {
+          studentMap.set(sd.studentId, {
+            name: sd.name ?? '—',
+            programme: sd.programme ?? '—',
+          });
+        }
+      });
+
       const failingDocs = resultsSnap.docs.filter((d) => {
         const data = d.data();
         const statusVal = data.moduleStatus ?? data.status ?? "";
@@ -140,10 +155,11 @@ export default function RegistryReportsPage() {
 
       const rows: FailingRow[] = failingDocs.map((d) => {
         const data = d.data();
+        const studentInfo = studentMap.get(data.studentId) ?? { name: '—', programme: '—' };
         return {
           studentDisplayId: data.studentId ?? "—",
-          name: data.studentName ?? "—",
-          programme: data.programme ?? "—",
+          name: data.studentName ?? studentInfo.name,
+          programme: data.programme ?? studentInfo.programme,
           level: semesterToLevel(data.semester ?? ""),
           moduleName: data.moduleName ?? "—",
           overallMark: data.overallMark ?? data.mark ?? 0,

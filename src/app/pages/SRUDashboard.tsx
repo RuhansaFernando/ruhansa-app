@@ -14,6 +14,7 @@ interface StudentDoc {
   programme: string;
   attendancePercentage: number;
   flagged: boolean;
+  riskLevel: string;
 }
 
 interface AppointmentDoc {
@@ -41,6 +42,7 @@ export default function SRUDashboard() {
           programme: d.data().programme ?? '',
           attendancePercentage: d.data().attendancePercentage ?? 100,
           flagged: d.data().flagged ?? false,
+          riskLevel: (d.data().riskLevel ?? 'low').toLowerCase(),
         }))
       );
       setLoadingStudents(false);
@@ -73,6 +75,9 @@ export default function SRUDashboard() {
 
   const totalStudents = students.length;
   const flagged       = students.filter((s) => s.flagged).length;
+  const highRisk      = students.filter((s) => s.riskLevel === 'high').length;
+  const mediumRisk    = students.filter((s) => s.riskLevel === 'medium').length;
+  const lowRisk       = students.filter((s) => s.riskLevel === 'low').length;
 
   if (loadingStudents) {
     return (
@@ -132,18 +137,33 @@ export default function SRUDashboard() {
 
       {/* Two column: Risk Pending notice + Today's Appointments */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Risk Scores Pending */}
+        {/* Risk Distribution */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Student Risk Scores</CardTitle>
+            <CardTitle className="text-base">Student Risk Distribution</CardTitle>
+            <p className="text-sm text-muted-foreground">Based on ML dropout risk scores</p>
           </CardHeader>
-          <CardContent>
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-              <p className="font-medium">Risk Scores Pending</p>
-              <p className="mt-1 text-blue-600">
-                Student dropout risk scores will appear here once the ML model is connected.
-                Attendance and academic data is being collected.
-              </p>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-red-50 border border-red-100">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-red-500" />
+                <span className="text-sm font-medium text-red-700">High Risk</span>
+              </div>
+              <span className="text-2xl font-bold text-red-700">{highRisk}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-yellow-50 border border-yellow-100">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-yellow-500" />
+                <span className="text-sm font-medium text-yellow-700">Medium Risk</span>
+              </div>
+              <span className="text-2xl font-bold text-yellow-700">{mediumRisk}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-100">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-green-500" />
+                <span className="text-sm font-medium text-green-700">Low Risk</span>
+              </div>
+              <span className="text-2xl font-bold text-green-700">{lowRisk}</span>
             </div>
           </CardContent>
         </Card>

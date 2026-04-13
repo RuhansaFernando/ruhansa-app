@@ -89,7 +89,7 @@ export default function LoginPage() {
       if (!acaSnap.empty) {
         const d = acaSnap.docs[0];
         login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "academic_admin", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "faculty_administrators" }, rememberMe);
-        navigate("/academic/upload");
+        navigate("/academic/dashboard");
         return;
       }
 
@@ -107,7 +107,7 @@ export default function LoginPage() {
       if (!clSnap.empty) {
         const d = clSnap.docs[0];
         login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "course_leader", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "course_leaders" }, rememberMe);
-        navigate("/course-leader/mentor-assignment");
+        navigate("/course-leader/dashboard");
         return;
       }
 

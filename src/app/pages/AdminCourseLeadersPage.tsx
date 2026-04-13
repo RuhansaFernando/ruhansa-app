@@ -82,7 +82,7 @@ export default function AdminCourseLeadersPage() {
           email: d.data().email ?? '',
           programme: d.data().programme ?? '',
           status: d.data().status ?? 'active',
-          createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? undefined,
+          createdAt: d.data().createdAt?.toDate?.()?.toISOString() ?? (d.data().createdAt?.seconds ? new Date(d.data().createdAt.seconds * 1000).toISOString() : undefined),
         })),
       );
       setLoading(false);

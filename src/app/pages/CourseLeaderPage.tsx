@@ -397,8 +397,11 @@ export default function CourseLeaderPage() {
 
   const formatDate = (createdAt: any) => {
     if (!createdAt) return '—';
-    const d = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+    if (createdAt.toDate) return createdAt.toDate().toLocaleDateString('en-GB', opts);
+    if (createdAt.seconds) return new Date(createdAt.seconds * 1000).toLocaleDateString('en-GB', opts);
+    const d = new Date(createdAt);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', opts);
   };
 
   const loading = loadingStudents || loadingMentors || clProfileLoading;

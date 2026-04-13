@@ -76,7 +76,7 @@ export default function AdminRegistryPage() {
           name: d.data().name ?? '',
           email: d.data().email ?? '',
           status: d.data().status ?? 'active',
-          createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? undefined,
+          createdAt: d.data().createdAt?.toDate?.()?.toISOString() ?? (d.data().createdAt?.seconds ? new Date(d.data().createdAt.seconds * 1000).toISOString() : undefined),
         })),
       );
       setLoading(false);

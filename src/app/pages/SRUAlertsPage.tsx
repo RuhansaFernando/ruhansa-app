@@ -38,8 +38,9 @@ interface AlertStudent {
 }
 
 const getDaysAgo = (dateStr: string) => {
-  if (!dateStr) return '';
+  if (!dateStr) return 'Recently flagged';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return 'Recently flagged';
   const today = new Date();
   const diffTime = Math.abs(today.getTime() - date.getTime());
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -138,13 +139,16 @@ export default function SRUAlertsPage() {
   const avgDaysOpen = (() => {
     const flagged = allStudents.filter(s => s.flagged);
     if (flagged.length === 0) return '—';
-    const total = flagged.reduce((sum, s) => {
-      const date = new Date(s.flaggedAt ?? s.createdAt);
-      const today = new Date();
-      const days = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-      return sum + days;
-    }, 0);
-    return Math.round(total / flagged.length);
+    const today = new Date();
+    const validDays = flagged
+      .map(s => {
+        const date = new Date(s.flaggedAt ?? s.createdAt);
+        if (isNaN(date.getTime())) return null;
+        return Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+      })
+      .filter((d): d is number => d !== null);
+    if (validDays.length === 0) return '—';
+    return Math.round(validDays.reduce((sum, d) => sum + d, 0) / validDays.length);
   })();
 
   const filtered = useMemo(() => {

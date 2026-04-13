@@ -69,15 +69,17 @@ export default function AdminSRUPage() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'student_support_advisors'), (snap) => {
       setStaff(
-        snap.docs.map((d) => ({
-          id: d.id,
-          uid: d.data().uid ?? undefined,
-          staffId: d.data().staffId ?? '',
-          name: d.data().name ?? '',
-          email: d.data().email ?? '',
-          status: d.data().status ?? 'active',
-          createdAt: d.data().createdAt?.toDate?.().toISOString() ?? d.data().createdAt ?? undefined,
-        })),
+        snap.docs
+          .filter((d) => !d.data().role || d.data().role === 'ssa')
+          .map((d) => ({
+            id: d.id,
+            uid: d.data().uid ?? undefined,
+            staffId: d.data().staffId ?? '',
+            name: d.data().name ?? '',
+            email: d.data().email ?? '',
+            status: d.data().status ?? 'active',
+            createdAt: d.data().createdAt?.toDate?.()?.toISOString() ?? (d.data().createdAt?.seconds ? new Date(d.data().createdAt.seconds * 1000).toISOString() : undefined),
+          })),
       );
       setLoading(false);
     });

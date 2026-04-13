@@ -87,7 +87,7 @@ export default function AdminTutorsPage() {
           email: d.data().email ?? "",
           department: d.data().department ?? "",
           status: d.data().status ?? "active",
-          createdAt: d.data().createdAt?.toDate?.().toISOString() ?? undefined,
+          createdAt: d.data().createdAt?.toDate?.()?.toISOString() ?? (d.data().createdAt?.seconds ? new Date(d.data().createdAt.seconds * 1000).toISOString() : undefined),
         })),
       );
       setLoading(false);

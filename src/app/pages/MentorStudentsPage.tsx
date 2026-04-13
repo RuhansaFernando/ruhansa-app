@@ -275,7 +275,6 @@ export default function MentorStudentsPage() {
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Programme</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Level</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Attendance %</th>
-                <th className="text-left font-medium text-muted-foreground px-4 py-3">Consec. Abs.</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">GPA</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Risk Level</th>
                 <th className="text-left font-medium text-muted-foreground px-4 py-3">Actions</th>
@@ -284,7 +283,7 @@ export default function MentorStudentsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
+                  <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
                     No students found.
                   </td>
                 </tr>
@@ -301,17 +300,6 @@ export default function MentorStudentsPage() {
                       <span className={`font-medium text-sm ${s.attendancePercentage < 80 ? 'text-red-600' : ''}`}>
                         {s.attendancePercentage}%
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className={
-                        s.consecutiveAbsences > 2
-                          ? 'bg-red-100 text-red-800 border-red-200 text-xs'
-                          : s.consecutiveAbsences > 0
-                          ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
-                          : 'bg-green-100 text-green-800 border-green-200 text-xs'
-                      }>
-                        {s.consecutiveAbsences}
-                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm">{s.gpa.toFixed(2)}</td>
                     <td className="px-4 py-3">{getRiskBadge(s.riskLevel, s.riskScore)}</td>
@@ -345,7 +333,7 @@ export default function MentorStudentsPage() {
 
       {/* Profile Modal */}
       <Dialog open={!!selectedStudent} onOpenChange={(open) => { if (!open) setSelectedStudent(null); }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base">Student Profile</DialogTitle>
           </DialogHeader>
@@ -353,10 +341,14 @@ export default function MentorStudentsPage() {
             <div className="space-y-5">
               {/* Details */}
               <div className="grid grid-cols-2 gap-3 text-sm">
+                {/* Full-width email row */}
+                <div className="col-span-2 space-y-0.5 min-w-0">
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <p className="font-medium break-all">{selectedStudent.email}</p>
+                </div>
                 {[
                   ['Student ID', selectedStudent.studentId],
                   ['Name', selectedStudent.name],
-                  ['Email', selectedStudent.email],
                   ['Programme', selectedStudent.programme || '—'],
                   ['Level', selectedStudent.level || '—'],
                   ['Faculty', selectedStudent.faculty || '—'],
@@ -368,9 +360,9 @@ export default function MentorStudentsPage() {
                   ['GPA', selectedStudent.gpa.toFixed(2)],
                   ['Status', selectedStudent.status || '—'],
                 ].map(([label, value]) => (
-                  <div key={label} className="space-y-0.5">
+                  <div key={label} className="space-y-0.5 min-w-0">
                     <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="font-medium">{value}</p>
+                    <p className="font-medium truncate">{value}</p>
                   </div>
                 ))}
                 <div className="space-y-0.5">

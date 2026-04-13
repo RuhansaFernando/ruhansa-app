@@ -39,6 +39,18 @@ interface StudentDoc {
   consecutiveAbsences: number;
   gpa: number;
   riskLevel: string;
+  riskScore: number | null;
+  flagged: boolean;
+}
+
+interface MLReportRow {
+  studentId: string;
+  name: string;
+  programme: string;
+  riskLevel: string;
+  riskScore: number | null;
+  attendancePercentage: number;
+  gpa: number;
   flagged: boolean;
 }
 
@@ -157,6 +169,9 @@ export default function SRUReportsPage() {
   const [showAttFilters, setShowAttFilters] = useState(false);
   const [activeReport, setActiveReport] = useState('');
   const [showMLPending, setShowMLPending] = useState(false);
+  const [mlReport, setMlReport] = useState<MLReportRow[]>([]);
+  const [showMLReport, setShowMLReport] = useState(false);
+  const [loadingMLReport, setLoadingMLReport] = useState(false);
   const [interventionSemesterFilter, setInterventionSemesterFilter] = useState('all');
   const [interventionDateFrom, setInterventionDateFrom] = useState('');
   const [interventionDateTo, setInterventionDateTo] = useState('');
@@ -257,7 +272,8 @@ export default function SRUReportsPage() {
           attendancePercentage: d.data().attendancePercentage ?? 100,
           consecutiveAbsences: d.data().consecutiveAbsences ?? 0,
           gpa: d.data().gpa ?? 0,
-          riskLevel: d.data().riskLevel ?? 'low',
+          riskLevel: (d.data().riskLevel ?? 'low').toLowerCase(),
+          riskScore: d.data().riskScore ?? d.data().mlRiskScore ?? null,
           flagged: d.data().flagged ?? false,
         }))
       );
@@ -508,6 +524,55 @@ export default function SRUReportsPage() {
       if (interventionDateTo && i.date > interventionDateTo) return false;
       return true;
     });
+
+  const handleGenerateMLReport = async () => {
+    setLoadingMLReport(true);
+    setActiveReport('ml_risk');
+    setShowMLReport(false);
+    try {
+      const snap = await getDocs(collection(db, 'students'));
+      const rows: MLReportRow[] = snap.docs.map((d) => ({
+        studentId: d.data().studentId ?? d.id,
+        name: d.data().name ?? '—',
+        programme: d.data().programme ?? '—',
+        riskLevel: (d.data().riskLevel ?? 'low').toLowerCase(),
+        riskScore: d.data().riskScore ?? d.data().mlRiskScore ?? null,
+        attendancePercentage: d.data().attendancePercentage ?? 0,
+        gpa: d.data().gpa ?? 0,
+        flagged: d.data().flagged ?? false,
+      }));
+      // Sort: high first, then medium, then low
+      const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+      rows.sort((a, b) => (order[a.riskLevel] ?? 3) - (order[b.riskLevel] ?? 3));
+      setMlReport(rows);
+      setShowMLReport(true);
+    } catch (e) {
+      console.error('ML report error:', e);
+      toast.error('Failed to load ML risk report');
+    } finally {
+      setLoadingMLReport(false);
+    }
+  };
+
+  const exportMLReportJSON = () => {
+    const data = mlReport.map((r) => ({
+      student_id: r.studentId,
+      name: r.name,
+      programme: r.programme,
+      risk_level: r.riskLevel,
+      risk_score: r.riskScore,
+      attendance_percentage: r.attendancePercentage,
+      gpa: r.gpa,
+      flagged: r.flagged,
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ml-risk-report-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   // KPI calculations
   const ML_CONNECTED = !!(import.meta.env.VITE_ML_API_URL);
@@ -1073,33 +1138,82 @@ export default function SRUReportsPage() {
             <Button
               size="sm"
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-shrink-0"
-              onClick={() => {
-                if (!ML_CONNECTED) {
-                  setShowMLPending(true);
-                  setActiveReport('ml_risk');
-                  return;
-                }
-              }}
+              disabled={loadingMLReport}
+              onClick={handleGenerateMLReport}
             >
-              Generate Report
+              {loadingMLReport ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Loading…</> : 'Generate Report'}
             </Button>
           </div>
 
-          {activeReport === 'ml_risk' && showMLPending && (
+          {activeReport === 'ml_risk' && showMLReport && (
             <div className="px-1">
               <div className="flex items-center justify-between mb-3">
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => { setShowMLPending(false); setActiveReport(''); }}>
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => { setShowMLReport(false); setActiveReport(''); }}>
                   ← Back
                 </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="text-xs" onClick={exportMLReportJSON}>
+                    <Download className="h-3 w-3 mr-1" /> Export JSON
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs" onClick={() => {
+                    const headers = ['Student ID', 'Name', 'Programme', 'Risk Level', 'Risk Score', 'Attendance %', 'GPA', 'Flagged'];
+                    const rows = mlReport.map((r) => [
+                      r.studentId, r.name, r.programme,
+                      r.riskLevel.charAt(0).toUpperCase() + r.riskLevel.slice(1),
+                      r.riskScore !== null ? String(Math.round(r.riskScore)) + '%' : '—',
+                      String(r.attendancePercentage) + '%',
+                      String(r.gpa),
+                      r.flagged ? 'Yes' : 'No',
+                    ]);
+                    downloadCSV(headers, rows, `ml-risk-report-${new Date().toISOString().split('T')[0]}.csv`);
+                  }}>
+                    <Download className="h-3 w-3 mr-1" /> Export CSV
+                  </Button>
+                </div>
               </div>
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-6 text-center">
-                <Brain className="h-8 w-8 text-blue-400 mx-auto mb-3" />
-                <p className="text-sm font-medium text-blue-800">ML Risk Score Report</p>
-                <p className="text-sm text-blue-600 mt-1">
-                  This report will be available once the ML model is connected. It will show predicted dropout
-                  probabilities and key risk factors for each student.
-                </p>
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Student ID</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Programme</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Risk Level</th>
+                      <th className="text-right px-3 py-2 font-medium text-muted-foreground">Risk Score</th>
+                      <th className="text-right px-3 py-2 font-medium text-muted-foreground">Attendance %</th>
+                      <th className="text-right px-3 py-2 font-medium text-muted-foreground">GPA</th>
+                      <th className="text-center px-3 py-2 font-medium text-muted-foreground">Flagged</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mlReport.map((r, i) => (
+                      <tr key={r.studentId + i} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono text-muted-foreground">{r.studentId}</td>
+                        <td className="px-3 py-2 font-medium">{r.name}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.programme}</td>
+                        <td className="px-3 py-2">{getRiskBadge(r.riskLevel)}</td>
+                        <td className="px-3 py-2 text-right">
+                          {r.riskScore !== null ? (
+                            <span className={r.riskScore >= 70 ? 'text-red-600 font-semibold' : r.riskScore >= 40 ? 'text-amber-600 font-semibold' : 'text-green-600'}>
+                              {Math.round(r.riskScore)}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right">{r.attendancePercentage}%</td>
+                        <td className="px-3 py-2 text-right">{r.gpa.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">
+                          {r.flagged
+                            ? <Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">Yes</Badge>
+                            : <span className="text-muted-foreground">No</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">{mlReport.length} students · Risk score sourced from Firestore riskScore / mlRiskScore field</p>
             </div>
           )}
 

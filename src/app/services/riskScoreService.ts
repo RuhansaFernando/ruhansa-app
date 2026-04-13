@@ -165,8 +165,6 @@ export async function callMLModel(features: MLFeatures, extraData?: {
     has_counseling:         extraData?.hasCounseling ?? 0,
     financial_aid:          extraData?.financialAid ?? 0,
   };
-  console.log('[ML API] Payload:', payload);
-
   try {
     const response = await fetch(ML_API_URL, {
       method: 'POST',
