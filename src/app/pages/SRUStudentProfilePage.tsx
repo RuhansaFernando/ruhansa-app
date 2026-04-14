@@ -42,9 +42,13 @@ interface StudentData {
   engagementScore?: number;
   enrollmentDate?: string;
   nationality?: string;
+  ethnicity?: string;
   gender?: string;
   flagged?: boolean;
   academic_warning_count?: number;
+  financial_aid?: boolean;
+  credits_completed?: number;
+  deferral_months?: number;
   attendanceBySemester?: number[];
   phone?: string;
   faculty?: string;
@@ -153,9 +157,13 @@ export default function SRUStudentProfilePage() {
             engagementScore: d.engagementScore ?? 50,
             enrollmentDate: d.enrollmentDate ?? '',
             nationality: d.nationality ?? '',
+            ethnicity: d.ethnicity ?? '',
             gender: d.gender ?? '',
             flagged: d.flagged ?? false,
             academic_warning_count: d.academic_warning_count ?? 0,
+            financial_aid: d.financial_aid ?? false,
+            credits_completed: d.credits_completed ?? 0,
+            deferral_months: d.deferral_months ?? 0,
             attendanceBySemester: d.attendance_by_semester ?? d.attendanceBySemester ?? [],
             phone: d.phone ?? '',
             faculty: d.faculty ?? '',
@@ -344,6 +352,10 @@ export default function SRUStudentProfilePage() {
     flagged:                 student?.flagged,
     academic_warning_count:  student?.academic_warning_count,
     attendanceBySemester:    student?.attendanceBySemester,
+    ethnicity:               student?.ethnicity,
+    financial_aid:           student?.financial_aid,
+    credits_completed:       student?.credits_completed,
+    deferral_months:         student?.deferral_months,
   });
 
   if (loading) {

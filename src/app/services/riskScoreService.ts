@@ -90,10 +90,13 @@ export function prepareMLFeatures(studentData: {
   };
 }
 
-function mapEthnicity(_ethnicity: string | undefined): string {
+function mapEthnicity(ethnicity: string | undefined): string {
   // Model was trained on: Asian, Black, Hispanic, White, Other
-  // All students in this system are Sri Lankan → Asian
-  return 'Asian';
+  if (!ethnicity) return 'Asian';
+  const e = ethnicity.toLowerCase();
+  if (e === 'sinhalese' || e === 'tamil' || e === 'muslim' || e === 'burgher') return 'Asian';
+  if (e === 'other') return 'Other';
+  return 'Asian'; // default for unrecognised values
 }
 
 function mapMajor(programme: string | undefined): string {

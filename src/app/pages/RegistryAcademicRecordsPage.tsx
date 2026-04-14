@@ -688,10 +688,12 @@ export default function RegistryAcademicRecordsPage() {
       const gpa = modulePoints.length > 0
         ? Math.round((modulePoints.reduce((s, p) => s + p, 0) / modulePoints.length) * 100) / 100
         : 0;
+      const credits_completed = calcCreditsCompleted(byModule);
       await updateDoc(doc(db, 'students', selectedStudent.docId), {
         gpa,
         gpa_by_semester: arrayUnion(gpa),
         gpa_history: gpa,
+        credits_completed,
       });
 
       const updated = { ...selectedStudent, gpa };
@@ -715,6 +717,26 @@ export default function RegistryAcademicRecordsPage() {
     setMarksSemester('');
     setMarksValue('');
     setShowMarksModal(true);
+  };
+
+  // Compute credits_completed from a byModule mark map + allModules lookup
+  const calcCreditsCompleted = (byModule: Map<string, { mark: number; weight: number }[]>): number => {
+    let credits = 0;
+    byModule.forEach((components, key) => {
+      const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+      let overall: number;
+      if (totalWeight > 0) {
+        const weighted = components.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
+        overall = totalWeight === 100 ? weighted : (weighted / totalWeight) * 100;
+      } else {
+        overall = components.reduce((s, c) => s + c.mark, 0) / components.length;
+      }
+      if (overall >= 40) {
+        const modInfo = allModules.find((m) => m.id === key || m.moduleCode === key);
+        credits += modInfo?.credits ?? 10; // default 10 if module not in cache
+      }
+    });
+    return credits;
   };
 
   const handleSaveMark = async () => {
@@ -827,10 +849,12 @@ export default function RegistryAcademicRecordsPage() {
         modulePoints.length > 0
           ? Math.round((modulePoints.reduce((sum, p) => sum + p, 0) / modulePoints.length) * 100) / 100
           : 0;
+      const credits_completed = calcCreditsCompleted(byModule);
       await updateDoc(doc(db, 'students', selectedStudent.docId), {
         gpa,
         gpa_by_semester: arrayUnion(gpa),
         gpa_history: gpa,
+        credits_completed,
       });
 
       // Update local state

@@ -27,18 +27,12 @@ interface StudentRiskData {
   academicWarnings?: number;
   counselingNotes?: string;
   financial_aid_status?: string | boolean | number;
+  financial_aid?: boolean;
+  ethnicity?: string;
+  credits_completed?: number;
+  deferral_months?: number;
 }
 
-const calcEnrollmentGap = (enrollmentDate: string): number => {
-  if (!enrollmentDate) return 0;
-  const start = new Date(enrollmentDate);
-  const now = new Date();
-  const months = Math.max(0,
-    (now.getFullYear() - start.getFullYear()) * 12 +
-    (now.getMonth() - start.getMonth())
-  );
-  return Math.min(24, months);
-};
 
 export function useRiskScore(studentData: StudentRiskData): RiskResult {
   const [result, setResult] = useState<RiskResult>({
@@ -71,9 +65,7 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
         const failedModules = results.filter(
           (r) => (r.finalMark ?? r.mark ?? 0) < 40
         ).length;
-        const creditsCompleted = results.filter(
-          (r) => (r.finalMark ?? r.mark ?? 0) >= 40
-        ).length * 10;
+        const creditsCompleted = studentData.credits_completed ?? 0;
 
         // Calculate GPA history per semester
         const bySemester: Record<string, number[]> = {};
@@ -87,10 +79,13 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           return avg / 25; // convert marks to 0-4 GPA scale
         });
 
+        // low_gpa_semesters: count of semesters where GPA (0-4 scale) < 2.0
+        const low_gpa_semesters = semesterGPAs.filter((g) => g < 2.0).length;
+
         const features = prepareMLFeatures({
           attendancePercentage: studentData.attendancePercentage,
           gpa: studentData.gpa,
-          interventionCount,
+          interventionCount: low_gpa_semesters, // academic_warning_count in ML payload
           creditsCompleted,
           failedModules,
           gpaHistory: semesterGPAs,
@@ -101,19 +96,17 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           ? studentData.attendanceBySemester
           : [attendancePercentage / 100];
 
-        const financialAidRaw = studentData.financial_aid_status;
-        const financialAid =
-          financialAidRaw === 'Yes' || financialAidRaw === true || financialAidRaw === 1 ? 1 : 0;
+        const financialAid = studentData.financial_aid ? 1 : 0;
 
         const riskResult = await callMLModel(features, {
           age: studentData.age,
           gender: studentData.gender,
           major: studentData.programme ?? studentData.major,
           advisorMeetingCount: appointmentCount,
-          hasCounseling: studentData.counselingNotes ? 1 : 0,
+          hasCounseling: interventionCount > 0 ? 1 : 0,
           financialAid,
-          enrollmentGapMonths: calcEnrollmentGap(studentData.enrollmentDate ?? ''),
-          ethnicity: studentData.nationality ?? 'Unknown',
+          enrollmentGapMonths: 0,
+          ethnicity: studentData.ethnicity ?? studentData.nationality ?? 'Unknown',
           attendanceBySemester,
           gpaBySemester: semesterGPAs,
           dropoutRisk: studentData.flagged ? 1 : 0,

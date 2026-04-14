@@ -52,9 +52,13 @@ export interface StudentData {
   engagementScore: number;
   enrollmentDate: string;
   nationality: string;
+  ethnicity: string;
   gender: string;
   flagged: boolean;
   academic_warning_count: number;
+  financial_aid: boolean;
+  credits_completed: number;
+  deferral_months: number;
   advisorMeetingCount: number;
   attendanceBySemester: number[];
 
@@ -301,9 +305,13 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         engagementScore: d.engagementScore ?? 50,
         enrollmentDate: d.enrollmentDate ?? '',
         nationality: d.nationality ?? '',
+        ethnicity: d.ethnicity ?? '',
         gender: d.gender ?? '',
         flagged: d.flagged ?? false,
         academic_warning_count: d.academic_warning_count ?? 0,
+        financial_aid: d.financial_aid ?? false,
+        credits_completed: d.credits_completed ?? 0,
+        deferral_months: d.deferral_months ?? 0,
         advisorMeetingCount: d.advisor_meeting_count ?? d.advisorMeetingCount ?? 0,
         attendanceBySemester: attendanceBySemester.length > 0
           ? attendanceBySemester

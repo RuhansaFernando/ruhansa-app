@@ -140,6 +140,10 @@ export default function StudentDashboard() {
     flagged:                studentData?.flagged,
     academic_warning_count: studentData?.academic_warning_count,
     attendanceBySemester:   studentData?.attendanceBySemester ?? [(student?.attendancePercentage ?? 0) / 100],
+    ethnicity:              studentData?.ethnicity,
+    financial_aid:          studentData?.financial_aid,
+    credits_completed:      studentData?.credits_completed,
+    deferral_months:        studentData?.deferral_months,
   });
 
 const failedModules = (studentData?.results ?? [])

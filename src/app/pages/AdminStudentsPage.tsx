@@ -66,6 +66,7 @@ interface StudentRecord {
 
 const LEVEL_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 const STATUS_OPTIONS = ['active', 'inactive', 'pending', 'withdrawn', 'deferred', 'suspended', 'graduated'];
+const ETHNICITY_OPTIONS = ['Sinhalese', 'Tamil', 'Muslim', 'Burgher', 'Other'];
 const STUDENTS_PER_PAGE = 20;
 
 
@@ -92,6 +93,8 @@ export default function AdminStudentsPage() {
   const [formProgramme, setFormProgramme] = useState('');
   const [formLevel, setFormLevel] = useState('');
   const [formStatus, setFormStatus] = useState<string>('active');
+  const [formEthnicity, setFormEthnicity] = useState('');
+  const [formFinancialAid, setFormFinancialAid] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
   const [studentNotFound, setStudentNotFound] = useState(false);
   const [foundStudentDocId, setFoundStudentDocId] = useState('');
@@ -209,7 +212,7 @@ export default function AdminStudentsPage() {
   const resetAddDialog = () => {
     setFormStudentId(''); setFormName(''); setFormEmail('');
     setFormFaculty(''); setFormProgramme(''); setFormLevel('');
-    setFormStatus('active');
+    setFormStatus('active'); setFormEthnicity(''); setFormFinancialAid(false);
     setAutoFilled(false); setStudentNotFound(false); setFoundStudentDocId('');
   };
 
@@ -232,6 +235,8 @@ export default function AdminStudentsPage() {
         uid: cred.user.uid,
         status: formStatus,
         mustChangePassword: true,
+        ...(formEthnicity && { ethnicity: formEthnicity }),
+        financial_aid: formFinancialAid,
       });
       await emailjs.send(
         'service_y8aewpn',
@@ -733,6 +738,30 @@ export default function AdminStudentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="form-ethnicity">Ethnicity <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Select value={formEthnicity} onValueChange={setFormEthnicity}>
+                    <SelectTrigger id="form-ethnicity"><SelectValue placeholder="Select ethnicity" /></SelectTrigger>
+                    <SelectContent>
+                      {ETHNICITY_OPTIONS.map((e) => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <input
+                    id="form-financial-aid"
+                    type="checkbox"
+                    checked={formFinancialAid}
+                    onChange={(e) => setFormFinancialAid(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+                  />
+                  <Label htmlFor="form-financial-aid" className="cursor-pointer">Receiving Financial Aid</Label>
+                </div>
+
               </>
             )}
           </div>
