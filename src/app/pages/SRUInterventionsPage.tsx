@@ -55,6 +55,10 @@ interface InterventionDoc {
   caseStatus: 'open' | 'in_progress' | 'closed';
   isAcademicWarning?: boolean;
   priority: string;
+  // Effectiveness tracking snapshot
+  gpaAtIntervention?: number;
+  attendanceAtIntervention?: number;
+  gpaSemesterCountAtIntervention?: number;
 }
 
 interface StudentOption {
@@ -64,7 +68,44 @@ interface StudentOption {
   programme: string;
   attendancePercentage: number;
   gpa: number;
+  riskLevel: string;
+  gpaBySemesterCount: number;
 }
+
+// ── Intervention Outcome Calculation ──────────────────────────────────────
+type OutcomeResult = 'unknown' | 'awaiting' | 'improved' | 'no_change' | 'declined';
+
+function calculateOutcome(
+  intervention: InterventionDoc,
+  currentStudent: StudentOption | undefined,
+): OutcomeResult {
+  // No snapshot saved — old intervention logged before this feature
+  if (intervention.gpaAtIntervention == null || intervention.gpaSemesterCountAtIntervention == null) {
+    return 'unknown';
+  }
+  if (!currentStudent) return 'unknown';
+
+  // No new semester data available yet
+  if (currentStudent.gpaBySemesterCount <= intervention.gpaSemesterCountAtIntervention) {
+    return 'awaiting';
+  }
+
+  // New semester data available — compare
+  const gpaDiff = currentStudent.gpa - intervention.gpaAtIntervention;
+  const attDiff = currentStudent.attendancePercentage - (intervention.attendanceAtIntervention ?? 0);
+
+  if (gpaDiff >= 0.2 || attDiff >= 10)  return 'improved';
+  if (gpaDiff <= -0.2 || attDiff <= -10) return 'declined';
+  return 'no_change';
+}
+
+const OUTCOME_BADGE: Record<OutcomeResult, JSX.Element> = {
+  unknown:  <span className="inline-flex items-center rounded-full border border-gray-100 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-400">—</span>,
+  awaiting: <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">Awaiting semester data</span>,
+  improved: <span className="inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">✅ Improved</span>,
+  no_change:<span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">No Change</span>,
+  declined: <span className="inline-flex items-center rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">⚠️ Declined</span>,
+};
 
 const getOutcomeBadge = (outcome: string) => {
   switch (outcome) {
@@ -152,6 +193,10 @@ export default function SRUInterventionsPage() {
             caseStatus: d.data().caseStatus ?? 'open',
             isAcademicWarning: d.data().isAcademicWarning ?? false,
             priority: d.data().priority ?? '',
+            // Effectiveness snapshot
+            gpaAtIntervention:             d.data().gpaAtIntervention             ?? d.data().gpaBefore ?? null,
+            attendanceAtIntervention:      d.data().attendanceAtIntervention      ?? d.data().attendanceBefore ?? null,
+            gpaSemesterCountAtIntervention: d.data().gpaSemesterCountAtIntervention ?? null,
           };
         })
       );
@@ -169,6 +214,8 @@ export default function SRUInterventionsPage() {
         programme: d.data().programme ?? '',
         attendancePercentage: d.data().attendancePercentage ?? 0,
         gpa: d.data().gpa ?? 0,
+        riskLevel: (d.data().riskLevel ?? 'low').toLowerCase(),
+        gpaBySemesterCount: (d.data().gpa_by_semester ?? d.data().gpaBySemester ?? []).length,
       })).sort((a, b) => a.name.localeCompare(b.name));
       setStudents(list);
 
@@ -222,6 +269,21 @@ export default function SRUInterventionsPage() {
       return matchesSearch && matchesType && matchesOutcome && matchesOpenStatus && matchesPriority;
     });
   }, [interventions, search, typeFilter, outcomeFilter, openStatusFilter, priorityFilter]);
+
+  const studentMap = useMemo(
+    () => new Map(students.map((s) => [s.studentId, s])),
+    [students],
+  );
+
+  const effectivenessStats = useMemo(() => {
+    const counts: Record<OutcomeResult, number> = { unknown: 0, awaiting: 0, improved: 0, no_change: 0, declined: 0 };
+    interventions.forEach((i) => {
+      counts[calculateOutcome(i, studentMap.get(i.studentId))]++;
+    });
+    // Only count non-unknown outcomes in percentages
+    const assessed = counts.improved + counts.no_change + counts.declined;
+    return { ...counts, total: interventions.length, assessed };
+  }, [interventions, studentMap]);
 
   const exportCSV = () => {
     const headers = ['Student Name', 'Student ID', 'Type', 'Case Status', 'Priority', 'Date', 'Outcome', 'Notes', 'Follow-up Date', 'Academic Warning'];
@@ -301,8 +363,9 @@ export default function SRUInterventionsPage() {
         followUpDate: formFollowUpDate || null,
         isAcademicWarning: formIsAcademicWarning,
         priority: formPriority,
-        attendanceBefore: selectedStudent.attendancePercentage ?? 0,
-        gpaBefore: selectedStudent.gpa ?? 0,
+        gpaAtIntervention:              selectedStudent.gpa ?? 0,
+        attendanceAtIntervention:       selectedStudent.attendancePercentage ?? 0,
+        gpaSemesterCountAtIntervention: selectedStudent.gpaBySemesterCount ?? 0,
         createdAt: serverTimestamp(),
       });
 
@@ -404,6 +467,58 @@ export default function SRUInterventionsPage() {
         </Card>
       </div>
 
+      {/* Intervention Effectiveness Summary */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Intervention Effectiveness</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="text-center rounded-lg border bg-gray-50 px-3 py-2">
+              <p className="text-xl font-bold">{loading ? '—' : effectivenessStats.total}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Total Interventions</p>
+            </div>
+            <div className="text-center rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+              <p className="text-xl font-bold text-green-700">{loading ? '—' : effectivenessStats.improved}</p>
+              <p className="text-xs text-green-600 mt-0.5">
+                Improved
+                {effectivenessStats.assessed > 0 && (
+                  <span className="ml-1 text-green-500">
+                    ({Math.round((effectivenessStats.improved / effectivenessStats.assessed) * 100)}%)
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="text-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xl font-bold text-amber-700">{loading ? '—' : effectivenessStats.no_change}</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                No Change
+                {effectivenessStats.assessed > 0 && (
+                  <span className="ml-1 text-amber-500">
+                    ({Math.round((effectivenessStats.no_change / effectivenessStats.assessed) * 100)}%)
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="text-center rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+              <p className="text-xl font-bold text-red-700">{loading ? '—' : effectivenessStats.declined}</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                Declined
+                {effectivenessStats.assessed > 0 && (
+                  <span className="ml-1 text-red-400">
+                    ({Math.round((effectivenessStats.declined / effectivenessStats.assessed) * 100)}%)
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="text-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <p className="text-xl font-bold text-gray-500">{loading ? '—' : effectivenessStats.awaiting}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Awaiting semester data</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Intervention list */}
       <div className="rounded-xl border bg-white">
         <div className="px-4 pt-4 pb-3 border-b">
@@ -498,7 +613,7 @@ export default function SRUInterventionsPage() {
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
+                    <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end items-center">
                       {intervention.openStatus && (
                         <Badge className={intervention.openStatus === 'resolved'
                           ? 'bg-green-100 text-green-800 border-green-200 text-xs capitalize'
@@ -508,6 +623,7 @@ export default function SRUInterventionsPage() {
                         </Badge>
                       )}
                       {intervention.outcome && getOutcomeBadge(intervention.outcome)}
+                      {OUTCOME_BADGE[calculateOutcome(intervention, studentMap.get(intervention.studentId))]}
                     </div>
                   </div>
 
@@ -588,6 +704,16 @@ export default function SRUInterventionsPage() {
                 </div>
               );
             })
+          )}
+
+          {/* Effectiveness methodology note */}
+          {!loading && interventions.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-4 pt-4 border-t leading-relaxed">
+              Outcome is assessed by comparing student GPA and attendance at time of intervention vs current
+              values. A new semester of data must be available for assessment. Correlation does not imply
+              causation — improvement may be due to multiple factors. This feature is intended to support
+              reflective practice and service improvement, not to evaluate individual SSA performance.
+            </p>
           )}
         </div>
       </div>

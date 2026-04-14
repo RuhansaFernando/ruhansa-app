@@ -91,6 +91,7 @@ export default function MentorStudentsPage() {
   const [studentAppointments, setStudentAppointments] = useState<AppointmentDoc[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
   const [calendarLink, setCalendarLink] = useState('');
+  const [wellbeingData, setWellbeingData] = useState<Record<string, any> | null>(null);
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -185,9 +186,22 @@ export default function MentorStudentsPage() {
 
   const openProfile = async (student: StudentDoc) => {
     setSelectedStudent(student);
+    setWellbeingData(null);
     setModalLoading(true);
     try {
-      const apptSnap = await getDocs(query(collection(db, 'appointments'), orderBy('date', 'desc')));
+      const [apptSnap, wellbeingSnap] = await Promise.all([
+        getDocs(query(collection(db, 'appointments'), orderBy('date', 'desc'))),
+        getDocs(query(collection(db, 'wellbeingCheckIns'), where('studentId', '==', student.studentId))),
+      ]);
+
+      if (!wellbeingSnap.empty) {
+        const sorted = wellbeingSnap.docs.sort((a, b) => {
+          const aT = a.data().submittedAt?.toDate?.()?.getTime() ?? 0;
+          const bT = b.data().submittedAt?.toDate?.()?.getTime() ?? 0;
+          return bT - aT;
+        });
+        setWellbeingData(sorted[0].data());
+      }
 
       setStudentAppointments(
         apptSnap.docs
@@ -405,6 +419,47 @@ export default function MentorStudentsPage() {
                         </p>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Wellbeing check-in summary (academic view only) */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Wellbeing Check-In</h3>
+                {modalLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading...
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Completion status */}
+                    <div className="flex items-center justify-between rounded border px-3 py-1.5">
+                      <p className="text-xs text-muted-foreground">Wellbeing check-in completed</p>
+                      <p className="text-xs font-medium">{wellbeingData ? 'Yes' : 'No'}</p>
+                    </div>
+
+                    {wellbeingData && (() => {
+                      // Determine if academic support indicators are present
+                      const CONCERNING: Record<string, string[]> = {
+                        programmeFit:          ['unsatisfied', 'very_unsatisfied'],
+                        studySkillsConfidence: ['not_confident'],
+                      };
+                      const hasConcerns = Object.entries(CONCERNING).some(
+                        ([field, vals]) => vals.includes(wellbeingData[field] ?? '')
+                      );
+                      return (
+                        <div className={`flex items-center justify-between rounded border px-3 py-1.5 ${hasConcerns ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+                          <p className="text-xs text-muted-foreground">Academic indicators</p>
+                          <p className={`text-xs font-medium ${hasConcerns ? 'text-amber-800' : 'text-green-700'}`}>
+                            {hasConcerns ? 'Academic support indicators present' : 'No concerns noted'}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    <p className="text-xs text-muted-foreground pt-1">
+                      Contact SSA for full wellbeing profile.
+                    </p>
                   </div>
                 )}
               </div>

@@ -14,7 +14,7 @@ import {
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { AlertTriangle, Flag, Loader2, Brain, CheckCircle, Clock } from 'lucide-react';
+import { AlertTriangle, Flag, Loader2, Brain, CheckCircle, Clock, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
@@ -35,6 +35,44 @@ interface AlertStudent {
   flaggedSince?: string;
   flaggedAt: string;
   resolvedAt?: string | null;
+  riskLevel: string;
+  gpaBySemester: number[];
+  attendanceBySemester: number[];
+}
+
+interface TrendAlert {
+  student: AlertStudent;
+  last3Gpa: number[];
+  last3Att: number[];
+  gpaAllDeclining: boolean;
+  attAllDeclining: boolean;
+  totalGpaDrop: number;
+}
+
+function detectTrendAlert(s: AlertStudent): TrendAlert | null {
+  // 1. Only Low or Medium risk
+  if (s.riskLevel === 'high') return null;
+
+  // 2. Need at least 3 GPA semester values
+  const gpa = s.gpaBySemester;
+  if (gpa.length < 3) return null;
+
+  const last3Gpa = gpa.slice(-3);
+  const gpaAllDeclining = last3Gpa[0] > last3Gpa[1] && last3Gpa[1] > last3Gpa[2];
+
+  const att = s.attendanceBySemester;
+  const last3Att = att.length >= 3 ? att.slice(-3) : [];
+  const attAllDeclining = last3Att.length === 3 && last3Att[0] > last3Att[1] && last3Att[1] > last3Att[2];
+
+  // 3. Either GPA or attendance consistently declining over last 3 semesters
+  if (!gpaAllDeclining && !attAllDeclining) return null;
+
+  // 4. Overall GPA trend negative AND dropped > 0.5 from first semester
+  const totalGpaDrop = gpa[0] - gpa[gpa.length - 1];
+  const overallNegative = gpa[gpa.length - 1] < gpa[0];
+  if (!overallNegative || totalGpaDrop <= 0.5) return null;
+
+  return { student: s, last3Gpa, last3Att, gpaAllDeclining, attAllDeclining, totalGpaDrop };
 }
 
 const getDaysAgo = (dateStr: string) => {
@@ -74,10 +112,11 @@ export default function SRUAlertsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [allStudents, setAllStudents] = useState<AlertStudent[]>([]);
+  const [allStudentsRaw, setAllStudentsRaw] = useState<AlertStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [alertSearch, setAlertSearch] = useState('');
   const [bulkResolving, setBulkResolving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'unacknowledged' | 'acknowledged'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'unacknowledged' | 'acknowledged' | 'trend_alerts'>('all');
 
   // Referral dialog state
   const [referStudent, setReferStudent] = useState<AlertStudent | null>(null);
@@ -117,13 +156,15 @@ export default function SRUAlertsPage() {
             ? data.flaggedAt
             : (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt ?? ''),
           resolvedAt: data.resolvedAt ?? null,
+          riskLevel: (data.riskLevel ?? 'low').toLowerCase(),
+          gpaBySemester: data.gpa_by_semester ?? data.gpaBySemester ?? [],
+          attendanceBySemester: data.attendance_by_semester ?? data.attendanceBySemester ?? [],
         };
       });
 
-      // Only show students that trigger an alert condition
-      setAllStudents(
-        docs.filter((s) => s.flagged === true)
-      );
+      setAllStudentsRaw(docs);
+      // Existing alert tabs: only flagged students
+      setAllStudents(docs.filter((s) => s.flagged === true));
       setLoading(false);
     });
     return () => unsub();
@@ -162,6 +203,13 @@ export default function SRUAlertsPage() {
       return matchesSearch;
     });
   }, [allStudents, alertSearch, activeTab]);
+
+  const trendAlerts = useMemo<TrendAlert[]>(() => {
+    return allStudentsRaw
+      .map((s) => detectTrendAlert(s))
+      .filter((t): t is TrendAlert => t !== null)
+      .sort((a, b) => b.totalGpaDrop - a.totalGpaDrop); // worst drop first
+  }, [allStudentsRaw]);
 
   const handleBulkAcknowledge = async () => {
     const flaggedInView = filtered.filter((s) => s.flagged);
@@ -256,12 +304,14 @@ export default function SRUAlertsPage() {
     all:             allStudents.length,
     unacknowledged:  allStudents.filter(s => s.flagged === true).length,
     acknowledged:    allStudents.filter(s => s.flagged === false && !!s.resolvedAt).length,
+    trend_alerts:    trendAlerts.length,
   };
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: 'all',            label: 'All' },
     { key: 'unacknowledged', label: 'Unacknowledged' },
     { key: 'acknowledged',   label: 'Acknowledged' },
+    { key: 'trend_alerts',   label: 'Trend Alerts' },
   ];
 
   return (
@@ -328,26 +378,35 @@ export default function SRUAlertsPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
             {/* Tabs */}
             <div className="flex gap-1">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                    activeTab === t.key
-                      ? 'bg-gray-900 text-white'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-gray-100'
-                  }`}
-                >
-                  {t.label}
-                  {tabCounts[t.key] > 0 && (
-                    <span className={`inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full text-[10px] font-bold ${
-                      activeTab === t.key ? 'bg-white text-gray-900' : 'bg-gray-200 text-gray-700'
-                    }`}>
-                      {tabCounts[t.key]}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {tabs.map((t) => {
+                const isTrend = t.key === 'trend_alerts';
+                const isActive = activeTab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setActiveTab(t.key)}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                      isActive && isTrend  ? 'bg-orange-600 text-white' :
+                      isActive             ? 'bg-gray-900 text-white' :
+                      isTrend             ? 'text-orange-600 hover:bg-orange-50' :
+                                            'text-muted-foreground hover:text-foreground hover:bg-gray-100'
+                    }`}
+                  >
+                    {isTrend && <TrendingDown className="h-3.5 w-3.5" />}
+                    {t.label}
+                    {tabCounts[t.key] > 0 && (
+                      <span className={`inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full text-[10px] font-bold ${
+                        isActive && isTrend  ? 'bg-white text-orange-700' :
+                        isActive             ? 'bg-white text-gray-900' :
+                        isTrend             ? 'bg-orange-100 text-orange-700' :
+                                              'bg-gray-200 text-gray-700'
+                      }`}>
+                        {tabCounts[t.key]}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Search + Bulk Acknowledge */}
@@ -380,6 +439,102 @@ export default function SRUAlertsPage() {
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : activeTab === 'trend_alerts' ? (
+            /* ── Trend Alerts view ─────────────────────────────────── */
+            <div className="space-y-3">
+              {/* Section note */}
+              <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                <TrendingDown className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  These alerts are generated for students not yet flagged as High Risk but showing
+                  consistent academic decline. Early intervention at this stage is most effective
+                  in preventing dropout.
+                </p>
+              </div>
+
+              {trendAlerts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+                  <TrendingDown className="h-8 w-8 mb-2 opacity-30" />
+                  <p className="text-sm">No declining trend alerts at this time.</p>
+                  <p className="text-xs mt-1">All students are on stable or improving trajectories.</p>
+                </div>
+              ) : trendAlerts.map(({ student, last3Gpa, last3Att, gpaAllDeclining, attAllDeclining }) => {
+                const riskColour =
+                  student.riskLevel === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-200'
+                  : 'bg-green-100 text-green-800 border-green-200';
+                const riskLabel = student.riskLevel === 'medium' ? 'Medium Risk' : 'Low Risk';
+                return (
+                  <div
+                    key={student.id}
+                    className="border-l-4 border-l-orange-400 border rounded-xl p-4 bg-white"
+                  >
+                    {/* Header row */}
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm">{student.name}</p>
+                          <span className="text-xs text-muted-foreground">{student.studentId}</span>
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${riskColour}`}>
+                            {riskLabel}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{student.programme} · {student.level}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-orange-600 flex-shrink-0">
+                        <TrendingDown className="h-4 w-4" />
+                        <span className="text-xs font-semibold whitespace-nowrap">⚠️ Declining Trend Detected</span>
+                      </div>
+                    </div>
+
+                    {/* Trajectories */}
+                    <div className="flex flex-wrap gap-4 mb-2">
+                      {gpaAllDeclining && (
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">GPA Trajectory</p>
+                          <p className="text-sm font-mono font-medium text-gray-800">
+                            {last3Gpa.map(v => v.toFixed(2)).join(' → ')}
+                          </p>
+                        </div>
+                      )}
+                      {attAllDeclining && last3Att.length === 3 && (
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Attendance Trajectory</p>
+                          <p className="text-sm font-mono font-medium text-gray-800">
+                            {last3Att.map(v => `${Math.round(v * (v <= 1 ? 100 : 1))}%`).join(' → ')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Message */}
+                    <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                      This student is currently{' '}
+                      <span className="font-medium">{riskLabel}</span> but shows a consistently
+                      declining academic trend. Early intervention may prevent escalation to High Risk.
+                    </p>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-xs"
+                        onClick={() => navigate(`/sru/students/${student.studentId}`)}
+                      >
+                        View Profile
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => openIntervention(student)}
+                      >
+                        Log Intervention
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">

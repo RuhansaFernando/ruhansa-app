@@ -42,6 +42,7 @@ import SRUReportsPage from './pages/SRUReportsPage';
 import CourseLeaderDashboard from './pages/CourseLeaderDashboard';
 import CourseLeaderPage from './pages/CourseLeaderPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import StudentWellbeingCheckIn from './pages/StudentWellbeingCheckIn';
 import {
   RedirectToLogin,
   NotFound,
@@ -87,6 +88,10 @@ export const router = createBrowserRouter([
       {
         path: 'appointments',
         Component: StudentAppointmentsPage,
+      },
+      {
+        path: 'wellbeing',
+        Component: StudentWellbeingCheckIn,
       },
       {
         path: 'change-password',

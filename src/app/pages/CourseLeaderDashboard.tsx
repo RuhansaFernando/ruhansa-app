@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Users, UserCheck, UserX, GraduationCap, Loader2, Search, AlertTriangle } from 'lucide-react';
+import { Users, UserCheck, UserX, GraduationCap, Loader2, Search, AlertTriangle, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
 const LEVEL_TO_YEAR: Record<string, string> = {
@@ -25,6 +25,7 @@ interface StudentRow {
   programme: string;
   level: string;
   academicMentor: string;
+  riskLevel: string;
 }
 
 const greeting = () => {
@@ -96,6 +97,7 @@ export default function CourseLeaderDashboard() {
           programme: d.data().programme ?? '',
           level: d.data().level ?? '',
           academicMentor: d.data().academicMentor ?? '',
+          riskLevel: d.data().riskLevel ?? '',
         }))
       );
       setLoadingStudents(false);
@@ -144,6 +146,30 @@ export default function CourseLeaderDashboard() {
     ...YEAR_ORDER.filter((y) => studentsByYear[y]),
     ...Object.keys(studentsByYear).filter((y) => !YEAR_ORDER.includes(y) && studentsByYear[y]),
   ], [studentsByYear]);
+
+  const riskStats = useMemo(() => {
+    const total = myStudents.length;
+    if (total === 0) return null;
+
+    const high   = myStudents.filter((s) => s.riskLevel === 'high').length;
+    const medium = myStudents.filter((s) => s.riskLevel === 'medium').length;
+    const low    = myStudents.filter((s) => s.riskLevel === 'low').length;
+
+    // Year with the most High + Medium students by absolute count
+    const yearMap: Record<string, number> = {};
+    for (const s of myStudents) {
+      if (s.riskLevel !== 'high' && s.riskLevel !== 'medium') continue;
+      const year = LEVEL_TO_YEAR[s.level] ?? s.level ?? 'Unknown';
+      yearMap[year] = (yearMap[year] ?? 0) + 1;
+    }
+    let mostAtRiskYear = '';
+    let mostAtRiskCount = -1;
+    for (const [year, count] of Object.entries(yearMap)) {
+      if (count > mostAtRiskCount) { mostAtRiskCount = count; mostAtRiskYear = year; }
+    }
+
+    return { total, high, medium, low, mostAtRiskYear };
+  }, [myStudents]);
 
   if (profileLoading) {
     return (
@@ -360,6 +386,140 @@ export default function CourseLeaderDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Programme Risk Overview */}
+      {!loadingStudents && riskStats && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Programme Risk Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+
+            {/* Small cohort warning */}
+            {riskStats.total < 10 && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                ⚠️ Small cohort — interpret with caution (n={riskStats.total})
+              </div>
+            )}
+
+            {/* Risk distribution — colour coded rows */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Risk Distribution</p>
+              <div className="flex items-center gap-3">
+                <span className="text-base">🔴</span>
+                <span className="text-sm flex-1">High Risk</span>
+                <span className="text-sm font-semibold text-red-700">
+                  {riskStats.high} student{riskStats.high !== 1 ? 's' : ''}&nbsp;
+                  ({Math.round((riskStats.high / riskStats.total) * 100)}%)
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-base">🟡</span>
+                <span className="text-sm flex-1">Medium Risk</span>
+                <span className="text-sm font-semibold text-amber-700">
+                  {riskStats.medium} student{riskStats.medium !== 1 ? 's' : ''}&nbsp;
+                  ({Math.round((riskStats.medium / riskStats.total) * 100)}%)
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-base">🟢</span>
+                <span className="text-sm flex-1">Low Risk</span>
+                <span className="text-sm font-semibold text-green-700">
+                  {riskStats.low} student{riskStats.low !== 1 ? 's' : ''}&nbsp;
+                  ({Math.round((riskStats.low / riskStats.total) * 100)}%)
+                </span>
+              </div>
+            </div>
+
+            {/* Visual distribution bar */}
+            <div>
+              <div className="flex rounded-full overflow-hidden h-3 bg-gray-100">
+                {riskStats.high > 0 && (
+                  <div
+                    className="bg-red-500"
+                    style={{ width: `${(riskStats.high / riskStats.total) * 100}%` }}
+                    title={`High: ${riskStats.high}`}
+                  />
+                )}
+                {riskStats.medium > 0 && (
+                  <div
+                    className="bg-amber-400"
+                    style={{ width: `${(riskStats.medium / riskStats.total) * 100}%` }}
+                    title={`Medium: ${riskStats.medium}`}
+                  />
+                )}
+                {riskStats.low > 0 && (
+                  <div
+                    className="bg-green-500"
+                    style={{ width: `${(riskStats.low / riskStats.total) * 100}%` }}
+                    title={`Low: ${riskStats.low}`}
+                  />
+                )}
+              </div>
+              <div className="flex gap-4 mt-1.5">
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />High
+                </span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400" />Medium
+                </span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />Low
+                </span>
+              </div>
+            </div>
+
+            {/* Most at-risk year */}
+            {riskStats.mostAtRiskYear && (
+              <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
+                <GraduationCap className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Most At-Risk Year</p>
+                  <p className="text-sm font-semibold">{riskStats.mostAtRiskYear}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Risk status indicator */}
+            <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium ${
+              riskStats.high >= 2
+                ? 'bg-amber-50 border border-amber-200 text-amber-800'
+                : 'bg-green-50 border border-green-200 text-green-800'
+            }`}>
+              {riskStats.high >= 2
+                ? 'High risk proportion elevated ⚠️'
+                : 'Risk distribution within normal range ✅'}
+            </div>
+
+            {/* Recommended actions */}
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 space-y-1.5">
+              <p className="text-xs font-semibold text-blue-800 mb-2">Recommended Actions</p>
+              <p className="text-sm text-blue-900">→ Consult SSA staff for individual student support plans</p>
+              {riskStats.high >= 2 && (
+                <p className="text-sm text-blue-900">→ Consider reviewing programme support provision</p>
+              )}
+              {riskStats.high >= 3 && (
+                <p className="text-sm text-blue-900">→ Consider escalating to Faculty Administrator</p>
+              )}
+              {riskStats.mostAtRiskYear === 'Year 1' && (
+                <p className="text-sm text-blue-900">→ Review first year induction and transition support</p>
+              )}
+              {(riskStats.mostAtRiskYear === 'Year 3' || riskStats.mostAtRiskYear === 'Year 4') && (
+                <p className="text-sm text-blue-900">→ Review final year academic support provision</p>
+              )}
+            </div>
+
+            {/* Disclaimer */}
+            <p className="text-xs text-muted-foreground border-t pt-3">
+              Risk levels are generated by the ML model based on academic performance data.
+              Programme Leaders should consult SSA staff for individual student details and intervention planning.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

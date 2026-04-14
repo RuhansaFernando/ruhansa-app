@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, BarChart2, HeartHandshake } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, Settings, LogOut, Menu, X, Activity, Bell, UserCog, User, ClipboardList, Target, Shield, Briefcase, ChevronDown, ChevronRight, BookUser, Building2, ClipboardCheck, GraduationCap, KeyRound, Clock, BookOpen, Landmark, BarChart2, HeartHandshake, HeartPulse } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router';
@@ -54,6 +54,7 @@ export default function DashboardLayout() {
         { label: 'My Marks', icon: FileText, path: '/student/marks' },
         { label: 'My Attendance', icon: ClipboardList, path: '/student/attendance' },
         { label: 'Book Support', icon: HeartHandshake, path: '/student/appointments' },
+        { label: 'Wellbeing Check-In', icon: HeartPulse, path: '/student/wellbeing' },
       ];
     } else if (user.role === 'admin') {
       return [

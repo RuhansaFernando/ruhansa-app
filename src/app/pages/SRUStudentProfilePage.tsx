@@ -25,7 +25,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import {
   ArrowLeft, Calendar, AlertTriangle,
-  TrendingUp, Eye, Loader2, Phone, Building2, ClipboardList,
+  TrendingUp, Eye, Loader2, Phone, Building2, ClipboardList, HeartPulse,
+  GraduationCap, Heart, BookOpen, ArrowUpCircle,
 } from 'lucide-react';
 
 interface StudentData {
@@ -53,6 +54,227 @@ interface StudentData {
   phone?: string;
   faculty?: string;
 }
+
+// ── Academic Challenge Classification ──────────────────────────────────────
+interface AcademicChallenge {
+  id: string;
+  name: string;
+  iconName: 'GraduationCap' | 'Heart' | 'BookOpen' | 'ArrowUpCircle';
+  reason: string;
+  confidence: 'High' | 'Medium';
+  secondary?: boolean;
+  secondaryNote?: string;
+}
+
+interface ClassifyResult {
+  challenges: AcademicChallenge[];
+  insufficientData: boolean;
+}
+
+function classifyAcademicChallenges(params: {
+  attendancePercentage: number;
+  gpa: number;
+  level: string;
+  consecutiveAbsences: number;
+  attendanceBySemester: number[];
+  failedModules: number;
+  passedModules: number;
+  gpaHistory: number[];
+  wellbeing: Record<string, any> | null;
+}): ClassifyResult {
+  const {
+    attendancePercentage, gpa, level, consecutiveAbsences,
+    attendanceBySemester, failedModules, passedModules, gpaHistory, wellbeing,
+  } = params;
+
+  const insufficientData = gpaHistory.length < 2;
+  const challenges: AcademicChallenge[] = [];
+  const totalModules = failedModules + passedModules;
+
+  // Numeric GPA trend delta: last value minus first value (overall trajectory, not just last step)
+  // e.g. [3.10, 2.90, 2.78] → 2.78 - 3.10 = -0.32 (declining)
+  const gpaTrendDelta: number | null = gpaHistory.length >= 2
+    ? gpaHistory[gpaHistory.length - 1] - gpaHistory[0]
+    : null;
+
+  // Sudden drops across semesters
+  const hasGpaSemesterDrop = gpaHistory.length >= 2 &&
+    gpaHistory.some((v, i) => i > 0 && (gpaHistory[i - 1] - v) > 0.8);
+  const hasAttSemesterDrop = attendanceBySemester.length >= 2 &&
+    attendanceBySemester.some((v, i) => i > 0 && (attendanceBySemester[i - 1] - v) > 0.25);
+
+  // Label maps
+  const PROG_FIT: Record<string, string> = {
+    very_satisfied: 'Very Satisfied', satisfied: 'Satisfied',
+    unsatisfied: 'Unsatisfied', very_unsatisfied: 'Very Unsatisfied',
+  };
+  const WELLBEING_L: Record<string, string> = {
+    very_good: 'Very Good', good: 'Good', fair: 'Fair', poor: 'Poor', very_poor: 'Very Poor',
+  };
+  const LECTURE_L: Record<string, string> = {
+    yes: 'Yes', mostly: 'Mostly', sometimes: 'Sometimes', no: 'No',
+  };
+  const STUDY_L: Record<string, string> = {
+    very_confident: 'Very confident', confident: 'Confident',
+    somewhat_confident: 'Somewhat confident', not_confident: 'Not confident',
+  };
+  const TRANSITION_L: Record<string, string> = {
+    not_at_all: 'Not at all', somewhat_different: 'Somewhat different', very_different: 'Very different',
+  };
+
+  // 1. Wrong Programme Choice — only from 2nd semester onwards
+  let wrongProgrammeDetected = false;
+  if (
+    !insufficientData &&
+    attendancePercentage >= 60 &&
+    totalModules > 0 &&
+    failedModules > totalModules * 0.5 &&
+    gpa < 2.0 &&
+    (level !== '1st Year' || gpaHistory.length >= 3)
+  ) {
+    wrongProgrammeDetected = true;
+    const hasBoost = wellbeing?.programmeFit === 'unsatisfied' || wellbeing?.programmeFit === 'very_unsatisfied';
+    const pct = Math.round((failedModules / totalModules) * 100);
+    const fitNote = wellbeing?.programmeFit
+      ? ` Programme fit self-reported as "${PROG_FIT[wellbeing.programmeFit] ?? wellbeing.programmeFit}".`
+      : '';
+    challenges.push({
+      id: 'wrong_programme',
+      name: 'Wrong Programme Choice',
+      iconName: 'GraduationCap',
+      reason: `Attending ${attendancePercentage}% of sessions but failing ${failedModules} of ${totalModules} modules (${pct}%) with GPA ${gpa.toFixed(1)} suggests possible programme misalignment.${fitNote}`,
+      confidence: hasBoost ? 'High' : 'Medium',
+    });
+  }
+
+  // 2. Psychological Challenge
+  const psychTriggers: string[] = [];
+  if (!insufficientData && hasGpaSemesterDrop) psychTriggers.push('sudden GPA collapse across semesters');
+  if (!insufficientData && hasAttSemesterDrop) psychTriggers.push('sudden attendance drop across semesters');
+  if (consecutiveAbsences >= 5) psychTriggers.push(`${consecutiveAbsences} consecutive absences recorded`);
+  if (psychTriggers.length > 0) {
+    const hasBoost = wellbeing?.overallWellbeing === 'poor' || wellbeing?.overallWellbeing === 'very_poor';
+    const wbNote = wellbeing?.overallWellbeing
+      ? ` Overall wellbeing self-reported as "${WELLBEING_L[wellbeing.overallWellbeing] ?? wellbeing.overallWellbeing}".`
+      : '';
+    challenges.push({
+      id: 'psychological',
+      name: 'Psychological Challenge',
+      iconName: 'Heart',
+      reason: `Indicators present: ${psychTriggers.join('; ')}.${wbNote}`,
+      confidence: hasBoost ? 'High' : 'Medium',
+    });
+  }
+
+  // 3. Poor Learning Skills — only from 2nd semester onwards
+  if (
+    !insufficientData &&
+    attendancePercentage >= 70 &&
+    gpa < 2.0 &&
+    gpaTrendDelta !== null && gpaTrendDelta <= 0 &&
+    (level !== '1st Year' || gpaHistory.length >= 3)
+  ) {
+    const hasBoost =
+      (wellbeing?.lectureComprehension === 'sometimes' || wellbeing?.lectureComprehension === 'no') &&
+      wellbeing?.studySkillsConfidence === 'not_confident';
+    const trendText = gpaTrendDelta < 0 ? 'declining' : 'flat';
+    const wbNote = wellbeing
+      ? ` Lecture comprehension: "${LECTURE_L[wellbeing.lectureComprehension] ?? wellbeing.lectureComprehension ?? '—'}"; study skills confidence: "${STUDY_L[wellbeing.studySkillsConfidence] ?? wellbeing.studySkillsConfidence ?? '—'}".`
+      : '';
+    challenges.push({
+      id: 'poor_learning',
+      name: 'Poor Learning Skills',
+      iconName: 'BookOpen',
+      reason: `Attending ${attendancePercentage}% of sessions regularly but GPA is ${gpa.toFixed(1)} with a ${trendText} trend, suggesting difficulty translating attendance into results.${wbNote}`,
+      confidence: hasBoost ? 'High' : 'Medium',
+    });
+  }
+
+  // 4. Academic Transition Difficulty — requires declining trend (needs >= 2 semesters)
+  // Threshold raised to 3.0: early-year students haven't had time to drop significantly
+  if (
+    (level === '1st Year' || level === '2nd Year') &&
+    gpa < 3.0 &&
+    gpaTrendDelta !== null && gpaTrendDelta < 0
+  ) {
+    const hasBoost = wellbeing?.universityTransition === 'very_different';
+    const wbNote = wellbeing?.universityTransition
+      ? ` University transition self-reported as "${TRANSITION_L[wellbeing.universityTransition] ?? wellbeing.universityTransition}".`
+      : '';
+    challenges.push({
+      id: 'transition',
+      name: 'Academic Transition Difficulty',
+      iconName: 'ArrowUpCircle',
+      reason: `${level} student with GPA ${gpa.toFixed(1)} on a declining trend, suggesting difficulty adapting to university-level academic demands.${wbNote}`,
+      confidence: hasBoost ? 'High' : 'Medium',
+    });
+  }
+
+  // Priority rule: if 1st Year has BOTH Transition and Wrong Programme detected,
+  // Transition becomes primary; Wrong Programme becomes secondary with a monitoring note.
+  if (level === '1st Year' && wrongProgrammeDetected) {
+    const transIdx = challenges.findIndex((c) => c.id === 'transition');
+    const wpIdx    = challenges.findIndex((c) => c.id === 'wrong_programme');
+    if (transIdx !== -1 && wpIdx !== -1) {
+      // Pull transition out and put it first
+      const [trans] = challenges.splice(transIdx, 1);
+      const newWpIdx = challenges.findIndex((c) => c.id === 'wrong_programme');
+      challenges[newWpIdx] = {
+        ...challenges[newWpIdx],
+        secondary: true,
+        secondaryNote: 'Monitor — may become more apparent in later semesters',
+      };
+      challenges.unshift(trans);
+    }
+  }
+
+  return { challenges, insufficientData };
+}
+
+const CHALLENGE_ICONS: Record<string, React.ReactNode> = {
+  GraduationCap:  <GraduationCap  className="h-5 w-5" />,
+  Heart:          <Heart          className="h-5 w-5" />,
+  BookOpen:       <BookOpen       className="h-5 w-5" />,
+  ArrowUpCircle:  <ArrowUpCircle  className="h-5 w-5" />,
+};
+
+const CHALLENGE_ICONS_SM: Record<string, React.ReactNode> = {
+  GraduationCap:  <GraduationCap  className="h-3.5 w-3.5" />,
+  Heart:          <Heart          className="h-3.5 w-3.5" />,
+  BookOpen:       <BookOpen       className="h-3.5 w-3.5" />,
+  ArrowUpCircle:  <ArrowUpCircle  className="h-3.5 w-3.5" />,
+};
+
+const SUGGESTED_ACTIONS: Record<string, string[]> = {
+  psychological: [
+    'Schedule a welfare check meeting with the student',
+    'Refer to university counselling service',
+    'Guide student through extenuating circumstances process',
+    'Consider temporary reduced workload arrangement',
+    'Increase check-in frequency with academic mentor',
+  ],
+  transition: [
+    'Enroll student in first year transition support programme',
+    'Increase academic mentor contact frequency',
+    'Connect student with a peer study group',
+    'Review study habits and time management skills with student',
+    'Encourage attendance at academic skills workshops',
+  ],
+  wrong_programme: [
+    'Schedule programme suitability discussion with student',
+    'Refer to career guidance and counselling service',
+    'Review module exemption or substitution options',
+    'Consult Programme Leader regarding transfer options',
+    'Document student academic concerns formally',
+  ],
+  poor_learning: [
+    'Refer student to study skills workshop',
+    'Arrange peer tutoring support',
+    'Recommend academic writing support service',
+    'Review learning style and study approach with student',
+    'Schedule regular academic mentor sessions',
+  ],
+};
 
 const REFERRAL_DEPARTMENTS = [
   'Counselling Services',
@@ -99,6 +321,10 @@ export default function SRUStudentProfilePage() {
   const [referralType, setReferralType]             = useState('');
   const [linkCopied, setLinkCopied]                 = useState(false);
   const [ssaCalendarLink, setSsaCalendarLink]       = useState('');
+
+  // Wellbeing check-in
+  const [wellbeing, setWellbeing] = useState<Record<string, any> | null>(null);
+  const [loadingWellbeing, setLoadingWellbeing] = useState(false);
 
   // Module attendance breakdown
   const [moduleAttendance, setModuleAttendance] = useState<{
@@ -291,6 +517,26 @@ export default function SRUStudentProfilePage() {
     fetchModuleAttendance();
   }, [student?.studentId]);
 
+  // Fetch latest wellbeing check-in
+  useEffect(() => {
+    if (!student?.studentId) return;
+    setLoadingWellbeing(true);
+    getDocs(query(collection(db, 'wellbeingCheckIns'), where('studentId', '==', student.studentId)))
+      .then((snap) => {
+        if (!snap.empty) {
+          // Take the most recent submission
+          const sorted = snap.docs.sort((a, b) => {
+            const aT = a.data().submittedAt?.toDate?.()?.getTime() ?? 0;
+            const bT = b.data().submittedAt?.toDate?.()?.getTime() ?? 0;
+            return bT - aT;
+          });
+          setWellbeing(sorted[0].data());
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingWellbeing(false));
+  }, [student?.studentId]);
+
   const copyLink = (link: string) => {
     navigator.clipboard.writeText(link);
     setLinkCopied(true);
@@ -314,9 +560,12 @@ export default function SRUStudentProfilePage() {
         notes:            referralNotes.trim(),
         urgency:          referralUrgency,
         referralType:     referralType,
-        recordedBy:       user?.name ?? 'SSA',
-        status:           'open',
-        createdAt:        serverTimestamp(),
+        recordedBy:                user?.name ?? 'SSA',
+        status:                    'open',
+        gpaAtIntervention:              student.gpa,
+        attendanceAtIntervention:       student.attendancePercentage,
+        gpaSemesterCountAtIntervention: gpaHistory.length,
+        createdAt:                      serverTimestamp(),
       });
       // Notify student about referral
       await addDoc(collection(db, 'notifications'), {
@@ -724,6 +973,291 @@ export default function SRUStudentProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Student Wellbeing Check-In Section */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <HeartPulse className="h-4 w-4 text-pink-500" />
+            <CardTitle className="text-base">Student Wellbeing Check-In</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loadingWellbeing ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading...
+            </div>
+          ) : !wellbeing ? (
+            <p className="text-sm text-muted-foreground">No check-in submitted this semester.</p>
+          ) : (
+            <div className="space-y-4">
+              {/* SSA contact banner */}
+              {wellbeing.ssaContactRequested === true && (
+                <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                  <p className="text-sm font-semibold text-red-800">This student has requested SSA contact</p>
+                </div>
+              )}
+
+              {/* Submission meta */}
+              <p className="text-xs text-muted-foreground">
+                Submitted:{' '}
+                {wellbeing.submittedAt?.toDate?.()?.toLocaleDateString('en-GB', {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                }) ?? 'Unknown'}{' '}
+                · {wellbeing.semester} {wellbeing.academicYear}
+              </p>
+
+              {/* Response rows */}
+              {(() => {
+                const AMBER: Record<string, string[]> = {
+                  programmeFit:          ['unsatisfied', 'very_unsatisfied'],
+                  lectureComprehension:  ['sometimes', 'no'],
+                  universityTransition:  ['very_different'],
+                  studySkillsConfidence: ['not_confident'],
+                };
+                const RED: Record<string, string[]> = {
+                  overallWellbeing: ['poor', 'very_poor'],
+                };
+                const LABELS: Record<string, Record<string, string>> = {
+                  programmeFit:          { very_satisfied: 'Very Satisfied', satisfied: 'Satisfied', unsatisfied: 'Unsatisfied', very_unsatisfied: 'Very Unsatisfied' },
+                  lectureComprehension:  { yes: 'Yes', mostly: 'Mostly', sometimes: 'Sometimes', no: 'No' },
+                  overallWellbeing:      { very_good: 'Very Good', good: 'Good', fair: 'Fair', poor: 'Poor', very_poor: 'Very Poor' },
+                  universityTransition:  { not_at_all: 'Not at all', somewhat_different: 'Somewhat different', very_different: 'Very different' },
+                  studySkillsConfidence: { very_confident: 'Very confident', confident: 'Confident', somewhat_confident: 'Somewhat confident', not_confident: 'Not confident' },
+                };
+                const rows = [
+                  { field: 'programmeFit',          label: 'Programme Fit' },
+                  { field: 'lectureComprehension',  label: 'Lecture Comprehension' },
+                  { field: 'overallWellbeing',      label: 'Overall Wellbeing' },
+                  { field: 'universityTransition',  label: 'University Transition' },
+                  { field: 'studySkillsConfidence', label: 'Study Skills Confidence' },
+                  { field: 'ssaContactRequested',   label: 'Requested SSA Contact' },
+                ];
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {rows.map(({ field, label }) => {
+                      const rawVal = field === 'ssaContactRequested'
+                        ? (wellbeing.ssaContactRequested ? 'yes' : 'no')
+                        : (wellbeing[field] ?? '');
+                      const displayVal = field === 'ssaContactRequested'
+                        ? (wellbeing.ssaContactRequested ? 'Yes please' : 'No')
+                        : (LABELS[field]?.[rawVal] ?? rawVal);
+                      const isRed = RED[field]?.includes(rawVal) ||
+                        (field === 'ssaContactRequested' && wellbeing.ssaContactRequested);
+                      const isAmber = !isRed && AMBER[field]?.includes(rawVal);
+                      const bgClass = isRed
+                        ? 'border-red-200 bg-red-50'
+                        : isAmber
+                          ? 'border-amber-200 bg-amber-50'
+                          : '';
+                      const textClass = isRed ? 'text-red-800' : isAmber ? 'text-amber-800' : '';
+                      return (
+                        <div key={field} className={`rounded-lg border px-3 py-2 space-y-0.5 ${bgClass}`}>
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className={`text-sm font-medium flex items-center gap-1 ${textClass}`}>
+                            {(isRed || isAmber) && <span>⚠️</span>}
+                            {displayVal || '—'}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Academic Challenge Assessment — Medium/High risk only */}
+      {(riskData.level === 'medium' || riskData.level === 'high') && (() => {
+        const { challenges, insufficientData } = classifyAcademicChallenges({
+          attendancePercentage: student.attendancePercentage,
+          gpa:                  student.gpa,
+          level:                student.level,
+          consecutiveAbsences:  student.consecutiveAbsences,
+          attendanceBySemester: student.attendanceBySemester ?? [],
+          failedModules,
+          passedModules:        creditsCompleted,
+          gpaHistory,
+          wellbeing,
+        });
+        return (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                <CardTitle className="text-base">Academic Challenge Assessment</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+
+              {/* Insufficient semester history warning */}
+              {insufficientData && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  Insufficient semester history for full challenge analysis. Assessment will improve as more semester data is collected.
+                </div>
+              )}
+
+              {/* No wellbeing note */}
+              {!wellbeing && !loadingWellbeing && (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  ⚠️ Wellbeing check-in not yet submitted. Confidence levels may be lower without student self-report data.
+                </div>
+              )}
+
+              {challenges.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  No specific academic challenges identified from current data. Continue monitoring student progress.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {challenges.map((ch) => {
+                    const isHigh = ch.confidence === 'High';
+                    const isSecondary = ch.secondary === true;
+                    return (
+                      <div
+                        key={ch.id}
+                        className={`rounded-lg border px-4 py-3 space-y-2 ${
+                          isSecondary
+                            ? 'border-gray-200 bg-gray-50'
+                            : isHigh
+                              ? 'border-red-200 bg-red-50'
+                              : 'border-amber-200 bg-amber-50'
+                        }`}
+                      >
+                        {/* Header row */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className={
+                              isSecondary ? 'text-gray-500'
+                              : isHigh     ? 'text-red-600'
+                              :              'text-amber-600'
+                            }>
+                              {CHALLENGE_ICONS[ch.iconName]}
+                            </span>
+                            <span className={`text-sm font-semibold ${
+                              isSecondary ? 'text-gray-700'
+                              : isHigh     ? 'text-red-900'
+                              :              'text-amber-900'
+                            }`}>
+                              {ch.name}
+                            </span>
+                          </div>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            isSecondary
+                              ? 'bg-gray-100 text-gray-600 border border-gray-200'
+                              : isHigh
+                                ? 'bg-red-100 text-red-800 border border-red-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}>
+                            {ch.confidence} Confidence
+                          </span>
+                        </div>
+
+                        {/* Reason */}
+                        <p className={`text-xs leading-relaxed ${
+                          isSecondary ? 'text-gray-600'
+                          : isHigh     ? 'text-red-800'
+                          :              'text-amber-800'
+                        }`}>
+                          {ch.reason}
+                        </p>
+
+                        {/* Secondary monitor note */}
+                        {isSecondary && ch.secondaryNote && (
+                          <p className="text-xs text-gray-500 italic">{ch.secondaryNote}</p>
+                        )}
+
+                        {/* Confirm note */}
+                        <p className="text-xs text-muted-foreground italic">
+                          Discuss with student to confirm.
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Disclaimer */}
+              <p className="text-xs text-muted-foreground border-t pt-3 leading-relaxed">
+                This assessment is generated automatically from academic data and student self-reports.
+                It is intended as decision support only. SSA professional judgment is required to confirm
+                and act upon these indicators.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Suggested Actions — only when challenges detected, Medium/High risk only */}
+      {(riskData.level === 'medium' || riskData.level === 'high') && (() => {
+        const { challenges } = classifyAcademicChallenges({
+          attendancePercentage: student.attendancePercentage,
+          gpa:                  student.gpa,
+          level:                student.level,
+          consecutiveAbsences:  student.consecutiveAbsences,
+          attendanceBySemester: student.attendanceBySemester ?? [],
+          failedModules,
+          passedModules:        creditsCompleted,
+          gpaHistory,
+          wellbeing,
+        });
+
+        if (challenges.length === 0) return null;
+
+        // Build grouped action lists with cross-group deduplication
+        const seenActions = new Set<string>();
+        const groups = challenges
+          .map((ch) => {
+            const actions = (SUGGESTED_ACTIONS[ch.id] ?? []).filter((a) => {
+              if (seenActions.has(a)) return false;
+              seenActions.add(a);
+              return true;
+            });
+            return { ...ch, actions };
+          })
+          .filter((g) => g.actions.length > 0);
+
+        if (groups.length === 0) return null;
+
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Suggested Actions</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Based on identified academic challenge indicators. Review and apply professional judgment before acting.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {groups.map((group) => (
+                <div key={group.id} className="space-y-2">
+                  {/* Challenge subheading */}
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>{CHALLENGE_ICONS_SM[group.iconName]}</span>
+                    {group.name}
+                  </div>
+                  {/* Action list */}
+                  <ul className="space-y-2">
+                    {group.actions.map((action) => (
+                      <li key={action} className="flex items-start gap-2 text-sm">
+                        <span className="flex-shrink-0 text-muted-foreground mt-px">→</span>
+                        {action}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+
+              <p className="text-xs text-muted-foreground border-t pt-3 leading-relaxed">
+                These are suggested starting points based on identified indicators. Discuss with student
+                before taking any action. Log all interventions using the button below.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Referral Modal */}
       <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
