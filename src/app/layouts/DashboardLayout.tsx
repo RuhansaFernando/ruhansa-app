@@ -1,4 +1,5 @@
 import { Button } from '../components/ui/button';
+import logoUrl from '../../assets/DropGuard_Logo_Final.png';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { NotificationBell } from '../components/NotificationBell';
 import {
@@ -195,7 +196,7 @@ export default function DashboardLayout() {
         {/* Logo Section */}
         <div className="flex items-center p-2 border-b bg-white">
           <Link to={user.role === 'academic_admin' ? '/academic/dashboard' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/dashboard' : `/${user.role}/dashboard`}>
-            <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
+            <img src={logoUrl} alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
           </Link>
         </div>
 
@@ -310,7 +311,7 @@ export default function DashboardLayout() {
             {/* Logo Section */}
             <div className="flex items-center justify-between p-2 border-b bg-white">
               <Link to={user.role === 'academic_admin' ? '/academic/dashboard' : user.role === 'academic_mentor' ? '/mentor/dashboard' : user.role === 'student_counsellor' ? '/counsellor/dashboard' : user.role === 'course_leader' ? '/course-leader/dashboard' : `/${user.role}/dashboard`}>
-                <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
+                <img src={logoUrl} alt="DropGuard" style={{ width: '140px', height: 'auto', padding: '8px' }} />
               </Link>
               <Button
                 variant="ghost"
@@ -443,7 +444,7 @@ export default function DashboardLayout() {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex items-center">
-            <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '100px', height: 'auto' }} />
+            <img src={logoUrl} alt="DropGuard" style={{ width: '100px', height: 'auto' }} />
           </div>
           <NotificationBell position="down" />
         </header>

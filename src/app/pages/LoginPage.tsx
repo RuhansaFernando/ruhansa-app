@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../AuthContext";
 import { auth, db } from "../../firebase";
@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Checkbox } from "../components/ui/checkbox";
-const backgroundImage = "";
+import logoUrl from "../../assets/DropGuard_Logo_Final.png";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,6 +19,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setEmail("");
+    setPassword("");
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,57 +175,60 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex items-center justify-center p-4 relative"
       style={{
-        backgroundImage: `url(${backgroundImage})`,
+        backgroundImage: `url('https://images.unsplash.com/photo-1562774053-701939374585?w=1920&q=80')`,
         backgroundSize: "cover",
         backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-black/30" />
+      {/* Dark overlay for readability */}
+      <div className="absolute inset-0 bg-black/55" />
 
       {/* Login Card */}
       <div className="relative z-10 w-full max-w-md">
         <div
           className="rounded-2xl p-8 shadow-2xl backdrop-blur-xl"
           style={{
-            background: "rgba(255, 255, 255, 0.15)",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
+            background: "rgba(255, 255, 255, 0.08)",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            boxShadow: "0 25px 50px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.05)",
           }}
         >
-          {/* Header */}
+          {/* Logo */}
           <div className="mb-8">
-            <img src="/src/assets/DropGuard_Logo_Final.png" alt="DropGuard" style={{ width: '160px', height: 'auto' }} />
+            <img src={logoUrl} alt="DropGuard" style={{ width: "160px", height: "auto" }} />
           </div>
 
           {/* Sign in heading */}
           <div className="mb-6">
-            <h2 className="text-3xl font-bold text-white mb-2">Sign in</h2>
-            <p className="text-white/80 text-sm">
+            <h2 className="text-3xl font-bold text-white mb-1.5">Sign in</h2>
+            <p className="text-white/60 text-sm">
               Enter your credentials to access your account
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-white text-sm font-medium">
+          <form onSubmit={handleLogin} className="space-y-5" autoComplete="off">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-white/85 text-sm font-medium">
                 Email address
               </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="username@novara.ac.lk"
+                placeholder="Enter your email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="bg-white/20 border-white/30 text-white placeholder:text-white/60 backdrop-blur-sm focus:bg-white/30"
+                autoComplete="off"
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/35 focus:bg-white/15 focus:border-white/40 focus-visible:ring-white/20"
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label
                 htmlFor="password"
-                className="text-white text-sm font-medium"
+                className="text-white/85 text-sm font-medium"
               >
                 Password
               </Label>
@@ -231,7 +239,8 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="bg-white/20 border-white/30 text-white placeholder:text-white/60 backdrop-blur-sm focus:bg-white/30"
+                autoComplete="new-password"
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/35 focus:bg-white/15 focus:border-white/40 focus-visible:ring-white/20"
               />
             </div>
 
@@ -244,11 +253,11 @@ export default function LoginPage() {
                   onCheckedChange={(checked) =>
                     setRememberMe(checked as boolean)
                   }
-                  className="border-white/40 data-[state=checked]:bg-white data-[state=checked]:text-blue-600"
+                  className="border-white/40 data-[state=checked]:bg-white data-[state=checked]:text-blue-700"
                 />
                 <label
                   htmlFor="remember"
-                  className="text-sm text-white cursor-pointer"
+                  className="text-sm text-white/75 cursor-pointer select-none"
                 >
                   Remember me
                 </label>
@@ -257,14 +266,26 @@ export default function LoginPage() {
                 type="button"
                 className="text-sm text-blue-300 hover:text-blue-200 transition-colors"
               >
-                Forgot Password?
+                Forgot password?
               </button>
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="rounded-lg bg-red-500/20 border border-red-400/40 px-4 py-3 text-sm text-red-200">
-                {error}
+              <div className="flex items-start gap-2.5 rounded-lg bg-red-500/15 border border-red-400/30 px-4 py-3">
+                <svg
+                  className="w-4 h-4 text-red-300 flex-shrink-0 mt-0.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <p className="text-sm text-red-200">{error}</p>
               </div>
             )}
 
@@ -272,14 +293,46 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-6 text-base disabled:opacity-60"
+              className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold py-6 text-base transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{ boxShadow: "0 4px 20px rgba(37, 99, 235, 0.4)" }}
             >
-              {loading ? "Signing in…" : "Sign In"}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg
+                    className="animate-spin h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  Signing in…
+                </span>
+              ) : (
+                "Sign In"
+              )}
             </Button>
           </form>
+
+          {/* Footer */}
+          <p className="mt-8 text-center text-xs text-white/30">
+            &copy; {new Date().getFullYear()} DropGuard &middot; Student Support Platform
+          </p>
         </div>
       </div>
-
     </div>
   );
 }
