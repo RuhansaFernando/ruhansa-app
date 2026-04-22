@@ -378,11 +378,19 @@ export default function RegistryMarksPage() {
               if (!byModule.has(key)) byModule.set(key, []);
               byModule.get(key)!.push(rd.mark ?? rd.overall ?? 0);
             });
+
+            // Per-module grade points + per-semester grouping for gpa_by_semester
+            const bySemester = new Map<string, number[]>();
             const modulePoints: number[] = [];
-            byModule.forEach((marks) => {
+            byModule.forEach((marks, key) => {
               const avg = marks.reduce((s, m) => s + m, 0) / marks.length;
-              modulePoints.push(gradeToPoints(calculateGrade(avg)));
+              const gp = gradeToPoints(calculateGrade(avg));
+              modulePoints.push(gp);
+              const semKey = key.split('__').slice(1).join('__'); // academicYear__semester
+              if (!bySemester.has(semKey)) bySemester.set(semKey, []);
+              bySemester.get(semKey)!.push(gp);
             });
+
             const gpa =
               modulePoints.length > 0
                 ? Math.round(
@@ -390,8 +398,20 @@ export default function RegistryMarksPage() {
                   ) / 100
                 : 0;
 
+            const gpa_by_semester = [...bySemester.entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([, gps]) => Math.round((gps.reduce((s, g) => s + g, 0) / gps.length) * 100) / 100);
+
+            const credits_completed = Math.min(
+              [...byModule.entries()].filter(([, marks]) => {
+                const avg = marks.reduce((s, m) => s + m, 0) / marks.length;
+                return avg >= 40;
+              }).length * 10,
+              90
+            );
+
             const studentDocRef = doc(db, 'students', student.studentDocId);
-            await updateDoc(studentDocRef, { gpa });
+            await updateDoc(studentDocRef, { gpa, gpa_by_semester, credits_completed });
           } catch (err) {
             console.error('Failed to update student marks:', (err as Error).message);
           }

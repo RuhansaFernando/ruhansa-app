@@ -235,6 +235,7 @@ export default function AdminStudentsPage() {
         uid: cred.user.uid,
         status: formStatus,
         mustChangePassword: true,
+        tempPassword,
         ...(formEthnicity && { ethnicity: formEthnicity }),
         financial_aid: formFinancialAid,
       });
@@ -349,6 +350,7 @@ export default function AdminStudentsPage() {
           status: 'active',
           accountActivated: true,
           mustChangePassword: true,
+          tempPassword,
         });
         try {
           await emailjs.send('service_y8aewpn', 'template_welcome', {

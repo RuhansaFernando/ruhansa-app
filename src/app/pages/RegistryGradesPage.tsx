@@ -476,8 +476,11 @@ export default function RegistryGradesPage() {
       const m = rd.mark ?? rd.overallMark ?? rd.overall ?? rd.finalMark;
       if (typeof m === 'number' && !isNaN(m)) byModule.get(key)!.push(m);
     });
+
+    // Per-module grade points + per-semester grouping for gpa_by_semester
+    const bySemester = new Map<string, number[]>();
     const modulePoints: number[] = [];
-    byModule.forEach((marks) => {
+    byModule.forEach((marks, key) => {
       if (marks.length === 0) return;
       const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
       const grade =
@@ -485,12 +488,29 @@ export default function RegistryGradesPage() {
       const pts =
         grade === 'A' ? 4.0 : grade === 'B' ? 3.0 : grade === 'C' ? 2.0 : grade === 'D' ? 1.0 : 0.0;
       modulePoints.push(pts);
+      const semKey = key.split('__').slice(1).join('__'); // academicYear__semester
+      if (!bySemester.has(semKey)) bySemester.set(semKey, []);
+      bySemester.get(semKey)!.push(pts);
     });
+
     const gpa =
       modulePoints.length > 0
         ? Math.min(4.0, Math.round((modulePoints.reduce((a, b) => a + b, 0) / modulePoints.length) * 100) / 100)
         : 0;
-    await updateDoc(doc(db, "students", studentId), { gpa });
+
+    const gpa_by_semester = [...bySemester.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, gps]) => Math.round((gps.reduce((a, b) => a + b, 0) / gps.length) * 100) / 100);
+
+    const credits_completed = Math.min(
+      [...byModule.entries()].filter(([, marks]) => {
+        const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
+        return avg >= 40;
+      }).length * 10,
+      90
+    );
+
+    await updateDoc(doc(db, "students", studentId), { gpa, gpa_by_semester, credits_completed });
   };
 
   const openAssignTutor = (student: StudentRecord) => {

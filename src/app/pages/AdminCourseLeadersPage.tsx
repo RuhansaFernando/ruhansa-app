@@ -132,6 +132,7 @@ export default function AdminCourseLeadersPage() {
         status: addStatus,
         programme: formProgramme,
         mustChangePassword: true,
+        tempPassword,
         createdAt: serverTimestamp(),
       });
       try {
@@ -225,6 +226,7 @@ export default function AdminCourseLeadersPage() {
           status: 'active',
           programme: row.Programme?.trim() ?? '',
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

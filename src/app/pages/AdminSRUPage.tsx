@@ -119,6 +119,8 @@ export default function AdminSRUPage() {
         email: addEmail.trim(),
         role: 'ssa',
         status: addStatus,
+        mustChangePassword: true,
+        tempPassword,
         createdAt: serverTimestamp(),
       });
 
@@ -210,6 +212,7 @@ export default function AdminSRUPage() {
           role: 'ssa',
           status: 'active',
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

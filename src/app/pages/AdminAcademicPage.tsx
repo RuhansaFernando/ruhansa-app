@@ -128,6 +128,7 @@ export default function AdminAcademicPage() {
         role: 'academic_admin',
         status: addStatus,
         mustChangePassword: true,
+        tempPassword,
         createdAt: serverTimestamp(),
       });
       try {
@@ -221,6 +222,7 @@ export default function AdminAcademicPage() {
           role: 'academic_admin',
           status: 'active',
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

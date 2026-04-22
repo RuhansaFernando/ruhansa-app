@@ -147,6 +147,8 @@ export default function AdminFacultyPage() {
         studentsAssigned: 0,
         courses: [],
         joinedDate: new Date().toISOString().split("T")[0],
+        mustChangePassword: true,
+        tempPassword,
         createdAt: serverTimestamp(),
       });
       try {
@@ -245,6 +247,7 @@ export default function AdminFacultyPage() {
           courses: [],
           joinedDate: new Date().toISOString().split("T")[0],
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         try {

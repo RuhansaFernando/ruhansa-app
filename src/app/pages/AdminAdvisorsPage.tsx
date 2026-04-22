@@ -161,6 +161,8 @@ export default function AdminAdvisorsPage() {
         studentsAssigned: 0,
         maxStudentCapacity: 40,
         joinedDate: new Date().toISOString().split('T')[0],
+        mustChangePassword: true,
+        tempPassword,
         createdAt: serverTimestamp(),
       });
       try {
@@ -260,6 +262,7 @@ export default function AdminAdvisorsPage() {
           maxStudentCapacity: 40,
           joinedDate: new Date().toISOString().split('T')[0],
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         success++;

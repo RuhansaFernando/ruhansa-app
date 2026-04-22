@@ -150,6 +150,7 @@ export default function AdminTutorsPage() {
           status: formStatus,
           role: "academic_mentor",
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         try {
@@ -233,6 +234,7 @@ export default function AdminTutorsPage() {
           role: 'academic_mentor',
           status: 'active',
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();

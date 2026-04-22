@@ -117,6 +117,8 @@ export default function AdminRegistryPage() {
         email: addEmail.trim(),
         role: 'registry',
         status: addStatus,
+        mustChangePassword: true,
+        tempPassword,
         createdAt: serverTimestamp(),
       });
       try {
@@ -207,6 +209,7 @@ export default function AdminRegistryPage() {
           role: 'registry',
           status: 'active',
           mustChangePassword: true,
+          tempPassword,
           createdAt: serverTimestamp(),
         });
         await secondaryAuth.signOut();
