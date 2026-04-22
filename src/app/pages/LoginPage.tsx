@@ -98,21 +98,21 @@ export default function LoginPage() {
         return;
       }
 
-      // 6. academic_mentors
-      const mentorSnap = await getDocs(query(collection(db, "academic_mentors"), where("email", "==", firebaseEmail)));
-      if (!mentorSnap.empty) {
-        const d = mentorSnap.docs[0];
-        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "academic_mentor", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "academic_mentors" }, rememberMe);
-        navigate("/mentor/dashboard");
-        return;
-      }
-
-      // 7. course_leaders
+      // 6. course_leaders
       const clSnap = await getDocs(query(collection(db, "course_leaders"), where("email", "==", firebaseEmail)));
       if (!clSnap.empty) {
         const d = clSnap.docs[0];
         login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "course_leader", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "course_leaders" }, rememberMe);
         navigate("/course-leader/dashboard");
+        return;
+      }
+
+      // 7. academic_mentors
+      const mentorSnap = await getDocs(query(collection(db, "academic_mentors"), where("email", "==", firebaseEmail)));
+      if (!mentorSnap.empty) {
+        const d = mentorSnap.docs[0];
+        login({ id: d.id, name: d.data().name ?? firebaseEmail, role: "academic_mentor", email: firebaseEmail, mustChangePassword: d.data().mustChangePassword ?? false, firestoreCollection: "academic_mentors" }, rememberMe);
+        navigate("/mentor/dashboard");
         return;
       }
 
