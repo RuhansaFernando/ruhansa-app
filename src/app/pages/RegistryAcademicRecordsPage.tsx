@@ -45,6 +45,10 @@ import {
   X,
   Users,
   RefreshCw,
+  FileUp,
+  Download,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 
 // ─── Risk calculation ──────────────────────────────────────────────────────────
@@ -124,6 +128,56 @@ interface ResultRecord {
   semester: string;
 }
 
+interface CsvMarkRow {
+  rowNum:              number;
+  moduleCode:          string;
+  assessmentComponent: string;
+  mark:                number;
+  weight:              number;
+  valid:               boolean;
+  error?:              string;
+}
+
+interface CsvRowResult {
+  rowNum:              number;
+  moduleCode:          string;
+  assessmentComponent: string;
+  mark:                number;
+  action:              'created' | 'updated' | 'error';
+  error?:              string;
+}
+
+interface BulkCsvRow {
+  rowNum:              number;
+  studentId:           string;
+  moduleCode:          string;
+  academicYear:        string;
+  semester:            string;
+  assessmentComponent: string;
+  mark:                number;
+  weight:              number;
+  grade:               string;
+  valid:               boolean;
+  error?:              string;
+}
+
+interface BulkCsvRowResult {
+  rowNum:              number;
+  studentId:           string;
+  moduleCode:          string;
+  assessmentComponent: string;
+  mark:                number;
+  action:              'created' | 'updated' | 'error';
+  error?:              string;
+}
+
+interface BulkStudentGpaResult {
+  studentId: string;
+  name:      string;
+  oldGpa:    number;
+  newGpa:    number;
+}
+
 interface ModuleInfo {
   id: string;
   moduleCode: string;
@@ -198,6 +252,25 @@ export default function RegistryAcademicRecordsPage() {
   const [savingMark, setSavingMark] = useState(false);
   const [deletingMarkId, setDeletingMarkId] = useState<string | null>(null);
   const [confirmDeleteMarkId, setConfirmDeleteMarkId] = useState<string | null>(null);
+
+  // CSV marks upload modal (per-student)
+  const [showCsvModal, setShowCsvModal]       = useState(false);
+  const [csvRows, setCsvRows]                 = useState<CsvMarkRow[]>([]);
+  const [csvAcademicYear, setCsvAcademicYear] = useState(currentAcademicYear());
+  const [csvSemester, setCsvSemester]         = useState('');
+  const [csvUploading, setCsvUploading]       = useState(false);
+  const [csvProgress, setCsvProgress]         = useState({ current: 0, total: 0 });
+  const [csvRowResults, setCsvRowResults]     = useState<CsvRowResult[]>([]);
+  const [csvDone, setCsvDone]                 = useState(false);
+
+  // Bulk CSV marks upload modal (all students)
+  const [showBulkCsvModal, setShowBulkCsvModal]           = useState(false);
+  const [bulkCsvRows, setBulkCsvRows]                     = useState<BulkCsvRow[]>([]);
+  const [bulkCsvUploading, setBulkCsvUploading]           = useState(false);
+  const [bulkCsvProgress, setBulkCsvProgress]             = useState({ current: 0, total: 0 });
+  const [bulkCsvRowResults, setBulkCsvRowResults]         = useState<BulkCsvRowResult[]>([]);
+  const [bulkCsvStudentResults, setBulkCsvStudentResults] = useState<BulkStudentGpaResult[]>([]);
+  const [bulkCsvDone, setBulkCsvDone]                     = useState(false);
 
   // Filter + sort state
   const [filterFaculty, setFilterFaculty] = useState('');
@@ -465,10 +538,15 @@ export default function RegistryAcademicRecordsPage() {
           : (selectedMarksModule.components.find((c) => c.name === r.assessmentComponent)?.weight ?? 0),
       }));
     const simulated = [...existing, { mark: markNum, weight: selectedComponentWeight }];
-    const totalWeight = simulated.reduce((s, c) => s + c.weight, 0);
-    if (totalWeight === 0) return null;
-    const weighted = simulated.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
-    const norm = totalWeight === 100 ? weighted : (weighted / totalWeight) * 100;
+    const withWeight = simulated.filter((c) => c.weight > 0);
+    let norm: number;
+    if (withWeight.length > 0) {
+      const tw = withWeight.reduce((s, c) => s + c.weight, 0);
+      const wm = withWeight.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
+      norm = tw === 100 ? wm : (wm / tw) * 100;
+    } else {
+      norm = simulated.reduce((s, c) => s + c.mark, 0) / simulated.length;
+    }
     const allComponents = selectedMarksModule.components.length;
     const enteredComponents = simulated.length;
     return { mark: norm, grade: calculateGrade(norm), pass: norm >= 40, allComponents, enteredComponents };
@@ -604,15 +682,16 @@ export default function RegistryAcademicRecordsPage() {
 
         const modulePoints: number[] = [];
         byModule.forEach((components) => {
-          const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-          if (totalWeight > 0) {
-            const weightedMark = components.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
-            const normMark = totalWeight === 100 ? weightedMark : (weightedMark / totalWeight) * 100;
-            modulePoints.push(gradeToPoints(calculateGrade(normMark)));
+          const withWeight = components.filter((c) => c.weight > 0);
+          let normMark: number;
+          if (withWeight.length > 0) {
+            const tw = withWeight.reduce((s, c) => s + c.weight, 0);
+            const wm = withWeight.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
+            normMark = tw === 100 ? wm : (wm / tw) * 100;
           } else {
-            const avgMark = components.reduce((s, c) => s + c.mark, 0) / components.length;
-            modulePoints.push(gradeToPoints(calculateGrade(avgMark)));
+            normMark = components.reduce((s, c) => s + c.mark, 0) / components.length;
           }
+          modulePoints.push(gradeToPoints(calculateGrade(normMark)));
         });
 
         const gpa =
@@ -723,11 +802,12 @@ export default function RegistryAcademicRecordsPage() {
   const calcCreditsCompleted = (byModule: Map<string, { mark: number; weight: number }[]>): number => {
     let credits = 0;
     byModule.forEach((components, key) => {
-      const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+      const withWeight = components.filter((c) => c.weight > 0);
       let overall: number;
-      if (totalWeight > 0) {
-        const weighted = components.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
-        overall = totalWeight === 100 ? weighted : (weighted / totalWeight) * 100;
+      if (withWeight.length > 0) {
+        const tw = withWeight.reduce((s, c) => s + c.weight, 0);
+        const weighted = withWeight.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
+        overall = tw === 100 ? weighted : (weighted / tw) * 100;
       } else {
         overall = components.reduce((s, c) => s + c.mark, 0) / components.length;
       }
@@ -832,17 +912,16 @@ export default function RegistryAcademicRecordsPage() {
       // Per module: compute weighted mark → grade points
       const modulePoints: number[] = [];
       byModule.forEach((components) => {
-        const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-        if (totalWeight > 0) {
-          const weightedMark = components.reduce((sum, c) => sum + (c.mark * c.weight) / 100, 0);
-          // Normalise in case weights don't perfectly sum to 100
-          const normalisedMark = totalWeight === 100 ? weightedMark : (weightedMark / totalWeight) * 100;
-          modulePoints.push(gradeToPoints(calculateGrade(normalisedMark)));
+        const withWeight = components.filter((c) => c.weight > 0);
+        let normalisedMark: number;
+        if (withWeight.length > 0) {
+          const tw = withWeight.reduce((sum, c) => sum + c.weight, 0);
+          const wm = withWeight.reduce((sum, c) => sum + (c.mark * c.weight) / 100, 0);
+          normalisedMark = tw === 100 ? wm : (wm / tw) * 100;
         } else {
-          // Fallback: equal weighting (no weight stored for legacy records)
-          const avgMark = components.reduce((sum, c) => sum + c.mark, 0) / components.length;
-          modulePoints.push(gradeToPoints(calculateGrade(avgMark)));
+          normalisedMark = components.reduce((sum, c) => sum + c.mark, 0) / components.length;
         }
+        modulePoints.push(gradeToPoints(calculateGrade(normalisedMark)));
       });
 
       const gpa =
@@ -874,6 +953,451 @@ export default function RegistryAcademicRecordsPage() {
     }
   };
 
+  // ── CSV marks upload ─────────────────────────────────────────────────────────
+
+  const openCsvModal = () => {
+    setCsvRows([]);
+    setCsvRowResults([]);
+    setCsvDone(false);
+    setCsvAcademicYear(currentAcademicYear());
+    setCsvSemester('');
+    setShowCsvModal(true);
+  };
+
+  const downloadCsvTemplate = () => {
+    const rows = ['moduleCode,assessmentComponent,mark,weight'];
+    marksEnrolledModules.forEach((mod) => {
+      if (mod.components.length > 0) {
+        mod.components.forEach((comp) => {
+          rows.push(`${mod.moduleCode},${comp.name},,${comp.weight}`);
+        });
+      } else {
+        rows.push(`${mod.moduleCode},Assessment,,0`);
+      }
+    });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `marks_template_${selectedStudent?.studentId ?? 'student'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvFile = async (file: File) => {
+    const Papa = (await import('papaparse')).default;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (res) => {
+        const raw = res.data as Record<string, string>[];
+        const parsed: CsvMarkRow[] = raw.map((row, i) => {
+          const moduleCode         = (row['moduleCode']          ?? '').trim();
+          const assessmentComponent = (row['assessmentComponent'] ?? '').trim();
+          const markRaw            = (row['mark']                ?? '').trim();
+          const weightRaw          = (row['weight']              ?? '').trim();
+          const mark   = parseFloat(markRaw);
+          const weight = parseFloat(weightRaw);
+
+          let error: string | undefined;
+          if (!moduleCode)            error = 'Missing moduleCode';
+          else if (!assessmentComponent) error = 'Missing assessmentComponent';
+          else if (isNaN(mark) || mark < 0 || mark > 100) error = `Invalid mark: "${markRaw}"`;
+          else if (weightRaw !== '' && (isNaN(weight) || weight < 0 || weight > 100))
+            error = `Invalid weight: "${weightRaw}"`;
+
+          return {
+            rowNum: i + 2,
+            moduleCode, assessmentComponent,
+            mark:   isNaN(mark)   ? 0 : mark,
+            weight: isNaN(weight) ? 0 : weight,
+            valid: !error, error,
+          };
+        });
+        setCsvRows(parsed);
+        setCsvRowResults([]);
+        setCsvDone(false);
+      },
+      error: () => toast.error('Failed to parse CSV. Check the file format.'),
+    });
+  };
+
+  const handleCsvUpload = async () => {
+    if (!selectedStudent || !csvAcademicYear.trim() || !csvSemester) {
+      toast.error('Please select academic year and semester before uploading');
+      return;
+    }
+    const validRows = csvRows.filter((r) => r.valid);
+    if (validRows.length === 0) return;
+
+    setCsvUploading(true);
+    setCsvDone(false);
+    setCsvRowResults([]);
+    setCsvProgress({ current: 0, total: validRows.length });
+
+    const rowResults: CsvRowResult[] = [];
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      setCsvProgress({ current: i + 1, total: validRows.length });
+
+      try {
+        const mod = allModules.find((m) => m.moduleCode === row.moduleCode);
+        const grade  = calculateGrade(row.mark);
+        const status = row.mark >= 40 ? 'pass' : 'fail';
+        const componentWeight =
+          row.weight > 0
+            ? row.weight
+            : (mod?.components.find((c) => c.name === row.assessmentComponent)?.weight ?? 0);
+
+        const existingSnap = await getDocs(
+          query(
+            collection(db, 'results'),
+            where('studentId',  '==', selectedStudent.studentId),
+            where('moduleCode', '==', row.moduleCode),
+          )
+        );
+        const existingDoc = existingSnap.docs.find((d) => {
+          const rd = d.data();
+          return (
+            rd.assessmentComponent === row.assessmentComponent &&
+            rd.academicYear        === csvAcademicYear.trim() &&
+            rd.semester            === csvSemester
+          );
+        });
+
+        if (existingDoc) {
+          await updateDoc(doc(db, 'results', existingDoc.id), {
+            mark: row.mark, grade, status,
+            weight: componentWeight,
+            uploadedBy: user?.name ?? 'Registry',
+          });
+          rowResults.push({ rowNum: row.rowNum, moduleCode: row.moduleCode, assessmentComponent: row.assessmentComponent, mark: row.mark, action: 'updated' });
+        } else {
+          await addDoc(collection(db, 'results'), {
+            moduleId:            mod?.id ?? row.moduleCode,
+            moduleCode:          row.moduleCode,
+            moduleName:          mod?.moduleName ?? '',
+            studentId:           selectedStudent.studentId,
+            studentName:         selectedStudent.name,
+            programme:           selectedStudent.programme,
+            yearOfStudy:         selectedStudent.level,
+            assessmentComponent: row.assessmentComponent,
+            academicYear:        csvAcademicYear.trim(),
+            semester:            csvSemester,
+            mark:                row.mark,
+            grade, status,
+            weight:              componentWeight,
+            uploadedBy:          user?.name ?? 'Registry',
+            createdAt:           serverTimestamp(),
+          });
+          rowResults.push({ rowNum: row.rowNum, moduleCode: row.moduleCode, assessmentComponent: row.assessmentComponent, mark: row.mark, action: 'created' });
+        }
+      } catch (err) {
+        rowResults.push({ rowNum: row.rowNum, moduleCode: row.moduleCode, assessmentComponent: row.assessmentComponent, mark: row.mark, action: 'error', error: (err as Error).message });
+      }
+
+      setCsvRowResults([...rowResults]);
+    }
+
+    // Recalculate GPA for the student
+    try {
+      const allResultsSnap = await getDocs(
+        query(collection(db, 'results'), where('studentId', '==', selectedStudent.studentId))
+      );
+      const byModule = new Map<string, { mark: number; weight: number }[]>();
+      allResultsSnap.docs.forEach((d) => {
+        const data = d.data();
+        const key = (data.moduleId ?? '').length > 15
+          ? data.moduleId
+          : (data.moduleCode ?? data.moduleId ?? '');
+        if (!key) return;
+        const arr = byModule.get(key) ?? [];
+        arr.push({ mark: data.mark ?? 0, weight: data.weight ?? 0 });
+        byModule.set(key, arr);
+      });
+      const modulePoints: number[] = [];
+      byModule.forEach((components) => {
+        const withWeight = components.filter((c) => c.weight > 0);
+        let normMark: number;
+        if (withWeight.length > 0) {
+          const tw = withWeight.reduce((s, c) => s + c.weight, 0);
+          const wm = withWeight.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
+          normMark = tw === 100 ? wm : (wm / tw) * 100;
+        } else {
+          normMark = components.reduce((s, c) => s + c.mark, 0) / components.length;
+        }
+        modulePoints.push(gradeToPoints(calculateGrade(normMark)));
+      });
+      const gpa = modulePoints.length > 0
+        ? Math.round((modulePoints.reduce((s, p) => s + p, 0) / modulePoints.length) * 100) / 100
+        : 0;
+      const credits_completed = calcCreditsCompleted(byModule);
+      await updateDoc(doc(db, 'students', selectedStudent.docId), {
+        gpa, gpa_by_semester: arrayUnion(gpa), gpa_history: gpa, credits_completed,
+      });
+      const updated = { ...selectedStudent, gpa };
+      setSelectedStudent(updated);
+      setStudents((prev) => prev.map((s) => (s.docId === selectedStudent.docId ? updated : s)));
+    } catch {
+      // GPA recalc failed — non-fatal
+    }
+
+    setCsvUploading(false);
+    setCsvDone(true);
+    await loadProfile(selectedStudent.studentId);
+    const successCount = rowResults.filter((r) => r.action !== 'error').length;
+    toast.success(`CSV upload complete: ${successCount} mark${successCount !== 1 ? 's' : ''} processed`);
+  };
+
+  // ── Bulk CSV marks upload ────────────────────────────────────────────────────
+
+  const openBulkCsvModal = () => {
+    setBulkCsvRows([]);
+    setBulkCsvRowResults([]);
+    setBulkCsvStudentResults([]);
+    setBulkCsvDone(false);
+    setShowBulkCsvModal(true);
+  };
+
+  const downloadBulkCsvTemplate = () => {
+    const rows = [
+      'studentId,moduleCode,academicYear,semester,assessmentComponent,mark,weight',
+      'STD001,BM101,2023/2024,Semester 1,Coursework,65,40',
+      'STD001,BM101,2023/2024,Semester 1,Examination,58,60',
+      'STD001,BM102,2023/2024,Semester 2,Coursework,70,40',
+      'STD001,BM102,2023/2024,Semester 2,Examination,75,60',
+      'STD002,CS101,2024/2025,Semester 1,Coursework,72,40',
+      'STD002,CS101,2024/2025,Semester 1,Examination,80,60',
+      'STD002,CS102,2024/2025,Semester 2,Coursework,,40',
+      'STD002,CS102,2024/2025,Semester 2,Examination,,60',
+    ];
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'bulk_marks_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBulkCsvFile = async (file: File) => {
+    const Papa = (await import('papaparse')).default;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (res) => {
+        const raw = res.data as Record<string, string>[];
+        const parsed: BulkCsvRow[] = raw.map((row, i) => {
+          const studentId           = (row['studentId']           ?? '').trim();
+          const moduleCode          = (row['moduleCode']          ?? '').trim();
+          const academicYear        = (row['academicYear']        ?? '').trim();
+          const semester            = (row['semester']            ?? '').trim();
+          const assessmentComponent = (row['assessmentComponent'] ?? '').trim();
+          const markRaw             = (row['mark']                ?? '').trim();
+          const weightRaw           = (row['weight']              ?? '').trim();
+          const mark   = parseFloat(markRaw);
+          const weight = parseFloat(weightRaw);
+
+          let error: string | undefined;
+          if (!studentId)               error = 'Missing studentId';
+          else if (!moduleCode)         error = 'Missing moduleCode';
+          else if (!academicYear)       error = 'Missing academicYear';
+          else if (!semester)           error = 'Missing semester';
+          else if (!assessmentComponent) error = 'Missing assessmentComponent';
+          else if (isNaN(mark) || mark < 0 || mark > 100) error = `Invalid mark: "${markRaw}"`;
+          else if (weightRaw !== '' && (isNaN(weight) || weight < 0 || weight > 100))
+            error = `Invalid weight: "${weightRaw}"`;
+
+          const grade = (!error && !isNaN(mark)) ? calculateGrade(mark) : '';
+          return {
+            rowNum: i + 2, studentId, moduleCode, academicYear, semester, assessmentComponent,
+            mark:   isNaN(mark)   ? 0 : mark,
+            weight: isNaN(weight) ? 0 : weight,
+            grade, valid: !error, error,
+          };
+        });
+        setBulkCsvRows(parsed);
+        setBulkCsvRowResults([]);
+        setBulkCsvStudentResults([]);
+        setBulkCsvDone(false);
+      },
+      error: () => toast.error('Failed to parse CSV. Check the file format.'),
+    });
+  };
+
+  const handleBulkCsvUpload = async () => {
+    const validRows = bulkCsvRows.filter((r) => r.valid);
+    if (validRows.length === 0) return;
+
+    setBulkCsvUploading(true);
+    setBulkCsvDone(false);
+    setBulkCsvRowResults([]);
+    setBulkCsvStudentResults([]);
+    setBulkCsvProgress({ current: 0, total: validRows.length });
+
+    const rowResults: BulkCsvRowResult[] = [];
+    const affectedStudentIds = new Set<string>();
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      setBulkCsvProgress({ current: i + 1, total: validRows.length });
+
+      try {
+        const mod    = allModules.find((m) => m.moduleCode === row.moduleCode);
+        const grade  = calculateGrade(row.mark);
+        const status = row.mark >= 40 ? 'pass' : 'fail';
+        const studentRecord = students.find((s) => s.studentId === row.studentId);
+        const componentWeight =
+          row.weight > 0
+            ? row.weight
+            : (mod?.components.find((c) => c.name === row.assessmentComponent)?.weight ?? 0);
+
+        const existingSnap = await getDocs(
+          query(
+            collection(db, 'results'),
+            where('studentId',  '==', row.studentId),
+            where('moduleCode', '==', row.moduleCode),
+          )
+        );
+        const existingDoc = existingSnap.docs.find((d) => {
+          const rd = d.data();
+          return (
+            rd.assessmentComponent === row.assessmentComponent &&
+            rd.academicYear        === row.academicYear &&
+            rd.semester            === row.semester
+          );
+        });
+
+        if (existingDoc) {
+          await updateDoc(doc(db, 'results', existingDoc.id), {
+            mark: row.mark, grade, status,
+            weight: componentWeight,
+            uploadedBy: user?.name ?? 'Registry',
+          });
+          rowResults.push({ rowNum: row.rowNum, studentId: row.studentId, moduleCode: row.moduleCode, assessmentComponent: row.assessmentComponent, mark: row.mark, action: 'updated' });
+        } else {
+          await addDoc(collection(db, 'results'), {
+            moduleId:            mod?.id ?? row.moduleCode,
+            moduleCode:          row.moduleCode,
+            moduleName:          mod?.moduleName ?? '',
+            studentId:           row.studentId,
+            studentName:         studentRecord?.name ?? '',
+            programme:           studentRecord?.programme ?? '',
+            yearOfStudy:         studentRecord?.level ?? '',
+            assessmentComponent: row.assessmentComponent,
+            academicYear:        row.academicYear,
+            semester:            row.semester,
+            mark:                row.mark,
+            grade, status,
+            weight:              componentWeight,
+            uploadedBy:          user?.name ?? 'Registry',
+            createdAt:           serverTimestamp(),
+          });
+          rowResults.push({ rowNum: row.rowNum, studentId: row.studentId, moduleCode: row.moduleCode, assessmentComponent: row.assessmentComponent, mark: row.mark, action: 'created' });
+        }
+        affectedStudentIds.add(row.studentId);
+      } catch (err) {
+        rowResults.push({ rowNum: row.rowNum, studentId: row.studentId, moduleCode: row.moduleCode, assessmentComponent: row.assessmentComponent, mark: row.mark, action: 'error', error: (err as Error).message });
+      }
+
+      setBulkCsvRowResults([...rowResults]);
+    }
+
+    // Recalculate GPA and gpa_by_semester for all affected students
+    const studentGpaResults: BulkStudentGpaResult[] = [];
+    for (const sid of affectedStudentIds) {
+      try {
+        const studentRecord = students.find((s) => s.studentId === sid);
+        if (!studentRecord) continue;
+        const oldGpa = studentRecord.gpa;
+
+        const allResultsSnap = await getDocs(
+          query(collection(db, 'results'), where('studentId', '==', sid))
+        );
+
+        // Group components by module (overall GPA) and by semester+module (gpa_by_semester)
+        const byModule = new Map<string, { mark: number; weight: number }[]>();
+        const bySemesterModule = new Map<string, Map<string, { mark: number; weight: number }[]>>();
+        allResultsSnap.docs.forEach((d) => {
+          const data = d.data();
+          const moduleKey = (data.moduleId ?? '').length > 15 ? data.moduleId : (data.moduleCode ?? data.moduleId ?? '');
+          if (!moduleKey) return;
+          const component = { mark: data.mark ?? 0, weight: data.weight ?? 0 };
+
+          const mArr = byModule.get(moduleKey) ?? [];
+          mArr.push(component);
+          byModule.set(moduleKey, mArr);
+
+          const semKey = `${data.academicYear ?? ''}|||${data.semester ?? ''}`;
+          if (!bySemesterModule.has(semKey)) bySemesterModule.set(semKey, new Map());
+          const semMap = bySemesterModule.get(semKey)!;
+          const sArr = semMap.get(moduleKey) ?? [];
+          sArr.push(component);
+          semMap.set(moduleKey, sArr);
+        });
+
+        // Weighted average mark for a set of components → grade points
+        const toGradePoints = (components: { mark: number; weight: number }[]) => {
+          const withWeight = components.filter((c) => c.weight > 0);
+          let normMark: number;
+          if (withWeight.length > 0) {
+            const tw = withWeight.reduce((s, c) => s + c.weight, 0);
+            const wm = withWeight.reduce((s, c) => s + (c.mark * c.weight) / 100, 0);
+            normMark = tw === 100 ? wm : (wm / tw) * 100;
+          } else {
+            normMark = components.reduce((s, c) => s + c.mark, 0) / components.length;
+          }
+          return gradeToPoints(calculateGrade(normMark));
+        };
+
+        // Overall GPA across all modules
+        const modulePoints: number[] = [];
+        byModule.forEach((components) => modulePoints.push(toGradePoints(components)));
+        const newGpa = modulePoints.length > 0
+          ? Math.round((modulePoints.reduce((s, p) => s + p, 0) / modulePoints.length) * 100) / 100
+          : 0;
+
+        // gpa_by_semester: one grade-point value per semester, sorted chronologically
+        const semSortKey = (semKey: string) => {
+          const [ay, sem] = semKey.split('|||');
+          const match = ay.match(/(\d{4})/);
+          const startYear = match ? parseInt(match[1]) : 0;
+          const semNum = sem.includes('1 & 2') ? 1.5 : sem.includes('2') ? 2 : 1;
+          return startYear * 10 + semNum;
+        };
+        const gpa_by_semester = [...bySemesterModule.entries()]
+          .sort(([a], [b]) => semSortKey(a) - semSortKey(b))
+          .map(([, semModules]) => {
+            const semPoints: number[] = [];
+            semModules.forEach((components) => semPoints.push(toGradePoints(components)));
+            return semPoints.length > 0
+              ? Math.round((semPoints.reduce((s, p) => s + p, 0) / semPoints.length) * 100) / 100
+              : 0;
+          });
+
+        const credits_completed = calcCreditsCompleted(byModule);
+        await updateDoc(doc(db, 'students', studentRecord.docId), {
+          gpa: newGpa, gpa_by_semester, gpa_history: newGpa, credits_completed,
+        });
+        setStudents((prev) => prev.map((s) => s.studentId === sid ? { ...s, gpa: newGpa } : s));
+        if (selectedStudent?.studentId === sid) {
+          const updated = { ...selectedStudent, gpa: newGpa };
+          setSelectedStudent(updated);
+        }
+        studentGpaResults.push({ studentId: sid, name: studentRecord.name, oldGpa, newGpa });
+      } catch {
+        // non-fatal
+      }
+    }
+
+    setBulkCsvStudentResults(studentGpaResults);
+    setBulkCsvUploading(false);
+    setBulkCsvDone(true);
+    const successCount = rowResults.filter((r) => r.action !== 'error').length;
+    toast.success(`Bulk upload complete: ${successCount} mark${successCount !== 1 ? 's' : ''} processed for ${studentGpaResults.length} student${studentGpaResults.length !== 1 ? 's' : ''}`);
+  };
+
   // ── Academic Standing badge helper ───────────────────────────────────────────
   const standingBadge = (gpa: number) => {
     const { label, color } = getAcademicStanding(gpa);
@@ -897,20 +1421,30 @@ export default function RegistryAcademicRecordsPage() {
             Manage student module enrollments and marks
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRecalculateAllGPAs}
-          disabled={recalculating}
-          className="shrink-0"
-        >
-          {recalculating ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
-          Recalculate All GPAs
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openBulkCsvModal}
+            className="gap-1.5"
+          >
+            <FileUp className="h-4 w-4" />
+            Bulk Upload Marks
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRecalculateAllGPAs}
+            disabled={recalculating}
+          >
+            {recalculating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Recalculate All GPAs
+          </Button>
+        </div>
       </div>
 
 
@@ -1310,20 +1844,37 @@ export default function RegistryAcademicRecordsPage() {
                           <p className="text-sm text-muted-foreground">
                             {results.length} mark record{results.length !== 1 ? 's' : ''}
                           </p>
-                          <Button
-                            size="sm"
-                            className="gap-1.5"
-                            onClick={openMarksModal}
-                            disabled={enrollments.length === 0}
-                            title={
-                              enrollments.length === 0
-                                ? 'Enroll student in a module first'
-                                : undefined
-                            }
-                          >
-                            <Plus className="h-4 w-4" />
-                            Enter Marks
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5"
+                              onClick={openCsvModal}
+                              disabled={enrollments.length === 0}
+                              title={
+                                enrollments.length === 0
+                                  ? 'Enroll student in a module first'
+                                  : undefined
+                              }
+                            >
+                              <FileUp className="h-4 w-4" />
+                              Upload Marks CSV
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={openMarksModal}
+                              disabled={enrollments.length === 0}
+                              title={
+                                enrollments.length === 0
+                                  ? 'Enroll student in a module first'
+                                  : undefined
+                              }
+                            >
+                              <Plus className="h-4 w-4" />
+                              Enter Marks
+                            </Button>
+                          </div>
                         </div>
 
                         {results.length === 0 ? (
@@ -1736,6 +2287,431 @@ export default function RegistryAcademicRecordsPage() {
                 'Save Mark'
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Bulk CSV Marks Upload Modal (all students) ── */}
+      <Dialog open={showBulkCsvModal} onOpenChange={(open) => { if (!open && !bulkCsvUploading) setShowBulkCsvModal(false); }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Upload Marks — All Students</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Template download */}
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={downloadBulkCsvTemplate} disabled={bulkCsvUploading}>
+                <Download className="h-4 w-4" />
+                Download Template
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Columns: <code className="bg-gray-100 px-1 rounded">studentId, moduleCode, academicYear, semester, assessmentComponent, mark, weight</code>
+              </span>
+            </div>
+
+            {/* File drop zone */}
+            {!bulkCsvDone && (
+              <div
+                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => { if (!bulkCsvUploading) document.getElementById('bulk-csv-file-input')?.click(); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file) handleBulkCsvFile(file);
+                }}
+              >
+                <FileUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {bulkCsvRows.length > 0
+                    ? `${bulkCsvRows.length} row${bulkCsvRows.length !== 1 ? 's' : ''} loaded — drop a new file to replace`
+                    : 'Drop a CSV file here, or click to browse'}
+                </p>
+                <input
+                  id="bulk-csv-file-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleBulkCsvFile(f); e.target.value = ''; }}
+                />
+              </div>
+            )}
+
+            {/* Preview table */}
+            {bulkCsvRows.length > 0 && !bulkCsvDone && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium">Preview</p>
+                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">{bulkCsvRows.filter(r => r.valid).length} valid</Badge>
+                  {bulkCsvRows.some(r => !r.valid) && (
+                    <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">{bulkCsvRows.filter(r => !r.valid).length} invalid</Badge>
+                  )}
+                </div>
+                <div className="rounded-md border overflow-auto max-h-56">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">#</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Student ID</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Module</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Academic Year</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Semester</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Assessment</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Mark</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Weight</th>
+                        <th className="text-center px-2 py-1.5 text-muted-foreground">Grade</th>
+                        <th className="px-2 py-1.5"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkCsvRows.map((row) => (
+                        <tr key={row.rowNum} className={row.valid ? '' : 'bg-red-50'}>
+                          <td className="px-2 py-1 text-muted-foreground">{row.rowNum}</td>
+                          <td className="px-2 py-1 font-mono">{row.studentId}</td>
+                          <td className="px-2 py-1 font-mono">{row.moduleCode}</td>
+                          <td className="px-2 py-1">{row.academicYear}</td>
+                          <td className="px-2 py-1">{row.semester}</td>
+                          <td className="px-2 py-1">{row.assessmentComponent}</td>
+                          <td className="px-2 py-1 text-right">{row.valid ? row.mark : '—'}</td>
+                          <td className="px-2 py-1 text-right">{row.weight > 0 ? row.weight : '—'}</td>
+                          <td className="px-2 py-1 text-center">
+                            {row.grade && (
+                              <Badge className={`${gradeBadgeClass(row.grade)} text-xs`}>{row.grade}</Badge>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            {row.valid
+                              ? <CheckCircle className="h-3.5 w-3.5 text-green-500 mx-auto" />
+                              : <XCircle className="h-3.5 w-3.5 text-red-500 mx-auto" title={row.error} />
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {bulkCsvRows.some((r) => !r.valid) && (
+                  <div className="space-y-0.5">
+                    {bulkCsvRows.filter((r) => !r.valid).map((r) => (
+                      <p key={r.rowNum} className="text-xs text-red-600">Row {r.rowNum}: {r.error}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Progress bar */}
+            {bulkCsvUploading && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Uploading…</span>
+                  <span>{bulkCsvProgress.current}/{bulkCsvProgress.total}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    style={{ width: `${bulkCsvProgress.total > 0 ? (bulkCsvProgress.current / bulkCsvProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Row results */}
+            {bulkCsvRowResults.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium">Upload Results</p>
+                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">{bulkCsvRowResults.filter(r => r.action === 'created').length} created</Badge>
+                  <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">{bulkCsvRowResults.filter(r => r.action === 'updated').length} updated</Badge>
+                  {bulkCsvRowResults.some(r => r.action === 'error') && (
+                    <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">{bulkCsvRowResults.filter(r => r.action === 'error').length} errors</Badge>
+                  )}
+                </div>
+                <div className="rounded-md border overflow-auto max-h-40">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">#</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Student</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Module</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Assessment</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Mark</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkCsvRowResults.map((r) => (
+                        <tr key={r.rowNum} className={r.action === 'error' ? 'bg-red-50' : ''}>
+                          <td className="px-2 py-1 text-muted-foreground">{r.rowNum}</td>
+                          <td className="px-2 py-1 font-mono">{r.studentId}</td>
+                          <td className="px-2 py-1 font-mono">{r.moduleCode}</td>
+                          <td className="px-2 py-1">{r.assessmentComponent}</td>
+                          <td className="px-2 py-1 text-right">{r.mark}</td>
+                          <td className="px-2 py-1">
+                            {r.action === 'created' && <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Created</Badge>}
+                            {r.action === 'updated' && <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">Updated</Badge>}
+                            {r.action === 'error'   && <Badge className="bg-red-100 text-red-800 border-red-200 text-xs" title={r.error}>Error</Badge>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Student GPA summary */}
+            {bulkCsvStudentResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Affected Students — Updated GPAs</p>
+                <div className="rounded-md border overflow-auto max-h-40">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Student ID</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Name</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Old GPA</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">New GPA</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkCsvStudentResults.map((r) => {
+                        const diff = r.newGpa - r.oldGpa;
+                        return (
+                          <tr key={r.studentId}>
+                            <td className="px-2 py-1 font-mono">{r.studentId}</td>
+                            <td className="px-2 py-1">{r.name}</td>
+                            <td className="px-2 py-1 text-right">{r.oldGpa.toFixed(2)}</td>
+                            <td className="px-2 py-1 text-right font-semibold">{r.newGpa.toFixed(2)}</td>
+                            <td className="px-2 py-1">
+                              {diff > 0  && <span className="text-green-600">▲ {diff.toFixed(2)}</span>}
+                              {diff < 0  && <span className="text-red-600">▼ {Math.abs(diff).toFixed(2)}</span>}
+                              {diff === 0 && <span className="text-muted-foreground">—</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowBulkCsvModal(false)}
+              disabled={bulkCsvUploading}
+            >
+              {bulkCsvDone ? 'Close' : 'Cancel'}
+            </Button>
+            {!bulkCsvDone && (
+              <Button
+                onClick={handleBulkCsvUpload}
+                disabled={bulkCsvUploading || bulkCsvRows.filter((r) => r.valid).length === 0}
+              >
+                {bulkCsvUploading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
+                ) : (
+                  `Upload ${bulkCsvRows.filter((r) => r.valid).length} Mark${bulkCsvRows.filter((r) => r.valid).length !== 1 ? 's' : ''}`
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── CSV Marks Upload Modal ── */}
+      <Dialog open={showCsvModal} onOpenChange={(open) => { if (!open && !csvUploading) setShowCsvModal(false); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Upload Marks CSV — {selectedStudent?.name ?? ''}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Academic year & semester */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Academic Year</Label>
+                <Input
+                  placeholder="e.g. 2024/2025"
+                  value={csvAcademicYear}
+                  onChange={(e) => setCsvAcademicYear(e.target.value)}
+                  disabled={csvUploading}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Semester</Label>
+                <Select value={csvSemester} onValueChange={setCsvSemester} disabled={csvUploading}>
+                  <SelectTrigger><SelectValue placeholder="Select semester" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Semester 1">Semester 1</SelectItem>
+                    <SelectItem value="Semester 2">Semester 2</SelectItem>
+                    <SelectItem value="Semester 1 & 2">Semester 1 & 2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Template download */}
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={downloadCsvTemplate} disabled={csvUploading}>
+                <Download className="h-4 w-4" />
+                Download Template
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Columns: <code className="bg-gray-100 px-1 rounded">moduleCode, assessmentComponent, mark, weight</code>
+              </span>
+            </div>
+
+            {/* File drop zone */}
+            {!csvDone && (
+              <div
+                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => { if (!csvUploading) document.getElementById('csv-file-input')?.click(); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file) handleCsvFile(file);
+                }}
+              >
+                <FileUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {csvRows.length > 0
+                    ? `${csvRows.length} row${csvRows.length !== 1 ? 's' : ''} loaded — drop a new file to replace`
+                    : 'Drop a CSV file here, or click to browse'}
+                </p>
+                <input
+                  id="csv-file-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCsvFile(f); e.target.value = ''; }}
+                />
+              </div>
+            )}
+
+            {/* Preview table */}
+            {csvRows.length > 0 && !csvDone && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Preview ({csvRows.filter(r => r.valid).length} valid, {csvRows.filter(r => !r.valid).length} invalid)</p>
+                <div className="rounded-md border overflow-auto max-h-48">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">#</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Module</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Assessment</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Mark</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Weight</th>
+                        <th className="px-2 py-1.5"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRows.map((row) => (
+                        <tr key={row.rowNum} className={row.valid ? '' : 'bg-red-50'}>
+                          <td className="px-2 py-1 text-muted-foreground">{row.rowNum}</td>
+                          <td className="px-2 py-1 font-mono">{row.moduleCode}</td>
+                          <td className="px-2 py-1">{row.assessmentComponent}</td>
+                          <td className="px-2 py-1 text-right">{row.valid ? row.mark : '—'}</td>
+                          <td className="px-2 py-1 text-right">{row.weight > 0 ? row.weight : '—'}</td>
+                          <td className="px-2 py-1">
+                            {row.valid
+                              ? <CheckCircle className="h-3.5 w-3.5 text-green-500 mx-auto" />
+                              : <span className="text-red-600 text-xs" title={row.error}><XCircle className="h-3.5 w-3.5 text-red-500 mx-auto" /></span>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {csvRows.some((r) => !r.valid) && (
+                  <div className="space-y-0.5">
+                    {csvRows.filter((r) => !r.valid).map((r) => (
+                      <p key={r.rowNum} className="text-xs text-red-600">Row {r.rowNum}: {r.error}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Progress bar */}
+            {csvUploading && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Uploading…</span>
+                  <span>{csvProgress.current}/{csvProgress.total}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    style={{ width: `${csvProgress.total > 0 ? (csvProgress.current / csvProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Results table */}
+            {csvRowResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Results</p>
+                <div className="rounded-md border overflow-auto max-h-48">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">#</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Module</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Assessment</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Mark</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRowResults.map((r) => (
+                        <tr key={r.rowNum} className={r.action === 'error' ? 'bg-red-50' : ''}>
+                          <td className="px-2 py-1 text-muted-foreground">{r.rowNum}</td>
+                          <td className="px-2 py-1 font-mono">{r.moduleCode}</td>
+                          <td className="px-2 py-1">{r.assessmentComponent}</td>
+                          <td className="px-2 py-1 text-right">{r.mark}</td>
+                          <td className="px-2 py-1">
+                            {r.action === 'created'  && <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Created</Badge>}
+                            {r.action === 'updated'  && <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">Updated</Badge>}
+                            {r.action === 'error'    && <Badge className="bg-red-100 text-red-800 border-red-200 text-xs" title={r.error}>Error</Badge>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCsvModal(false)}
+              disabled={csvUploading}
+            >
+              {csvDone ? 'Close' : 'Cancel'}
+            </Button>
+            {!csvDone && (
+              <Button
+                onClick={handleCsvUpload}
+                disabled={csvUploading || csvRows.filter((r) => r.valid).length === 0 || !csvAcademicYear.trim() || !csvSemester}
+              >
+                {csvUploading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
+                ) : (
+                  `Upload ${csvRows.filter((r) => r.valid).length} Mark${csvRows.filter((r) => r.valid).length !== 1 ? 's' : ''}`
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

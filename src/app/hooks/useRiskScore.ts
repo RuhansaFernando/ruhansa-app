@@ -10,6 +10,14 @@ import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/fire
 import { db } from '../../firebase';
 import { prepareMLFeatures, callMLModel, type RiskResult } from '../services/riskScoreService';
 
+function pctToPoints(mark: number): number {
+  if (mark >= 70) return 4.0;
+  if (mark >= 60) return 3.0;
+  if (mark >= 50) return 2.0;
+  if (mark >= 40) return 1.0;
+  return 0.0;
+}
+
 interface StudentRiskData {
   attendancePercentage?: number;
   gpa?: number;
@@ -22,6 +30,7 @@ interface StudentRiskData {
   enrollmentDate?: string;
   nationality?: string;
   attendanceBySemester?: number[];
+  gpaBySemester?: number[];
   flagged?: boolean;
   academic_warning_count?: number;
   academicWarnings?: number;
@@ -65,38 +74,80 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
         const failedModules = results.filter(
           (r) => (r.finalMark ?? r.mark ?? 0) < 40
         ).length;
-        const creditsCompleted = studentData.credits_completed ?? 0;
+        // credits_completed: count only passed modules (mark >= 40) × 10 credits each.
+        // The Firestore field counts all modules including failed ones, which is wrong for
+        // the ML model (trained on credits accumulated from passed courses only).
+        const passedModulesCount = results.length - failedModules;
+        const creditsCompleted = Math.min(passedModulesCount * 10, 90);
 
-        // Calculate GPA history per semester
+        // Calculate GPA history per semester from raw result docs.
+        // Sort keys chronologically so that semesterGPAs[0] is always the
+        // oldest semester and semesterGPAs[last] is always the most recent.
         const bySemester: Record<string, number[]> = {};
         results.forEach((r) => {
-          const key = `${r.academicYear}-${r.semester}`;
+          const key = `${r.academicYear ?? ''}__${r.semester ?? ''}`;
           if (!bySemester[key]) bySemester[key] = [];
           bySemester[key].push(r.finalMark ?? r.mark ?? 0);
         });
-        const semesterGPAs = Object.values(bySemester).map((marks) => {
-          const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
-          return avg / 25; // convert marks to 0-4 GPA scale
-        });
+        const computedSemesterGPAs = Object.entries(bySemester)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, marks]) => {
+            const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
+            return pctToPoints(avg);
+          });
+
+        // Prefer the stored gpa_by_semester array (already chronologically sorted
+        // by SyncGPASemesters / recalculation tools) over the computed version.
+        const gpaBySemester = (studentData.gpaBySemester && studentData.gpaBySemester.length > 0)
+          ? studentData.gpaBySemester
+          : computedSemesterGPAs;
 
         // low_gpa_semesters: count of semesters where GPA (0-4 scale) < 2.0
-        const low_gpa_semesters = semesterGPAs.filter((g) => g < 2.0).length;
+        const low_gpa_semesters = gpaBySemester.filter((g) => g < 2.0).length;
+
+        // gpaLast on 0-4 grade-point scale (used as gpa_current in the ML payload).
+        // Must NOT use studentData.gpa which may be stored on a different scale from
+        // older import scripts (e.g. avg_mark/25 instead of pctToPoints).
+        const gpaLast = gpaBySemester.length > 0
+          ? gpaBySemester[gpaBySemester.length - 1]
+          : 0;
+        const gpaAvg = gpaBySemester.length > 0
+          ? gpaBySemester.reduce((a, b) => a + b, 0) / gpaBySemester.length
+          : 0;
+        // If the most recent semester is 0.0 (all fails), use the overall average
+        // so the model still sees the student's typical academic standing.
+        const gpaCurrent = gpaLast > 0 ? gpaLast : gpaAvg;
 
         const features = prepareMLFeatures({
           attendancePercentage: studentData.attendancePercentage,
-          gpa: studentData.gpa,
+          gpa: gpaCurrent,
           interventionCount: low_gpa_semesters, // academic_warning_count in ML payload
           creditsCompleted,
           failedModules,
-          gpaHistory: semesterGPAs,
+          gpaHistory: gpaBySemester,
         });
 
         const attendancePercentage = studentData.attendancePercentage ?? 0;
-        const attendanceBySemester = studentData.attendanceBySemester && studentData.attendanceBySemester.length > 0
+        // attendance_by_semester is stored chronologically (oldest first, newest last)
+        const attendanceBySemester = (studentData.attendanceBySemester && studentData.attendanceBySemester.length > 0)
           ? studentData.attendanceBySemester
           : [attendancePercentage / 100];
 
         const financialAid = studentData.financial_aid ? 1 : 0;
+
+        const gpaFirst = gpaBySemester.length > 0 ? gpaBySemester[0] : 0;
+        const gpaTrend = gpaBySemester.length >= 2 ? gpaLast - gpaFirst : 0;
+        const attLast  = attendanceBySemester[attendanceBySemester.length - 1];
+        const attTrend = attendanceBySemester.length >= 2 ? attLast - attendanceBySemester[0] : 0;
+
+        // dropout_risk flag: 1 = high academic risk signal for the ML model.
+        const totalModules = results.length;
+        const dropoutRiskFlag = (
+          (failedModules / Math.max(totalModules, 1)) > 0.60 ||
+          (studentData.attendancePercentage ?? 100) < 30 ||
+          attTrend <= -0.50 ||
+          (gpaTrend <= -2.5 && gpaLast < 1.5)
+        ) ? 1 : 0;
 
         const riskResult = await callMLModel(features, {
           age: studentData.age,
@@ -108,9 +159,10 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           enrollmentGapMonths: 0,
           ethnicity: studentData.ethnicity ?? studentData.nationality ?? 'Unknown',
           attendanceBySemester,
-          gpaBySemester: semesterGPAs,
-          dropoutRisk: studentData.flagged ? 1 : 0,
+          gpaBySemester,
+          dropoutRisk: dropoutRiskFlag,
         });
+        console.log(`[useRiskScore] ${studentData.studentId} → result:`, riskResult);
         setResult(riskResult);
 
         // Auto-flag / auto-unflag based on ML risk score
@@ -174,7 +226,7 @@ export function useRiskScore(studentData: StudentRiskData): RiskResult {
           }
         }
       } catch (err) {
-        console.error('Risk calculation error:', err);
+        console.error('[useRiskScore] Risk calculation error for', studentData.studentId, ':', err);
       }
     };
 

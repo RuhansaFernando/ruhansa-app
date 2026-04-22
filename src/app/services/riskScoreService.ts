@@ -78,7 +78,7 @@ export function prepareMLFeatures(studentData: {
   failedModules?: number;
   gpaHistory?: number[];
 }): MLFeatures {
-  return {
+  const features: MLFeatures = {
     attendanceRate: (studentData.attendancePercentage ?? 0) / 100,
     gpaCurrent: studentData.gpa ?? 0,
     gpaHistory: studentData.gpaHistory
@@ -88,6 +88,9 @@ export function prepareMLFeatures(studentData: {
     creditsCompleted: studentData.creditsCompleted ?? 0,
     failedModules: studentData.failedModules ?? 0,
   };
+  console.log('[riskScoreService] prepareMLFeatures input:', studentData);
+  console.log('[riskScoreService] prepareMLFeatures output:', features);
+  return features;
 }
 
 function mapEthnicity(ethnicity: string | undefined): string {
@@ -168,6 +171,8 @@ export async function callMLModel(features: MLFeatures, extraData?: {
     has_counseling:         extraData?.hasCounseling ?? 0,
     financial_aid:          extraData?.financialAid ?? 0,
   };
+  console.log('[riskScoreService] Flask API URL:', ML_API_URL);
+  console.log('[riskScoreService] Payload being sent to Flask:', JSON.stringify(payload, null, 2));
   try {
     const response = await fetch(ML_API_URL, {
       method: 'POST',
@@ -176,23 +181,43 @@ export async function callMLModel(features: MLFeatures, extraData?: {
       signal: AbortSignal.timeout(5000),
     });
 
+    console.log('[riskScoreService] HTTP response status:', response.status, response.statusText);
     if (!response.ok) throw new Error(`API error: ${response.status}`);
 
     const data = await response.json();
+    console.log('[riskScoreService] Flask response body:', data);
 
     // API returns: dropout_probability (0–1), will_dropout (bool), risk_level ('Low'|'Medium'|'High')
-    const score = Math.round((data.dropout_probability ?? 0) * 100);
+    const prob  = data.dropout_probability ?? 0;
+    const score = Math.round(prob * 100);
 
-    const rawLevel = (data.risk_level ?? '').toLowerCase();
-    const level: 'low' | 'medium' | 'high' | 'critical' =
-      rawLevel === 'high'   ? 'high'
-      : rawLevel === 'medium' ? 'medium'
-      : 'low';
+    let finalLevel: 'low' | 'medium' | 'high' | 'critical';
+    let finalScore = score;
+
+    if (prob >= 0.60) {
+      finalLevel = 'high';
+    } else if (prob >= 0.25) {
+      finalLevel = 'medium';
+    } else {
+      // Strict four-condition override: all must be true simultaneously
+      const override =
+        payload.gpa_trend <= -2.0 &&
+        payload.gpa_current < 1.8 &&
+        payload.att_trend < -0.20 &&
+        payload.attendance_rate < 0.75;
+      if (override) {
+        finalLevel = 'medium';
+        finalScore = 35;
+        console.log('[riskScoreService] Medium Risk override — collapsing GPA + collapsing attendance');
+      } else {
+        finalLevel = 'low';
+      }
+    }
 
     return {
-      score,
-      level,
-      confidence: Math.round((data.dropout_probability ?? 0) * 100),
+      score: finalScore,
+      level: finalLevel,
+      confidence: finalScore,
       factors: [
         {
           name: 'Attendance',
@@ -218,7 +243,8 @@ export async function callMLModel(features: MLFeatures, extraData?: {
       ],
       pending: false,
     };
-  } catch {
+  } catch (err) {
+    console.error('[riskScoreService] callMLModel FAILED — returning pending:true. Error:', err);
     return {
       score: 0,
       level: 'low',

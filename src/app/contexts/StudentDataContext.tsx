@@ -61,6 +61,7 @@ export interface StudentData {
   deferral_months: number;
   advisorMeetingCount: number;
   attendanceBySemester: number[];
+  gpaBySemester: number[];
 
   moduleAttendance: ModuleAttendance[];
   results: StudentResult[];
@@ -316,6 +317,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         attendanceBySemester: attendanceBySemester.length > 0
           ? attendanceBySemester
           : [moduleAttendance.length > 0 ? Math.round(moduleAttendance.reduce((s, m) => s + m.percentage, 0) / moduleAttendance.length) / 100 : 0],
+        gpaBySemester: d.gpa_by_semester ?? [],
         moduleAttendance,
         results,
         ssaMessages,

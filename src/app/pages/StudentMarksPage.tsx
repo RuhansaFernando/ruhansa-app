@@ -94,11 +94,14 @@ export default function StudentMarksPage() {
     return Array.from(map.values());
   }, [studentData?.results]);
 
-  // GPA from grouped results, fallback to student record GPA
+  // Prefer the authoritative GPA stored on the student record; derive from
+  // module results only when the stored value is absent or zero.
   const gradePoints: Record<string, number> = { A: 4, B: 3, C: 2, D: 1, F: 0 };
-  const calcGPA =
-    groupedResults.length > 0
-      ? Math.round(
+  const calcGPA = (() => {
+    if (studentData?.gpa && studentData.gpa > 0) return studentData.gpa;
+    if (groupedResults.length > 0) {
+      return (
+        Math.round(
           (groupedResults.reduce((sum, r) => {
             const g = r.overall >= 70 ? 'A' : r.overall >= 60 ? 'B' : r.overall >= 50 ? 'C' : r.overall >= 40 ? 'D' : 'F';
             return sum + gradePoints[g];
@@ -106,7 +109,10 @@ export default function StudentMarksPage() {
             groupedResults.length) *
             100,
         ) / 100
-      : (studentData?.gpa ?? 0);
+      );
+    }
+    return 0;
+  })();
 
   const semesters = [...new Set(groupedResults.map((r) => r.semester).filter(Boolean))].sort();
   const academicYears = [...new Set(groupedResults.map((r) => r.academicYear).filter(Boolean))].sort().reverse();

@@ -466,12 +466,30 @@ export default function RegistryGradesPage() {
     const snap = await getDocs(
       query(collection(db, "results"), where("studentId", "==", studentId))
     );
-    const marks = snap.docs
-      .map((d) => d.data().overallMark as number)
-      .filter((m) => !isNaN(m));
-    const avgMark =
-      marks.length > 0 ? marks.reduce((a, b) => a + b, 0) / marks.length : 0;
-    const gpa = Math.min(4.0, Math.round((avgMark / 25) * 100) / 100);
+    // Group per module, average component marks, then convert to grade points.
+    // Using overallMark only as a fallback — the primary field is mark.
+    const byModule = new Map<string, number[]>();
+    snap.docs.forEach((d) => {
+      const rd = d.data();
+      const key = `${rd.moduleCode ?? ''}__${rd.academicYear ?? ''}__${rd.semester ?? ''}`;
+      if (!byModule.has(key)) byModule.set(key, []);
+      const m = rd.mark ?? rd.overallMark ?? rd.overall ?? rd.finalMark;
+      if (typeof m === 'number' && !isNaN(m)) byModule.get(key)!.push(m);
+    });
+    const modulePoints: number[] = [];
+    byModule.forEach((marks) => {
+      if (marks.length === 0) return;
+      const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
+      const grade =
+        avg >= 70 ? 'A' : avg >= 60 ? 'B' : avg >= 50 ? 'C' : avg >= 40 ? 'D' : 'F';
+      const pts =
+        grade === 'A' ? 4.0 : grade === 'B' ? 3.0 : grade === 'C' ? 2.0 : grade === 'D' ? 1.0 : 0.0;
+      modulePoints.push(pts);
+    });
+    const gpa =
+      modulePoints.length > 0
+        ? Math.min(4.0, Math.round((modulePoints.reduce((a, b) => a + b, 0) / modulePoints.length) * 100) / 100)
+        : 0;
     await updateDoc(doc(db, "students", studentId), { gpa });
   };
 

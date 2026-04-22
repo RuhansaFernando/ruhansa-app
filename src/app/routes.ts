@@ -43,6 +43,10 @@ import CourseLeaderDashboard from './pages/CourseLeaderDashboard';
 import CourseLeaderPage from './pages/CourseLeaderPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import StudentWellbeingCheckIn from './pages/StudentWellbeingCheckIn';
+import RecalculateGPA from './tools/RecalculateGPA';
+import SyncGPASemesters from './tools/SyncGPASemesters';
+import BulkMarksUpload from './tools/BulkMarksUpload';
+import SystemReset from './tools/SystemReset';
 import {
   RedirectToLogin,
   NotFound,
@@ -322,6 +326,22 @@ export const router = createBrowserRouter([
         Component: ChangePasswordPage,
       },
     ],
+  },
+  {
+    path: '/recalculate-gpa',
+    Component: RecalculateGPA,
+  },
+  {
+    path: '/sync-gpa-semesters',
+    Component: SyncGPASemesters,
+  },
+  {
+    path: '/bulk-marks-upload',
+    Component: BulkMarksUpload,
+  },
+  {
+    path: '/system-reset',
+    Component: SystemReset,
   },
   {
     path: '*',

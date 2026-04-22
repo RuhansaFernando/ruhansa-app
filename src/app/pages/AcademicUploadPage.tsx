@@ -13,6 +13,7 @@ import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import {
   setDoc,
+  getDoc,
   getDocs,
   updateDoc,
   doc,
@@ -23,6 +24,13 @@ import {
   limit,
   arrayUnion,
 } from 'firebase/firestore';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../components/ui/dialog';
 import { db } from '../../firebase';
 import { toast } from 'sonner';
 import { useAuth } from '../AuthContext';
@@ -33,6 +41,8 @@ import {
   Users,
   BookOpen,
   CheckCircle,
+  FileUp,
+  XCircle,
 } from 'lucide-react';
 
 // ─── Recalculate per-module + overall attendance + consecutive absences ────────
@@ -131,6 +141,43 @@ const formatDate = (d: string) => {
   }
 };
 
+// ─── Semester sort key for attendance summary ─────────────────────────────────
+function attSemesterSortKey(academicYear: string, semester: string): number {
+  const match = academicYear.match(/(\d{4})/);
+  const startYear = match ? parseInt(match[1]) : 0;
+  const semNum = semester.includes('1 & 2') ? 1.5 : semester.includes('2') ? 2 : 1;
+  return startYear * 10 + semNum;
+}
+
+// ─── Types for bulk attendance summary upload ─────────────────────────────────
+interface AttSummaryCsvRow {
+  rowNum:              number;
+  studentId:           string;
+  moduleCode:          string;
+  academicYear:        string;
+  semester:            string;
+  presentSessions:     number;
+  totalSessions:       number;
+  attendancePercentage: number;
+  valid:               boolean;
+  error?:              string;
+}
+
+interface AttSummaryRowResult {
+  rowNum:     number;
+  studentId:  string;
+  moduleCode: string;
+  action:     'created' | 'updated' | 'error';
+  error?:     string;
+}
+
+interface AttSummaryStudentResult {
+  studentId:        string;
+  name:             string;
+  modulesProcessed: number;
+  newAttendancePct: number;
+}
+
 // ─── Deterministic attendance document ID ─────────────────────────────────────
 // Same student + module + date + sessionType always maps to the same Firestore doc,
 // so setDoc naturally prevents duplicates.
@@ -179,6 +226,15 @@ export default function AcademicUploadPage() {
 
   // Section 5 — bulk session upload
   const [sessionMode, setSessionMode] = useState<'single' | 'bulk'>('bulk');
+
+  // Bulk attendance summary upload modal
+  const [showAttSummaryModal, setShowAttSummaryModal]             = useState(false);
+  const [attSummaryRows, setAttSummaryRows]                       = useState<AttSummaryCsvRow[]>([]);
+  const [attSummaryUploading, setAttSummaryUploading]             = useState(false);
+  const [attSummaryProgress, setAttSummaryProgress]               = useState({ current: 0, total: 0 });
+  const [attSummaryRowResults, setAttSummaryRowResults]           = useState<AttSummaryRowResult[]>([]);
+  const [attSummaryStudentResults, setAttSummaryStudentResults]   = useState<AttSummaryStudentResult[]>([]);
+  const [attSummaryDone, setAttSummaryDone]                       = useState(false);
   const [bulkCsvRows, setBulkCsvRows] = useState<Array<{ studentId: string; sessionDate: string; sessionType: string; status: 'present' | 'absent' }>>([]);
   const [bulkSessionHeaders, setBulkSessionHeaders] = useState<Array<{ label: string; date: string; sessionType: string }>>([]);
   const [bulkCsvProcessing, setBulkCsvProcessing] = useState(false);
@@ -684,20 +740,219 @@ export default function AcademicUploadPage() {
     }
   };
 
+  // ── Bulk attendance summary upload ──────────────────────────────────────────
+
+  const openAttSummaryModal = () => {
+    setAttSummaryRows([]);
+    setAttSummaryRowResults([]);
+    setAttSummaryStudentResults([]);
+    setAttSummaryDone(false);
+    setShowAttSummaryModal(true);
+  };
+
+  const downloadAttSummaryTemplate = () => {
+    const rows = [
+      'studentId,moduleCode,academicYear,semester,presentSessions,totalSessions',
+      'STD001,CS101,2023/2024,Semester 1,18,24',
+      'STD001,CS101,2023/2024,Semester 2,14,24',
+      'STD001,BM101,2023/2024,Semester 1,20,24',
+      'STD001,BM101,2023/2024,Semester 2,22,24',
+      'STD002,CS101,2023/2024,Semester 1,8,24',
+      'STD002,CS101,2024/2025,Semester 1,22,24',
+      'STD003,BM101,2024/2025,Semester 2,,24',
+    ];
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'bulk_attendance_summary_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleAttSummaryCsvFile = async (file: File) => {
+    const Papa = (await import('papaparse')).default;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (res) => {
+        const raw = res.data as Record<string, string>[];
+        const parsed: AttSummaryCsvRow[] = raw.map((row, i) => {
+          const studentId    = (row['studentId']    ?? '').trim();
+          const moduleCode   = (row['moduleCode']   ?? '').trim();
+          const academicYear = (row['academicYear'] ?? '').trim();
+          const semester     = (row['semester']     ?? '').trim();
+          const presentRaw   = (row['presentSessions'] ?? '').trim();
+          const totalRaw     = (row['totalSessions']   ?? '').trim();
+          const present      = parseInt(presentRaw, 10);
+          const total        = parseInt(totalRaw,   10);
+
+          let error: string | undefined;
+          if (!studentId)    error = 'Missing studentId';
+          else if (!moduleCode)   error = 'Missing moduleCode';
+          else if (!academicYear) error = 'Missing academicYear';
+          else if (!semester)     error = 'Missing semester';
+          else if (presentRaw === '' || isNaN(present) || present < 0) error = `Invalid presentSessions: "${presentRaw}"`;
+          else if (totalRaw === '' || isNaN(total) || total <= 0)      error = `Invalid totalSessions: "${totalRaw}"`;
+          else if (present > total) error = `presentSessions (${present}) > totalSessions (${total})`;
+
+          const attendancePercentage = (!error) ? Math.round((present / total) * 10000) / 100 : 0;
+          return {
+            rowNum: i + 2, studentId, moduleCode, academicYear, semester,
+            presentSessions: isNaN(present) ? 0 : present,
+            totalSessions:   isNaN(total)   ? 0 : total,
+            attendancePercentage, valid: !error, error,
+          };
+        });
+        setAttSummaryRows(parsed);
+        setAttSummaryRowResults([]);
+        setAttSummaryStudentResults([]);
+        setAttSummaryDone(false);
+      },
+      error: () => toast.error('Failed to parse CSV. Check the file format.'),
+    });
+  };
+
+  const handleAttSummaryUpload = async () => {
+    const validRows = attSummaryRows.filter((r) => r.valid);
+    if (validRows.length === 0) return;
+
+    setAttSummaryUploading(true);
+    setAttSummaryDone(false);
+    setAttSummaryRowResults([]);
+    setAttSummaryStudentResults([]);
+    setAttSummaryProgress({ current: 0, total: validRows.length });
+
+    // Pre-fetch all students
+    const studentsSnap = await getDocs(collection(db, 'students'));
+    const studentDocMap = new Map<string, { docId: string; name: string }>();
+    studentsSnap.forEach((d) => {
+      const sid = String(d.data().studentId ?? '').trim();
+      if (sid) studentDocMap.set(sid, { docId: d.id, name: d.data().name ?? '' });
+    });
+
+    const rowResults: AttSummaryRowResult[] = [];
+    const affectedStudentIds = new Set<string>();
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      setAttSummaryProgress({ current: i + 1, total: validRows.length });
+      try {
+        const docId = `${row.studentId}__${row.moduleCode}__${row.academicYear.replace(/\//g, '-')}__${row.semester.replace(/\s+/g, '_')}`;
+        const docRef = doc(db, 'attendanceRecords', docId);
+        const existing = await getDoc(docRef);
+        await setDoc(docRef, {
+          studentId:           row.studentId,
+          moduleCode:          row.moduleCode,
+          academicYear:        row.academicYear,
+          semester:            row.semester,
+          presentSessions:     row.presentSessions,
+          totalSessions:       row.totalSessions,
+          attendancePercentage: row.attendancePercentage,
+          uploadedBy:          user?.name ?? 'Faculty Administrator',
+          updatedAt:           serverTimestamp(),
+        }, { merge: true });
+        rowResults.push({ rowNum: row.rowNum, studentId: row.studentId, moduleCode: row.moduleCode, action: existing.exists() ? 'updated' : 'created' });
+        affectedStudentIds.add(row.studentId);
+      } catch (err) {
+        rowResults.push({ rowNum: row.rowNum, studentId: row.studentId, moduleCode: row.moduleCode, action: 'error', error: (err as Error).message });
+      }
+      setAttSummaryRowResults([...rowResults]);
+    }
+
+    // Recalculate attendance for each affected student
+    const studentResults: AttSummaryStudentResult[] = [];
+    for (const sid of affectedStudentIds) {
+      try {
+        const studentInfo = studentDocMap.get(sid);
+        if (!studentInfo) continue;
+
+        const allRecordsSnap = await getDocs(
+          query(collection(db, 'attendanceRecords'), where('studentId', '==', sid))
+        );
+        const allRecords = allRecordsSnap.docs.map((d) => d.data() as {
+          moduleCode: string; academicYear: string; semester: string;
+          presentSessions: number; totalSessions: number; attendancePercentage: number;
+        });
+
+        // Overall = average of all module attendance percentages
+        const overallPct = allRecords.length > 0
+          ? Math.round(allRecords.reduce((s, r) => s + (r.attendancePercentage ?? 0), 0) / allRecords.length)
+          : 0;
+
+        // Group by semester, compute per-semester average
+        const bySemester = new Map<string, number[]>();
+        allRecords.forEach((r) => {
+          const key = `${r.academicYear}|||${r.semester}`;
+          const arr = bySemester.get(key) ?? [];
+          arr.push(r.attendancePercentage ?? 0);
+          bySemester.set(key, arr);
+        });
+
+        const semEntries = [...bySemester.entries()]
+          .map(([key, pcts]) => {
+            const [ay, sem] = key.split('|||');
+            const avg = pcts.reduce((s, p) => s + p, 0) / pcts.length;
+            return { key, academicYear: ay, semester: sem, avg };
+          })
+          .sort((a, b) => attSemesterSortKey(a.academicYear, a.semester) - attSemesterSortKey(b.academicYear, b.semester));
+
+        // Store as fractions (0-1) matching existing attendance_by_semester format
+        const attendance_by_semester = semEntries.map((e) => Math.round((e.avg / 100) * 10000) / 10000);
+
+        // consecutiveAbsences: missed sessions in the most recent semester
+        const mostRecent = semEntries[semEntries.length - 1];
+        let consecutiveAbsences = 0;
+        if (mostRecent && mostRecent.avg < 75) {
+          const recentRecords = allRecords.filter((r) => `${r.academicYear}|||${r.semester}` === mostRecent.key);
+          consecutiveAbsences = recentRecords.reduce(
+            (s, r) => s + Math.max(0, (r.totalSessions ?? 0) - (r.presentSessions ?? 0)), 0
+          );
+        }
+
+        await updateDoc(doc(db, 'students', studentInfo.docId), {
+          attendancePercentage: overallPct,
+          attendance_by_semester,
+          consecutiveAbsences,
+        });
+        studentResults.push({ studentId: sid, name: studentInfo.name, modulesProcessed: allRecords.length, newAttendancePct: overallPct });
+      } catch {
+        // non-fatal
+      }
+    }
+
+    setAttSummaryStudentResults(studentResults);
+    setAttSummaryUploading(false);
+    setAttSummaryDone(true);
+    const successCount = rowResults.filter((r) => r.action !== 'error').length;
+    toast.success(`Bulk attendance upload complete: ${successCount} records for ${studentResults.length} student${studentResults.length !== 1 ? 's' : ''}`);
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Attendance Management</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Record and manage student attendance per module and session
-        </p>
-        {!loadingAdmin && adminFaculty && (
-          <p className="text-sm font-medium text-primary mt-1">
-            Managing: {adminFaculty}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Attendance Management</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Record and manage student attendance per module and session
           </p>
-        )}
+          {!loadingAdmin && adminFaculty && (
+            <p className="text-sm font-medium text-primary mt-1">
+              Managing: {adminFaculty}
+            </p>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 shrink-0"
+          onClick={openAttSummaryModal}
+        >
+          <FileUp className="h-4 w-4" />
+          Bulk Attendance Upload
+        </Button>
       </div>
 
       {/* ── Section 1: Select Module & Session ── */}
@@ -1294,6 +1549,239 @@ export default function AcademicUploadPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Bulk Attendance Summary Upload Modal ── */}
+      <Dialog open={showAttSummaryModal} onOpenChange={(open) => { if (!open && !attSummaryUploading) setShowAttSummaryModal(false); }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Attendance Upload — Summary Format</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Template + format hint */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={downloadAttSummaryTemplate} disabled={attSummaryUploading}>
+                <Download className="h-4 w-4" />
+                Download Template
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Columns: <code className="bg-gray-100 px-1 rounded">studentId, moduleCode, academicYear, semester, presentSessions, totalSessions</code>
+              </span>
+            </div>
+
+            {/* File drop zone */}
+            {!attSummaryDone && (
+              <div
+                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => { if (!attSummaryUploading) document.getElementById('att-summary-csv-input')?.click(); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file) handleAttSummaryCsvFile(file);
+                }}
+              >
+                <FileUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {attSummaryRows.length > 0
+                    ? `${attSummaryRows.length} row${attSummaryRows.length !== 1 ? 's' : ''} loaded — drop a new file to replace`
+                    : 'Drop a CSV file here, or click to browse'}
+                </p>
+                <input
+                  id="att-summary-csv-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAttSummaryCsvFile(f); e.target.value = ''; }}
+                />
+              </div>
+            )}
+
+            {/* Preview table */}
+            {attSummaryRows.length > 0 && !attSummaryDone && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium">Preview</p>
+                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">{attSummaryRows.filter(r => r.valid).length} valid</Badge>
+                  {attSummaryRows.some(r => !r.valid) && (
+                    <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">{attSummaryRows.filter(r => !r.valid).length} invalid</Badge>
+                  )}
+                </div>
+                <div className="rounded-md border overflow-auto max-h-56">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">#</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Student ID</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Module</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Academic Year</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Semester</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Present</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Total</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">%</th>
+                        <th className="px-2 py-1.5"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attSummaryRows.map((row) => (
+                        <tr key={row.rowNum} className={row.valid ? '' : 'bg-red-50'}>
+                          <td className="px-2 py-1 text-muted-foreground">{row.rowNum}</td>
+                          <td className="px-2 py-1 font-mono">{row.studentId}</td>
+                          <td className="px-2 py-1 font-mono">{row.moduleCode}</td>
+                          <td className="px-2 py-1">{row.academicYear}</td>
+                          <td className="px-2 py-1">{row.semester}</td>
+                          <td className="px-2 py-1 text-right">{row.valid ? row.presentSessions : '—'}</td>
+                          <td className="px-2 py-1 text-right">{row.valid ? row.totalSessions : '—'}</td>
+                          <td className="px-2 py-1 text-right">
+                            {row.valid && (
+                              <span className={row.attendancePercentage >= 75 ? 'text-green-700 font-medium' : 'text-red-600 font-medium'}>
+                                {row.attendancePercentage.toFixed(1)}%
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            {row.valid
+                              ? <CheckCircle className="h-3.5 w-3.5 text-green-500 mx-auto" />
+                              : <XCircle className="h-3.5 w-3.5 text-red-500 mx-auto" title={row.error} />
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {attSummaryRows.some((r) => !r.valid) && (
+                  <div className="space-y-0.5">
+                    {attSummaryRows.filter((r) => !r.valid).map((r) => (
+                      <p key={r.rowNum} className="text-xs text-red-600">Row {r.rowNum}: {r.error}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Progress bar */}
+            {attSummaryUploading && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Uploading…</span>
+                  <span>{attSummaryProgress.current}/{attSummaryProgress.total}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    style={{ width: `${attSummaryProgress.total > 0 ? (attSummaryProgress.current / attSummaryProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Row results */}
+            {attSummaryRowResults.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium">Upload Results</p>
+                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">{attSummaryRowResults.filter(r => r.action === 'created').length} created</Badge>
+                  <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">{attSummaryRowResults.filter(r => r.action === 'updated').length} updated</Badge>
+                  {attSummaryRowResults.some(r => r.action === 'error') && (
+                    <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">{attSummaryRowResults.filter(r => r.action === 'error').length} errors</Badge>
+                  )}
+                </div>
+                <div className="rounded-md border overflow-auto max-h-36">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">#</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Student</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Module</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attSummaryRowResults.map((r) => (
+                        <tr key={r.rowNum} className={r.action === 'error' ? 'bg-red-50' : ''}>
+                          <td className="px-2 py-1 text-muted-foreground">{r.rowNum}</td>
+                          <td className="px-2 py-1 font-mono">{r.studentId}</td>
+                          <td className="px-2 py-1 font-mono">{r.moduleCode}</td>
+                          <td className="px-2 py-1">
+                            {r.action === 'created' && <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">Created</Badge>}
+                            {r.action === 'updated' && <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">Updated</Badge>}
+                            {r.action === 'error'   && <Badge className="bg-red-100 text-red-800 border-red-200 text-xs" title={r.error}>Error</Badge>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Student results summary */}
+            {attSummaryStudentResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  Students Updated — {attSummaryStudentResults.length} student{attSummaryStudentResults.length !== 1 ? 's' : ''}
+                </p>
+                <div className="rounded-md border overflow-auto max-h-40">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Student ID</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Name</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Modules</th>
+                        <th className="text-right px-2 py-1.5 text-muted-foreground">Attendance %</th>
+                        <th className="text-left px-2 py-1.5 text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attSummaryStudentResults.map((r) => (
+                        <tr key={r.studentId}>
+                          <td className="px-2 py-1 font-mono">{r.studentId}</td>
+                          <td className="px-2 py-1">{r.name}</td>
+                          <td className="px-2 py-1 text-right">{r.modulesProcessed}</td>
+                          <td className="px-2 py-1 text-right font-semibold">
+                            <span className={r.newAttendancePct >= 75 ? 'text-green-700' : 'text-red-600'}>
+                              {r.newAttendancePct}%
+                            </span>
+                          </td>
+                          <td className="px-2 py-1">
+                            {r.newAttendancePct >= 75
+                              ? <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">On Track</Badge>
+                              : <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">At Risk</Badge>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAttSummaryModal(false)}
+              disabled={attSummaryUploading}
+            >
+              {attSummaryDone ? 'Close' : 'Cancel'}
+            </Button>
+            {!attSummaryDone && (
+              <Button
+                onClick={handleAttSummaryUpload}
+                disabled={attSummaryUploading || attSummaryRows.filter((r) => r.valid).length === 0}
+              >
+                {attSummaryUploading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
+                ) : (
+                  `Upload ${attSummaryRows.filter((r) => r.valid).length} Record${attSummaryRows.filter((r) => r.valid).length !== 1 ? 's' : ''}`
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

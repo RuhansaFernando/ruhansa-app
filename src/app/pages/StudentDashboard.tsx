@@ -140,6 +140,7 @@ export default function StudentDashboard() {
     flagged:                studentData?.flagged,
     academic_warning_count: studentData?.academic_warning_count,
     attendanceBySemester:   studentData?.attendanceBySemester ?? [(student?.attendancePercentage ?? 0) / 100],
+    gpaBySemester:          studentData?.gpaBySemester,
     ethnicity:              studentData?.ethnicity,
     financial_aid:          studentData?.financial_aid,
     credits_completed:      studentData?.credits_completed,

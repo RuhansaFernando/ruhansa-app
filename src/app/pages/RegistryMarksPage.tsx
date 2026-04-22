@@ -368,11 +368,25 @@ export default function RegistryMarksPage() {
               query(collection(db, 'results'), where('studentId', '==', student.studentId))
             );
 
-            const grades = resultsSnap.docs.map((d) => d.data().grade ?? '');
+            // Group components by module+year+semester, then compute per-module
+            // grade point. Averaging component grades directly would inflate the
+            // effect of individual components and produce wrong GPA values.
+            const byModule = new Map<string, number[]>();
+            resultsSnap.docs.forEach((d) => {
+              const rd = d.data();
+              const key = `${rd.moduleCode ?? ''}__${rd.academicYear ?? ''}__${rd.semester ?? ''}`;
+              if (!byModule.has(key)) byModule.set(key, []);
+              byModule.get(key)!.push(rd.mark ?? rd.overall ?? 0);
+            });
+            const modulePoints: number[] = [];
+            byModule.forEach((marks) => {
+              const avg = marks.reduce((s, m) => s + m, 0) / marks.length;
+              modulePoints.push(gradeToPoints(calculateGrade(avg)));
+            });
             const gpa =
-              grades.length > 0
+              modulePoints.length > 0
                 ? Math.round(
-                    (grades.reduce((sum, g) => sum + gradeToPoints(g), 0) / grades.length) * 100
+                    (modulePoints.reduce((s, p) => s + p, 0) / modulePoints.length) * 100
                   ) / 100
                 : 0;
 

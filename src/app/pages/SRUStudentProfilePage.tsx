@@ -51,6 +51,7 @@ interface StudentData {
   credits_completed?: number;
   deferral_months?: number;
   attendanceBySemester?: number[];
+  gpaBySemester?: number[];
   phone?: string;
   faculty?: string;
 }
@@ -391,6 +392,7 @@ export default function SRUStudentProfilePage() {
             credits_completed: d.credits_completed ?? 0,
             deferral_months: d.deferral_months ?? 0,
             attendanceBySemester: d.attendance_by_semester ?? d.attendanceBySemester ?? [],
+            gpaBySemester: d.gpa_by_semester ?? [],
             phone: d.phone ?? '',
             faculty: d.faculty ?? '',
           });
@@ -442,6 +444,9 @@ export default function SRUStudentProfilePage() {
         setFailedModules(failed);
         setCreditsCompleted(passed);
 
+        // Group component marks by semester, convert average % to 0-4 grade
+        // points so gpaHistory is on the same scale as student.gpa and all
+        // challenge-detection thresholds (e.g. drop > 0.8, gpa < 2.0).
         const bySemester: Record<string, number[]> = {};
         results.forEach((r) => {
           const key = `${r.academicYear ?? 'Unknown'}-${r.semester ?? 'Unknown'}`;
@@ -450,7 +455,12 @@ export default function SRUStudentProfilePage() {
         });
         const history = Object.values(bySemester).map((marks) => {
           const avg = marks.reduce((a, b) => a + b, 0) / marks.length;
-          return Math.round(avg * 10) / 10;
+          // Convert percentage average → grade points (0-4 scale)
+          if (avg >= 70) return 4.0;
+          if (avg >= 60) return 3.0;
+          if (avg >= 50) return 2.0;
+          if (avg >= 40) return 1.0;
+          return 0.0;
         });
         setGpaHistory(history);
 
@@ -601,6 +611,7 @@ export default function SRUStudentProfilePage() {
     flagged:                 student?.flagged,
     academic_warning_count:  student?.academic_warning_count,
     attendanceBySemester:    student?.attendanceBySemester,
+    gpaBySemester:           student?.gpaBySemester,
     ethnicity:               student?.ethnicity,
     financial_aid:           student?.financial_aid,
     credits_completed:       student?.credits_completed,
@@ -627,7 +638,7 @@ export default function SRUStudentProfilePage() {
   const initials = student.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
   const avatarColour =
     riskData.score >= 80 ? 'bg-red-100 text-red-700' :
-    riskData.score >= 60 ? 'bg-amber-100 text-amber-700' :
+    riskData.score >= 60 ? 'bg-amber-100 text-amber-700' : 
     'bg-blue-100 text-blue-700';
 
   return (
@@ -735,9 +746,13 @@ export default function SRUStudentProfilePage() {
               <p className="text-xs text-muted-foreground mt-0.5">Attendance</p>
             </div>
             <div className="text-center">
-              <p className={`text-2xl font-bold ${student.gpa < 2.0 ? 'text-red-600' : student.gpa < 2.5 ? 'text-amber-600' : 'text-green-600'}`}>
-                {student.gpa.toFixed(1)}
-              </p>
+              {student.gpa === 0 ? (
+                <p className="text-2xl font-bold text-muted-foreground">—</p>
+              ) : (
+                <p className={`text-2xl font-bold ${student.gpa < 2.0 ? 'text-red-600' : student.gpa < 2.5 ? 'text-amber-600' : 'text-green-600'}`}>
+                  {student.gpa.toFixed(2)}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground mt-0.5">GPA</p>
             </div>
             <div className="text-center">
