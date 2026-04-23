@@ -37,7 +37,6 @@ import SRUStudentProfilePage from './pages/SRUStudentProfilePage';
 import SRUInterventionsPage from './pages/SRUInterventionsPage';
 import SRUAlertsPage from './pages/SRUAlertsPage';
 import SSASettingsPage from './pages/SSASettingsPage';
-import SRUAppointmentsPage from './pages/SRUAppointmentsPage';
 import SRUReportsPage from './pages/SRUReportsPage';
 import CourseLeaderDashboard from './pages/CourseLeaderDashboard';
 import CourseLeaderPage from './pages/CourseLeaderPage';
@@ -282,14 +281,6 @@ export const router = createBrowserRouter([
       {
         path: 'alerts',
         Component: SRUAlertsPage,
-      },
-      {
-        path: 'appointments',
-        Component: SRUAppointmentsPage,
-      },
-      {
-        path: 'appointments/new',
-        loader: () => redirect('/sru/appointments'),
       },
       {
         path: 'reports',

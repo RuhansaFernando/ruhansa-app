@@ -92,8 +92,7 @@ export default function DashboardLayout() {
         { label: 'Students', icon: Users, path: '/sru/students' },
         { label: 'Alerts', icon: Bell, path: '/sru/alerts' },
         { label: 'Interventions', icon: Target, path: '/sru/interventions' },
-        { label: 'Appointments', icon: Calendar, path: '/sru/appointments' },
-        { label: 'Reports', icon: FileText, path: '/sru/reports' },
+{ label: 'Reports', icon: FileText, path: '/sru/reports' },
       ];
     } else if (user.role === 'academic_mentor') {
       return [
